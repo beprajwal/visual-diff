@@ -1,0 +1,5 @@
+.superpowers/
+node_modules/
+.visual-diff/*
+!.visual-diff/config.yaml
+!.visual-diff/flows/
