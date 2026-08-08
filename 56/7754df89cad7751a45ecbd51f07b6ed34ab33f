@@ -1,0 +1,138 @@
+src/cli/deps.ts
+  s_81bbe05709be29::t_37808fb870b0fe 60
+src/adapters/source.test.ts
+  s_81bbe05709be29::t_c7f32ef0bea19f 1-65,69-244
+  s_81bbe05709be29::t_cdaed9af25c2f9 66-68
+src/diff/cache.test.ts
+  s_81bbe05709be29::t_ce5d4d9e4e9622 1-248
+skills/visual-diff-review/SKILL.md
+  s_81bbe05709be29::t_2a1b0142e18829 1-114
+tests/integration/settle-timeout.test.ts
+  s_81bbe05709be29::t_2aae3b8d7ce747 1-179
+src/cli/commands/install.test.ts
+  s_81bbe05709be29::t_7bc8edfed6e8d8 2,9,13,16-17,21,25-29,56-69,79,81,84-133,139,141-143,146,149,151-163,168,170-171,176-186,190,192-193,201-202,223-224,246-272
+skills/visual-diff-flows/SKILL.md
+  s_81bbe05709be29::t_255270c82c893a 1-166
+src/runner/run.test.ts
+  s_81bbe05709be29::t_8b2f28e564fc7f 404-481
+  s_81bbe05709be29::t_ad206f0c096da0 1-2,5
+  s_81bbe05709be29::t_048d7dde76298a 21
+src/cli/main.test.ts
+  s_81bbe05709be29::t_b28f5fcef843e9 697-716
+src/adapters/frontmatter.ts
+  s_81bbe05709be29::t_76cc83919e3ed2 1-45
+src/cli/args.test.ts
+  s_81bbe05709be29::t_b62f4ab77ea35d 89-110
+scripts/build-skills.mjs
+  s_81bbe05709be29::t_36384a8ea03fdb 141-142,145,151-152
+  s_81bbe05709be29::t_d0060d7ce886ba 1-66,74,76-77,79,85,90-95,97-99,101-104,106-107,111,113-140,143-144,146-150,153-192
+  s_81bbe05709be29::t_8f8609d9f0cf42 67-73,75,78,80-84,86-89,96,100,105,108-110,112
+docs/superpowers/plans/2026-08-08-visual-diff-implementation-plan.md
+  s_81bbe05709be29::t_7dc9292e6d1e85 11
+src/cli/shapes.ts
+  s_81bbe05709be29::t_c307af7c688bd7 111-123
+src/runner/index.ts
+  s_81bbe05709be29::t_554b76c6d66e4f 9-18
+src/adapters/claude-code/index.ts
+  s_81bbe05709be29::t_142c38ee6a43c2 53
+  s_81bbe05709be29::t_a6f39ccba05fe5 134-141,147
+  s_81bbe05709be29::t_1ea3ba0bff5d9c 146
+  s_81bbe05709be29::t_f97d167fd3a754 4-8,14-15,20-23,31-40,42-44,46-52,54-114,116-117,125
+skills/manifest.json
+  s_81bbe05709be29::t_381270b88ad509 1-36
+src/flow/structural-diff.test.ts
+  s_81bbe05709be29::t_ce5052a3244786 142-150
+tests/packaging/pack.test.ts
+  s_81bbe05709be29::t_0314c4e744fab4 4-6
+  s_81bbe05709be29::t_2287c4fa40b766 44,52-53
+  s_81bbe05709be29::t_792c3a4d4a656c 197,201-211,217,219-221
+  s_81bbe05709be29::t_32d38371b29848 94-101
+  s_81bbe05709be29::t_7caef49989890c 212-216,218
+  s_81bbe05709be29::t_9d80a6d6273a20 82-86
+  s_81bbe05709be29::t_79f06e41a63ea4 15-20
+  s_81bbe05709be29::t_f7de2d990a62a9 111
+  s_81bbe05709be29::t_28587f679ce48e 140-183,222
+src/diff/cache.ts
+  s_81bbe05709be29::t_7c76026546ad1e 5-20,23,27-46,57-79,82-87,89,92,94-95,102,106-107,113-129,133,137
+  s_81bbe05709be29::t_ae8ec062df2668 138-145
+src/index.ts
+  s_81bbe05709be29::t_26b209ad4bc9f0 10
+  s_81bbe05709be29::t_caa3ec433ee938 2
+src/adapters/index.test.ts
+  s_81bbe05709be29::t_0ca4ae0d339c1e 7,14,18,30-37,42,46,56,61
+docs/superpowers/specs/2026-08-08-visual-diff-design.md
+  s_81bbe05709be29::t_330424b7f0d8c1 552-563
+  s_81bbe05709be29::t_82bb455946f16d 127-128
+src/adapters/index.ts
+  s_81bbe05709be29::t_f99252595323e7 21-22,26-27
+  s_81bbe05709be29::t_4beee4b35068e0 6-8,15,61,64-66,68,83-105
+skills/visual-diff/SKILL.md
+  s_81bbe05709be29::t_0f4930dbb1d526 1-144
+tests/packaging/package-name.test.ts
+  s_81bbe05709be29::t_a8e4b094449dfd 1-127
+src/cli/args.ts
+  s_81bbe05709be29::t_d5946ab79c24c3 498-516,523-524
+  s_81bbe05709be29::t_8a6500ddbc6107 42-46,50-51
+  s_81bbe05709be29::t_1d47203fcbc891 156,158-159,164,166
+src/adapters/frontmatter.test.ts
+  s_81bbe05709be29::t_038cf55370ae7d 1-63
+src/cli/commands/install.ts
+  s_81bbe05709be29::t_e067d29fdba498 2-3,5-8,14-16,26,41,43-45,57,78,101-132
+src/diff/index.ts
+  s_81bbe05709be29::t_f35852ec80d106 22-32
+tests/packaging/build-scripts.test.ts
+  s_81bbe05709be29::t_e2ca3471b35156 1-320
+src/runner/run.ts
+  s_81bbe05709be29::t_67865fa5c0d11c 21,23
+  s_81bbe05709be29::t_8a63207b9303e5 83-113,116,118-137,139-144
+  s_81bbe05709be29::t_3238345d712464 114
+scripts/clean.mjs
+  s_81bbe05709be29::t_7e38594a0f84bd 42-48,50-53
+  s_81bbe05709be29::t_68a9d86afe64f0 1-41,49,54-57
+src/runner/browser.ts
+  s_81bbe05709be29::t_c82198dca56af7 56
+  s_81bbe05709be29::t_c68daad9aca75f 45
+README.md
+  s_81bbe05709be29::t_880adfb9d3187d 22-23,28-30,33-36
+  s_81bbe05709be29::t_8e39e42a42cb27 47-48,51-55,58-65
+  s_81bbe05709be29::t_69b55b701757ed 7
+  s_81bbe05709be29::t_861f4166228e5c 123-127,130
+  s_81bbe05709be29::t_405679893d8a9e 111,114-116
+  s_81bbe05709be29::t_2df2095915db54 117
+package.json
+  s_81bbe05709be29::t_3d3c01864278fd 2
+  s_81bbe05709be29::t_70725abfac7923 33-34,37
+  s_81bbe05709be29::t_92b53006a1c8b7 21,26-28
+src/diff/engine.ts
+  s_81bbe05709be29::t_50c8c266b7e339 362-363,368
+  s_81bbe05709be29::t_25b7371a4b923a 434
+src/adapters/claude-code/index.test.ts
+  s_81bbe05709be29::t_3ff7e603576230 7-8,10,15-17,19,22-32,34-42,45-48,50-53,56-58,61-67,69-79,82-85,89-96,99-104,107-126,128,130-143,147-152,154,156-178,181-187,190-195,219,222-233,245,250-251,258-259,265-266,271-272,277-283
+.npmignore
+  s_81bbe05709be29::t_27fa32e2d4ac86 15-19
+src/adapters/source.ts
+  s_81bbe05709be29::t_fd03df9fd80d1e 1-111,113-237
+  s_81bbe05709be29::t_5a537729e678da 112
+scripts/finalize-bin.mjs
+  s_81bbe05709be29::t_f9562c194e2a0c 6
+src/runner/capture.ts
+  s_81bbe05709be29::t_863da267c547fb 506-510
+package-lock.json
+  s_81bbe05709be29::t_cf01ed104ac533 2,8,1205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "567754df89cad7751a45ecbd51f07b6ed34ab33f",
+  "prompts": {},
+  "sessions": {
+    "s_81bbe05709be29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c05a727-400c-4533-9612-0f1d4fd575b1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
