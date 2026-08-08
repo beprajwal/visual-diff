@@ -29,7 +29,6 @@ export { hashFlow, hashFlowSource } from './hash.js';
 export {
   describeFillChanges,
   describeStepChanges,
-  diffFlows,
   flowLevelChanges,
   formatStepChanges,
   isComparable,

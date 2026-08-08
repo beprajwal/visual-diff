@@ -86,6 +86,28 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     });
   });
 
+  it('`--list` stands in for the harness argument', () => {
+    expect(ok(['install', '--list'])).toEqual({
+      kind: 'install',
+      list: true,
+      force: false,
+      dryRun: false,
+      json: false,
+    });
+    expect(ok(['install', '--list', '--json'])).toMatchObject({ list: true, json: true });
+  });
+
+  it('rejects `--list` combined with a harness, rather than silently picking one', () => {
+    expect(err(['install', 'claude-code', '--list'])).toMatchObject({
+      code: 'conflicting-flags',
+      exitCode: EXIT.CONFIG_ERROR,
+    });
+  });
+
+  it('leaves `list` off the invocation when it was not asked for', () => {
+    expect('list' in ok(['install', 'claude-code'])).toBe(false);
+  });
+
   it('does not confuse `install` with `install-browser`', () => {
     expect(ok(['install-browser'])).toEqual({ kind: 'install-browser', json: false });
     expect(err(['install-browser', 'claude-code']).code).toBe('unexpected-argument');

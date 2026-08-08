@@ -124,7 +124,8 @@ layer is also the foundation of subsystem 2, so slice 1 pays for slice 2.
 
 ## 5. Architecture
 
-One npm package, `visual-diff`, one binary, `vdiff`, with hard internal module seams.
+One npm package, `@beprajwal/visual-diff`, one binary, `vdiff`, with hard internal module seams
+(§12 records why the package name is scoped and the binary is not).
 
 ```
 flow/      parse and validate YAML; structural diff of two flow versions
@@ -548,7 +549,18 @@ would test nothing real.
 
 Decided, so the plan has no ambiguity. Each names the condition that would justify revisiting it.
 
-- **Package `visual-diff`, binary `vdiff`.** Revisit only if the npm name is taken at publish time.
+- **Package `@beprajwal/visual-diff`, binary `vdiff`.** The unscoped name was the original default,
+  to be revisited only if it turned out to be taken at publish time. It is: `visual-diff@0.0.1` was
+  published in 2015, and `vdiff@0.2.4` is taken too, so neither unscoped name was available. Scoping
+  the package resolves it without touching the binary — npm bin names are independent of package
+  names, so the command a user types stays `vdiff` and every `vdiff …` line in this document stands.
+  Only the install specifier changes: `npx @beprajwal/visual-diff …`. Revisit only if the package
+  moves to an organisation scope.
+- **The skills ship inside the package**, as `dist/skills/<id>/SKILL.md` built from `skills/` in the
+  repository. The skill markdown is the artifact; a per-harness plugin is an envelope around it and
+  is explicitly secondary. This is what lets `install <harness>` work with nothing but the package
+  already downloaded — the payload it writes is on disk, not fetched. Revisit if a harness needs a
+  skill format that cannot be expressed as markdown plus a manifest entry.
 - **Pixel comparison: `pixelmatch`** (pure JS). Portability beats speed given `npx` distribution — a
   native binary turns a one-line install into a platform matrix. Revisit if the determinism test
   exceeds a 30s wall-clock budget on the fixture app.

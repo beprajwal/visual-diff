@@ -1,0 +1,36 @@
+{
+  "$comment": "Neutral skill metadata. Install composes per-harness frontmatter from these fields; the SKILL.md bodies stay harness-agnostic.",
+  "skills": [
+    {
+      "id": "visual-diff",
+      "name": "visual-diff",
+      "description": "Verify UI you just built by replaying it: capture the workflow, diff it against a previous iteration, summarize what changed, and hand over a live report. Use after changing any user-visible component, layout, style, route, or copy, and before claiming a UI change works.",
+      "loadWith": ["visual-diff-flows", "visual-diff-review"],
+      "entry": "SKILL.md"
+    },
+    {
+      "id": "visual-diff-flows",
+      "name": "visual-diff-flows",
+      "description": "Author or edit a visual-diff flow spec: the closed step vocabulary, stable step ids, masking volatile content, viewport and network modes. Use when no flow covers the feature under work, or when a flow needs changing.",
+      "entry": "SKILL.md"
+    },
+    {
+      "id": "visual-diff-review",
+      "name": "visual-diff-review",
+      "description": "Interpret visual-diff findings and pull back human comments left on the report. Use when a diff exists and needs explaining, or when the user has annotated the report page.",
+      "entry": "SKILL.md"
+    }
+  ],
+  "commands": [
+    {
+      "id": "vdiff",
+      "description": "Capture the current UI, diff it against the previous iteration, and open the report.",
+      "invokes": "visual-diff"
+    },
+    {
+      "id": "vdiff-review",
+      "description": "Read pending report feedback and the latest findings, then act on them.",
+      "invokes": "visual-diff-review"
+    }
+  ]
+}

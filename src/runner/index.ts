@@ -6,7 +6,16 @@
  * (determinism knobs, worktrees, the dep cache, the dev server probe) without a browser.
  */
 
-export { runFlow, mergeStep, planHar, statusOf, worstUnsettled, type HarPlan, type RunContext } from './run.js';
+export {
+  runFlow,
+  mergeStep,
+  planHar,
+  readPlaywrightVersion,
+  statusOf,
+  worstUnsettled,
+  type HarPlan,
+  type RunContext,
+} from './run.js';
 
 export {
   CHROMIUM_LAUNCH_ARGS,
@@ -45,7 +54,6 @@ export {
   emptyStyles,
   parseAriaHeader,
   parseAriaSnapshot,
-  toA11ySnapshot,
   toDomSnapshot,
   type AriaSnapshotSource,
   type CollectArgs,

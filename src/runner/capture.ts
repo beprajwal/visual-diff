@@ -503,46 +503,12 @@ export async function captureA11ySnapshot(
   }
 }
 
-/**
- * The role/name tree *implied by* `dom.json` — an additive, DOM-derived view, **not** `a11y.json`.
- *
- * Kept because the diff engine's a11y findings are computed from `dom.json`'s role/name/aria
- * attributes, so this projection is a useful lens on the captured nodes. It is deliberately not
- * what capture persists: only `captureA11ySnapshot` produces the accessibility snapshot spec §7
- * asks for, and this function must never be used as a stand-in for it.
+/*
+ * There is deliberately no DOM-derived `toA11ySnapshot` here. A role/name tree reconstructed from
+ * `dom.json` agrees with the platform accessibility tree only for the easy cases, which is exactly
+ * where an a11y regression is least worth catching, and shipping it beside `captureA11ySnapshot`
+ * only invited a caller to persist the wrong one as `a11y.json`.
  */
-export function toA11ySnapshot(nodes: readonly DomNode[], step: StepId, viewport: ViewportId): A11ySnapshot {
-  const byPath = new Map<string, { node: A11yNode; parent: string | null }>();
-  let root: A11yNode | null = null;
-
-  for (const node of nodes) {
-    if (node.role === undefined && node.parent !== null) continue;
-    const entry: A11yNode = { role: node.role ?? 'generic' };
-    if (node.name !== undefined) entry.name = node.name;
-    if (node.role === 'heading') {
-      const level = Number(node.tag.slice(1));
-      if (Number.isInteger(level) && level > 0) entry.level = level;
-    }
-    const value = node.attrs.value;
-    if (value !== undefined) entry.value = value;
-    byPath.set(node.path, { node: entry, parent: node.parent });
-    if (root === null) root = entry;
-  }
-
-  for (const [, entry] of byPath) {
-    if (entry.parent === null) continue;
-    let parentPath: string | null = entry.parent;
-    while (parentPath !== null && !byPath.has(parentPath)) {
-      const index = parentPath.lastIndexOf('>');
-      parentPath = index === -1 ? null : parentPath.slice(0, index);
-    }
-    const parent = parentPath === null ? undefined : byPath.get(parentPath);
-    if (parent === undefined || parent.node === entry.node) continue;
-    (parent.node.children ??= []).push(entry.node);
-  }
-
-  return { step, viewport, root };
-}
 
 /** Styles for a node that carries none — used by tests and by degraded capture paths. */
 export function emptyStyles(): StyleSubset {

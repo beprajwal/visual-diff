@@ -134,12 +134,6 @@ export function structuralFlowDiff(input: FlowDiffInput): FlowDiffEntry[] {
   return entries;
 }
 
-/**
- * The name the `flow/` module edge exposes for stage 1 (implementation plan §5). Same function,
- * same input shape — there is deliberately only one calling convention.
- */
-export const diffFlows = structuralFlowDiff;
-
 /** Steps whose pixels are worth comparing: present on both sides and not failed or blocked. */
 export function isComparable(status: FlowDiffStatus): boolean {
   return status === 'matched' || status === 'spec-changed';

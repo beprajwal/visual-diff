@@ -3,7 +3,7 @@
  * Makes the emitted binary executable.
  *
  * `tsc` writes `dist/cli/index.js` with mode 0644, and npm only fixes the mode of a `bin` entry
- * when it links the package into a `node_modules/.bin` directory. `npx visual-diff …` on a
+ * when it links the package into a `node_modules/.bin` directory. `npx @beprajwal/visual-diff …` on a
  * freshly extracted tarball runs the file through that link, but anyone who unpacks the tarball
  * and invokes `dist/cli/index.js` directly — a Docker image layer, a vendored copy, a smoke test —
  * gets `permission denied`. Setting the bit at build time makes the artifact correct on its own.

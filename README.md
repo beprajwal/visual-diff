@@ -4,7 +4,7 @@ Replay an agent-authored UI workflow against one or more revisions of a frontend
 evidence per step, compute annotated visual and semantic diffs between any two runs, and review
 them in a live local report where a human leaves feedback the agent reads back.
 
-The package is `visual-diff`; the binary is `vdiff`.
+The package is `@beprajwal/visual-diff`; the binary is `vdiff`.
 
 - **Pixels say *where* changed, the DOM says *what* changed.** A pixel diff finds changed regions,
   each region is hit-tested against a DOM snapshot to name the responsible element, and those
@@ -19,21 +19,21 @@ The package is `visual-diff`; the binary is `vdiff`.
 ## Quickstart (no install)
 
 Everything runs through `npx`. Nothing is installed into your project, and nothing is downloaded
-until you ask for it — the package depends on `playwright-core`, so `npx visual-diff --help` costs
-one small download rather than a browser bundle.
+until you ask for it — the package depends on `playwright-core`, so `npx @beprajwal/visual-diff --help`
+costs one small download rather than a browser bundle.
 
 ```sh
 cd your-project
 
-npx visual-diff install claude-code   # write the visual-diff skill + /vdiff commands into .claude/
-npx visual-diff init                  # scaffold .visual-diff/config.yaml, gitignore rules, a flow
-npx visual-diff install-browser       # one-time Chromium download (the only network step)
+npx @beprajwal/visual-diff install claude-code   # write the visual-diff skill + /vdiff commands into .claude/
+npx @beprajwal/visual-diff init                  # scaffold .visual-diff/config.yaml, gitignore rules, a flow
+npx @beprajwal/visual-diff install-browser       # one-time Chromium download (the only network step)
 
 # edit .visual-diff/config.yaml (your dev command) and .visual-diff/flows/example.yaml
-npx visual-diff run example           # replay the flow against the working tree
-npx visual-diff run example --at HEAD~1
-npx visual-diff diff example          # findings for the last two runs
-npx visual-diff serve --open          # live local report; hand the URL to a human
+npx @beprajwal/visual-diff run example           # replay the flow against the working tree
+npx @beprajwal/visual-diff run example --at HEAD~1
+npx @beprajwal/visual-diff diff example          # findings for the last two runs
+npx @beprajwal/visual-diff serve --open          # live local report; hand the URL to a human
 ```
 
 `install <harness>` takes `--dir <path>` to target another directory, `--force` to overwrite files
@@ -44,17 +44,25 @@ Requires Node 20 or newer.
 
 ## Install it properly
 
-If you would rather not go through `npx` every time, add it to the project. The binary is `vdiff`.
+If you would rather not go through `npx` every time, install it globally. That puts `vdiff` on your
+`PATH`, so every command in this README works exactly as written, with no prefix.
 
 ```sh
-npm install --save-dev visual-diff
-npx vdiff install claude-code
-npx vdiff install-browser     # one-time Chromium download
-npx vdiff init                # scaffold .visual-diff/config.yaml, gitignore rules, example flow
+npm install -g @beprajwal/visual-diff
+
+vdiff install claude-code
+vdiff install-browser     # one-time Chromium download
+vdiff init                # scaffold .visual-diff/config.yaml, gitignore rules, example flow
 ```
 
-A global install (`npm install -g visual-diff`) puts `vdiff` on your PATH, and every command below
-works unprefixed.
+To pin the version per project instead — so everyone on the team and CI run the same one — add it
+as a dev dependency. The binary lands in `node_modules/.bin`, which `npm run` scripts already have
+on their `PATH`; from an interactive shell reach it with `npx vdiff`.
+
+```sh
+npm install --save-dev @beprajwal/visual-diff
+npx vdiff install claude-code
+```
 
 ## The four core commands
 
@@ -100,17 +108,26 @@ npm install
 npm run test        # everything
 npm run test:unit   # colocated unit + golden tests, no browser
 npm run typecheck
-npm run build       # tsc emit + prebuilt report UI bundle + executable bin
+npm run build       # clean dist + tsc emit + report UI bundle + skills + executable bin
 ```
+
+`build` empties `dist/` first. `tsc` only ever adds to its `outDir`, so without that step the
+compiled remains of a deleted module stay on disk and ship to every consumer — the published tree
+has to stay a function of the source tree.
 
 The runtime dependency is `playwright-core`; `playwright` is a devDependency only, because the
 published package must not make an `npx` user download browsers before the CLI can print its help.
 `vdiff install-browser` fetches Chromium on demand, and the two packages share one browser
 registry, so a browser installed either way is found by both.
 
+The skills live in `skills/` as plain markdown — `manifest.json` naming the ids, one
+`<id>/SKILL.md` each. `npm run build:skills` copies that tree to `dist/skills/` so it ships with the
+CLI, and fails the build if the manifest names a skill that is not on disk. A harness plugin is only
+an envelope around this markdown, which is why the markdown is what the package carries.
+
 `npm pack` runs the build (`prepack`) and produces the tarball a consumer actually gets;
 `tests/packaging/pack.test.ts` asserts its shape — executable bin with a shebang, `.d.ts` present,
-no sourcemaps.
+no sourcemaps, the skills present, and no compiled file without a source file behind it.
 
 ## Design
 

@@ -694,6 +694,26 @@ describe('vdiff install <harness>', () => {
     expect(result.data?.dryRun).toBe(false);
   });
 
+  it('--list emits the documented envelope and never asks the adapter to write', async () => {
+    const seen: unknown[] = [];
+    const ports = createTestPorts({
+      installAdapter: async (id, root, options) => {
+        seen.push({ id, root, options });
+        return fakeInstallDetail();
+      },
+    });
+    const h = harness({ cwd: '/project', ports });
+
+    expect(await runCli(['install', '--list', '--json'], h)).toBe(EXIT.OK);
+
+    const result = envelope<{ harnesses: Array<{ id: string; label: string; files: string[] }> }>(h);
+    expect(result.ok).toBe(true);
+    expect(result.command).toBe('install');
+    expect(result.data?.harnesses[0]?.id).toBe('claude-code');
+    expect(result.data?.harnesses[0]?.files).toContain('.claude/skills/visual-diff/SKILL.md');
+    expect(seen).toEqual([{ id: 'claude-code', root: '/project', options: { dryRun: true } }]);
+  });
+
   it('exits 2 on an unknown harness and lists the supported ones', async () => {
     const h = harness();
     expect(await runCli(['install', 'opencode', '--json'], h)).toBe(EXIT.CONFIG_ERROR);

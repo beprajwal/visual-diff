@@ -42,7 +42,7 @@ export interface PlaywrightModule {
  * a global or dev-dependency install has on PATH.
  */
 export const INSTALL_BROWSER_HINT =
-  'run `npx visual-diff install-browser` (or `vdiff install-browser` if visual-diff is already installed)';
+  'run `npx @beprajwal/visual-diff install-browser` (or `vdiff install-browser` if @beprajwal/visual-diff is already installed)';
 
 /** Resolved lazily; `vdiff run` is the only command that ever loads Playwright. */
 export async function loadPlaywright(): Promise<PlaywrightModule> {
@@ -53,7 +53,7 @@ export async function loadPlaywright(): Promise<PlaywrightModule> {
       code: 'playwright-missing',
       message: 'playwright-core is not installed',
       kind: 'browser-missing',
-      hint: 'reinstall visual-diff, or run `npm install` in a source checkout',
+      hint: 'reinstall @beprajwal/visual-diff, or run `npm install` in a source checkout',
       cause,
     });
   }

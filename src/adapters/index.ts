@@ -3,23 +3,28 @@
  *
  * Slice 1 registers exactly one adapter. The registry exists so the Codex, opencode and pi adapters
  * of subsystem 1 drop in without restructuring anything: add a module next to `claude-code/`, add it
- * to `ADAPTERS`, widen `AdapterId` in `src/types.ts`.
+ * to `ADAPTERS`, widen `AdapterId` in `src/types.ts`. The prose they install is shared — it lives as
+ * real markdown under `skills/` and is loaded by `source.ts` — so a new adapter contributes only
+ * frontmatter and file paths.
  *
  * Nothing here imports the CLI, the runner, or the diff engine — installing an adapter must not
  * pull the whole tool into memory.
  */
 
 import type { Adapter, AdapterId } from '../types.js';
-import type { WriteOptions } from './files.js';
+import type { ManagedFile, WriteOptions } from './files.js';
 import type { AdapterInstallDetail } from './claude-code/index.js';
 import { claudeCodeAdapter } from './claude-code/index.js';
 
 /**
  * `Adapter` from `src/types.ts` is the contract the CLI codes against. Registered adapters satisfy
- * it and additionally accept the install options (`force`, `dryRun`) and return per-file detail.
+ * it and additionally accept the install options (`force`, `dryRun`), return per-file detail, and
+ * can describe what they would write without being given a project root.
  */
 export interface HarnessAdapter extends Adapter {
   install(root: string, options?: WriteOptions): Promise<AdapterInstallDetail>;
+  /** Every file this adapter would write, fully composed. Touches no project directory. */
+  files(): Promise<ManagedFile[]>;
 }
 
 export const ADAPTERS: readonly HarnessAdapter[] = [claudeCodeAdapter];
@@ -53,10 +58,14 @@ export async function installAdapter(
 export {
   CLAUDE_CODE_ID,
   CLAUDE_CODE_LABEL,
-  CLAUDE_CODE_PATHS,
+  CLAUDE_CODE_DIRS,
   claudeCodeAdapter,
   claudeCodeFiles,
+  commandPath,
+  composeCommand,
+  composeSkill,
   installClaudeCode,
+  skillPath,
 } from './claude-code/index.js';
 export type { AdapterInstallDetail } from './claude-code/index.js';
 export {
@@ -71,9 +80,26 @@ export {
   MANAGED_STAMP_VERSION,
 } from './files.js';
 export type { FileOutcome, FileStatus, ManagedFile, WriteOptions, WriteReport } from './files.js';
-
-/**
- * The harness-neutral documentation content, namespaced rather than spread: names like `CLI`,
- * `LOOP` and `RULES` are too generic to sit in the package's top-level export surface.
- */
-export * as adapterContent from './content.js';
+export {
+  splitFrontmatter,
+  withFrontmatter,
+  yamlList,
+  yamlString,
+} from './frontmatter.js';
+export type { FrontmatterField } from './frontmatter.js';
+export {
+  MANIFEST_FILE,
+  findSkillsDir,
+  loadSkillBundle,
+  parseManifest,
+  readManifest,
+  resolveSkillsDir,
+  skillsDirCandidates,
+} from './source.js';
+export type {
+  CommandManifestEntry,
+  SkillBundle,
+  SkillManifestEntry,
+  SkillSource,
+  SkillsManifest,
+} from './source.js';

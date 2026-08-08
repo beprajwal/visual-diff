@@ -8,7 +8,7 @@ Status: Ready to build
 
 ## 0. Ground rules for every build agent
 
-- One npm package `visual-diff`, one binary `vdiff`. TypeScript, Node 20+, ESM, vitest. (§12)
+- One npm package `@beprajwal/visual-diff`, one binary `vdiff`. TypeScript, Node 20+, ESM, vitest. (§12)
 - `src/types.ts` is the single shared contract file. **Nobody edits it.** Import types from it; if a
   contract must change, report it upward instead of editing.
 - The on-disk store *is* the inter-module interface (§5). A module never reaches into another

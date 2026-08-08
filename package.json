@@ -1,5 +1,5 @@
 {
-  "name": "visual-diff",
+  "name": "@beprajwal/visual-diff",
   "version": "0.1.0",
   "description": "Replay an agent-authored UI workflow across revisions, diff the results visually and semantically, and review them in a live local report.",
   "license": "MIT",
@@ -18,17 +18,23 @@
   },
   "files": [
     "dist",
+    "dist/skills",
     "!dist/**/*.js.map",
     "!dist/**/*.d.ts.map",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build:ts && npm run build:ui && npm run build:bin",
+    "build": "npm run clean && npm run build:ts && npm run build:ui && npm run build:skills && npm run build:bin",
+    "clean": "node scripts/clean.mjs",
     "build:ts": "tsc -p tsconfig.json",
     "build:ui": "node scripts/build-ui.mjs",
+    "build:skills": "node scripts/build-skills.mjs",
     "build:bin": "node scripts/finalize-bin.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",
@@ -49,7 +55,6 @@
   ],
   "dependencies": {
     "chokidar": "^4.0.3",
-    "citty": "^0.1.6",
     "pixelmatch": "^6.0.0",
     "playwright-core": "^1.49.0",
     "pngjs": "^7.0.0",

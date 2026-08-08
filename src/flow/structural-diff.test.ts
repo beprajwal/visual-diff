@@ -4,7 +4,6 @@ import { parseFlowSource } from './parse.js';
 import {
   describeFillChanges,
   describeStepChanges,
-  diffFlows,
   flowLevelChanges,
   formatStepChanges,
   isComparable,
@@ -140,8 +139,15 @@ describe('structuralFlowDiff — alignment (D4)', () => {
     expect(new Set(ids)).toEqual(new Set(['a', 'b', 'c', 'd']));
   });
 
-  it('exposes the same function under the module-edge name `diffFlows`', () => {
-    expect(diffFlows).toBe(structuralFlowDiff);
+  /*
+   * Stage 1 has exactly one name. `diffFlows` was a zero-caller alias for this function, surfaced
+   * through `flow/index.ts` and the package's public `src/index.ts`; two names for one function in
+   * a published API is two things to keep in sync and one wrong choice to make.
+   */
+  it('is the single name the `flow/` module edge exposes for stage 1', async () => {
+    const edge = await import('./index.js');
+    expect(edge.structuralFlowDiff).toBe(structuralFlowDiff);
+    expect('diffFlows' in edge).toBe(false);
   });
 });
 

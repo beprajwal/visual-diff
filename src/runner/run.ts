@@ -18,8 +18,9 @@
  */
 
 import { access, mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import {
   DEFAULTS,
@@ -79,18 +80,68 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-async function runEnv(deviceScaleFactor: number): Promise<RunEnv> {
-  let playwright = 'unknown';
-  let chromium = 'unknown';
-  try {
-    const pkg = await readFile(
-      new URL('../../node_modules/playwright-core/package.json', import.meta.url),
-      'utf8',
-    );
-    playwright = (JSON.parse(pkg) as { version?: string }).version ?? 'unknown';
-  } catch {
-    /* version is diagnostic only */
+/**
+ * `<dir>/package.json` for the nearest ancestor of `file` that declares one, or `null`.
+ *
+ * Only ever used as the fallback when a package does not export `./package.json`; the walk stops at
+ * the filesystem root so a package with no manifest cannot spin.
+ */
+async function nearestPackageJson(file: string): Promise<string | null> {
+  let dir = dirname(file);
+  for (;;) {
+    const candidate = join(dir, 'package.json');
+    if (await exists(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
+}
+
+/**
+ * The `playwright-core` version this process would actually load, resolved the way Node resolves
+ * it — not by walking a hard-coded relative path.
+ *
+ * `new URL('../../node_modules/playwright-core/package.json', import.meta.url)` is only correct in a
+ * source checkout. Installed, this file is `<root>/node_modules/@beprajwal/visual-diff/dist/runner/
+ * run.js`, npm hoists `playwright-core` to `<root>/node_modules/`, and that relative path points at
+ * a nested `node_modules` that does not exist — so every installed run recorded
+ * `env.playwright: "unknown"`. `meta.json`'s env is part of what makes a run reproducible and
+ * comparable, so a silently degraded field there quietly degrades the whole store.
+ *
+ * `from` exists so both layouts are testable: it is the module the resolution starts from.
+ */
+export async function readPlaywrightVersion(from: string | URL = import.meta.url): Promise<string> {
+  let resolveFrom: ReturnType<typeof createRequire>;
+  try {
+    resolveFrom = createRequire(from);
+  } catch {
+    return 'unknown';
+  }
+
+  // The subpath first, because it is exact; the main entry second, for a hypothetical
+  // `playwright-core` that stops exporting `./package.json`.
+  for (const specifier of ['playwright-core/package.json', 'playwright-core']) {
+    let resolved: string;
+    try {
+      resolved = resolveFrom.resolve(specifier);
+    } catch {
+      continue;
+    }
+    const manifest = resolved.endsWith('package.json') ? resolved : await nearestPackageJson(resolved);
+    if (manifest === null) continue;
+    try {
+      const version = (JSON.parse(await readFile(manifest, 'utf8')) as { version?: string }).version;
+      if (typeof version === 'string' && version !== '') return version;
+    } catch {
+      /* try the next specifier */
+    }
+  }
+  return 'unknown';
+}
+
+async function runEnv(deviceScaleFactor: number): Promise<RunEnv> {
+  const playwright = await readPlaywrightVersion();
+  let chromium = 'unknown';
   try {
     const module = (await loadPlaywright()) as unknown as {
       chromium: { name?: () => string; executablePath?: () => string };

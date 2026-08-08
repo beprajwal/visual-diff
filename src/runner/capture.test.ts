@@ -11,7 +11,6 @@ import {
   emptyStyles,
   parseAriaHeader,
   parseAriaSnapshot,
-  toA11ySnapshot,
   toDomSnapshot,
 } from './capture.js';
 import type { CollectResult } from './capture.js';
@@ -87,43 +86,6 @@ describe('toDomSnapshot', () => {
       },
     );
     expect(snapshot.deviceScaleFactor).toBe(2);
-  });
-});
-
-describe('toA11ySnapshot', () => {
-  it('nests roles by DOM ancestry, skipping nodes that carry no role', () => {
-    const snapshot = toA11ySnapshot(
-      [
-        node({ path: 'html', role: 'document', parent: null }),
-        node({ path: 'html>body', parent: 'html' }),
-        node({ path: 'html>body>nav', parent: 'html>body', role: 'navigation' }),
-        node({
-          path: 'html>body>nav>a',
-          parent: 'html>body>nav',
-          tag: 'a',
-          role: 'link',
-          name: 'Cart',
-        }),
-        node({ path: 'html>body>h1', parent: 'html>body', tag: 'h2', role: 'heading', name: 'Pay' }),
-      ],
-      'cart',
-      '1280x800',
-    );
-
-    expect(snapshot.step).toBe('cart');
-    expect(snapshot.root?.role).toBe('document');
-    const children = snapshot.root?.children ?? [];
-    expect(children.map((child) => child.role)).toEqual(['navigation', 'heading']);
-    expect(children[0]?.children?.[0]).toEqual({ role: 'link', name: 'Cart' });
-    expect(children[1]?.level).toBe(2);
-  });
-
-  it('is a null tree when nothing was captured', () => {
-    expect(toA11ySnapshot([], 'cart', '1280x800')).toEqual({
-      step: 'cart',
-      viewport: '1280x800',
-      root: null,
-    });
   });
 });
 

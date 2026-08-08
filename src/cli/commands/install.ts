@@ -1,16 +1,19 @@
 /**
- * `vdiff install <harness> [--dir <path>] [--force] [--dry-run]` (spec §9, "Claude Code
- * integration").
+ * `vdiff install <harness> [--dir <path>] [--force] [--dry-run]` and `vdiff install --list`
+ * (spec §9, "Claude Code integration").
  *
- * The point of this command is that `npx visual-diff install claude-code` works with nothing
- * installed beforehand: it drops the `visual-diff` skill and the `/vdiff` and `/vdiff-review`
- * command files into the project so the harness can find them, and that is the entire first step
- * of adopting the tool.
+ * The point of this command is that `npx @beprajwal/visual-diff install claude-code` works with
+ * nothing installed beforehand: it drops the three `visual-diff` skills and the `/vdiff` and
+ * `/vdiff-review` command files into the project so the harness can find them, and that is the
+ * entire first step of adopting the tool.
  *
  * There is no adapter logic here. Which files exist, what they contain, and whether a file a human
  * edited may be replaced are all decisions of `src/adapters/`; this file resolves a directory,
  * validates the harness id against the registry, and renders the report. The registry is also what
  * the "unknown harness" message lists, so adding an adapter needs no change here.
+ *
+ * `--list` is implemented as a dry-run install of every registered harness rather than as a second
+ * code path, so what it prints is by construction what an install would write.
  */
 
 import { isAbsolute, resolve } from 'node:path';
@@ -20,7 +23,7 @@ import type { AdapterId } from '../../types.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import type { Invocation } from '../args.js';
 import { configError } from '../error.js';
-import type { InstallData } from '../shapes.js';
+import type { InstallData, InstallListData } from '../shapes.js';
 
 type InstallInvocation = Extract<Invocation, { kind: 'install' }>;
 
@@ -35,8 +38,11 @@ const STATUS_LABEL: Record<string, string> = {
 export async function install(
   ctx: CommandContext,
   invocation: InstallInvocation,
-): Promise<CommandResult<InstallData>> {
+): Promise<CommandResult<InstallData | InstallListData>> {
   const harnesses = await ctx.ports.listAdapters();
+
+  if (invocation.list === true) return listHarnesses(ctx, harnesses);
+
   const match = harnesses.find((harness) => harness.id === invocation.harness);
 
   if (match === undefined) {
@@ -48,12 +54,7 @@ export async function install(
     );
   }
 
-  const root =
-    invocation.dir === undefined
-      ? ctx.cwd
-      : isAbsolute(invocation.dir)
-        ? resolve(invocation.dir)
-        : resolve(ctx.cwd, invocation.dir);
+  const root = resolveRoot(ctx.cwd, invocation.dir);
 
   const report = await ctx.ports.installAdapter(match.id, root, {
     force: invocation.force,
@@ -74,6 +75,7 @@ export async function install(
     human.push(
       `${preserved.length} file(s) were edited after this tool wrote them and were left alone.`,
     );
+    for (const file of preserved) human.push(`  ${file.path}`);
     human.push('Re-run with --force to overwrite them.');
   }
 
@@ -95,4 +97,36 @@ export async function install(
     human,
     exitCode: EXIT.OK,
   };
+}
+
+function resolveRoot(cwd: string, dir: string | undefined): string {
+  if (dir === undefined) return cwd;
+  return isAbsolute(dir) ? resolve(dir) : resolve(cwd, dir);
+}
+
+/**
+ * `--list`: every registered harness and the exact paths it would write. A dry run against the
+ * invocation directory, so the listing cannot drift from the install.
+ */
+async function listHarnesses(
+  ctx: CommandContext,
+  harnesses: ReadonlyArray<{ id: AdapterId; label: string }>,
+): Promise<CommandResult<InstallListData>> {
+  const root = ctx.cwd;
+  const rows: InstallListData['harnesses'] = [];
+  const human: string[] = [];
+
+  for (const harness of harnesses) {
+    const report = await ctx.ports.installAdapter(harness.id, root, { dryRun: true });
+    const files = report.files.map((file) => file.path);
+    rows.push({ id: harness.id, label: harness.label, files });
+
+    human.push(`${harness.label} (${harness.id})`);
+    for (const file of files) human.push(`  ${file}`);
+    human.push('');
+  }
+
+  human.push('Install one with `vdiff install <harness>`.');
+
+  return { data: { harnesses: rows }, human, exitCode: EXIT.OK };
 }

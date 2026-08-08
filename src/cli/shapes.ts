@@ -108,6 +108,19 @@ export interface InstallData {
   dryRun: boolean;
 }
 
+/** One harness in the `vdiff install --list` payload. */
+export interface InstallListHarness {
+  id: AdapterId;
+  label: string;
+  /** Project-relative paths this harness would write, in install order. */
+  files: string[];
+}
+
+/** `vdiff install --list` — what ships, for every registered harness. Writes nothing. */
+export interface InstallListData {
+  harnesses: InstallListHarness[];
+}
+
 /** `vdiff install-browser` */
 export interface InstallBrowserData {
   browser: 'chromium';

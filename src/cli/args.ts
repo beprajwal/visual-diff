@@ -39,11 +39,16 @@ export type Invocation =
   | { kind: 'prune'; flow?: string; runId: RunId; json: boolean }
   | {
       kind: 'install';
-      /** Harness id, validated against the adapter registry by the command, not here. */
-      harness: string;
+      /**
+       * Harness id, validated against the adapter registry by the command, not here.
+       * Absent only under `--list`, which describes every registered harness instead of writing one.
+       */
+      harness?: string;
       dir?: string;
       force: boolean;
       dryRun: boolean;
+      /** Print what would ship, for every harness, and write nothing. */
+      list?: boolean;
       json: boolean;
     }
   | { kind: 'install-browser'; json: boolean };
@@ -148,14 +153,17 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 2,
   },
   install: {
-    usage: 'vdiff install <harness> [--dir <path>] [--force] [--dry-run]',
+    usage: 'vdiff install <harness> [--dir <path>] [--force] [--dry-run] | vdiff install --list',
     summary: 'write the skill and command files for an agent harness',
+    // `--list` takes no harness, so the arity check moves into the case below — which keeps the
+    // `missing-argument` error code identical for a bare `vdiff install`.
     flags: flags({
       dir: { type: 'string' },
       force: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
+      list: { type: 'boolean' },
     }),
-    minPositionals: 1,
+    minPositionals: 0,
     maxPositionals: 1,
   },
   'install-browser': {
@@ -487,13 +495,33 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
     }
 
     case 'install': {
+      const list = bool(values, 'list');
+      const harness = positionals[0];
+      if (!list && harness === undefined) {
+        return fail(
+          'install',
+          'missing-argument',
+          `'install' is missing a required argument`,
+          spec.usage,
+        );
+      }
+      if (list && harness !== undefined) {
+        return fail(
+          'install',
+          'conflicting-flags',
+          "'--list' describes every harness and takes no harness argument",
+          spec.usage,
+        );
+      }
+
       const invocation: Extract<Invocation, { kind: 'install' }> = {
         kind: 'install',
-        harness: positionals[0] as string,
         force: bool(values, 'force'),
         dryRun: bool(values, 'dry-run'),
         json,
       };
+      if (harness !== undefined) invocation.harness = harness;
+      if (list) invocation.list = true;
       const dir = values['dir'];
       if (typeof dir === 'string') invocation.dir = dir;
       return { ok: true, value: invocation };

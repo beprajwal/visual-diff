@@ -1,6 +1,8 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -16,7 +18,7 @@ import {
 } from '../types.js';
 import { paths, type Store } from '../store/index.js';
 import { RunnerError } from './errors.js';
-import { mergeStep, planHar, statusOf, worstUnsettled } from './run.js';
+import { mergeStep, planHar, readPlaywrightVersion, statusOf, worstUnsettled } from './run.js';
 import type { ShotBytes, StepOutcome } from './replay.js';
 
 function outcome(overrides: Partial<StepOutcome> & { id: string }): StepOutcome {
@@ -397,5 +399,83 @@ describe('statusOf', () => {
   it('is partial when a step failed — the evidence survives the failure (spec §7)', () => {
     expect(statusOf([base, { ...base, id: 'pay', status: 'failed' }])).toBe('partial');
     expect(statusOf([base, { ...base, id: 'pay', status: 'blocked' }])).toBe('partial');
+  });
+});
+
+/* ------------------------------------------------------------------ meta.json env (spec §6) */
+
+/**
+ * `env.playwright` used to be read from `new URL('../../node_modules/playwright-core/package.json',
+ * import.meta.url)`. That path only resolves in a source checkout: installed, this module is
+ * `<root>/node_modules/<pkg>/dist/runner/run.js`, npm hoists `playwright-core` to
+ * `<root>/node_modules/`, and the relative path pointed at a nested `node_modules` that does not
+ * exist — so every installed run recorded `"unknown"`. Both layouts are pinned here.
+ */
+describe('readPlaywrightVersion', () => {
+  /** `<tmp>/node_modules/@beprajwal/visual-diff/dist/runner/run.js` with a hoisted playwright-core. */
+  async function installedLayout(version: string): Promise<{ runJs: string; hoisted: string }> {
+    const root = await mkdtemp(join(tmpdir(), 'vdiff-installed-'));
+    tempRoots.push(root);
+    const nodeModules = join(root, 'node_modules');
+    const self = join(nodeModules, '@beprajwal', 'visual-diff', 'dist', 'runner');
+    const hoisted = join(nodeModules, 'playwright-core');
+    await mkdir(self, { recursive: true });
+    await mkdir(hoisted, { recursive: true });
+    await writeFile(
+      join(hoisted, 'package.json'),
+      `${JSON.stringify({ name: 'playwright-core', version, main: 'index.js' })}\n`,
+      'utf8',
+    );
+    await writeFile(join(hoisted, 'index.js'), 'module.exports = {};\n', 'utf8');
+    return { runJs: join(self, 'run.js'), hoisted };
+  }
+
+  it('reads the real version in a source checkout', async () => {
+    const pkg = JSON.parse(
+      await readFile(new URL('../../node_modules/playwright-core/package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+
+    const version = await readPlaywrightVersion();
+    expect(version).not.toBe('unknown');
+    expect(version).toBe(pkg.version);
+  });
+
+  it('reads the hoisted version in an installed layout, where path arithmetic finds nothing', async () => {
+    const { runJs } = await installedLayout('1.99.0-hoisted');
+
+    // The shape of the old defect: the sibling `node_modules` the removed code looked in is absent.
+    const sibling = new URL('../../node_modules/playwright-core/package.json', pathToFileURL(runJs));
+    expect(existsSync(sibling)).toBe(false);
+
+    await expect(readPlaywrightVersion(pathToFileURL(runJs))).resolves.toBe('1.99.0-hoisted');
+  });
+
+  it('accepts a plain path as the resolution origin, not only a file URL', async () => {
+    const { runJs } = await installedLayout('1.98.0-hoisted');
+    await expect(readPlaywrightVersion(runJs)).resolves.toBe('1.98.0-hoisted');
+  });
+
+  it('falls back to the package that owns the main entry when `./package.json` is not exported', async () => {
+    const { runJs, hoisted } = await installedLayout('1.97.0-nested');
+    // `exports` without `./package.json` makes the subpath unresolvable; the main entry still is.
+    await writeFile(
+      join(hoisted, 'package.json'),
+      `${JSON.stringify({
+        name: 'playwright-core',
+        version: '1.97.0-nested',
+        exports: { '.': './lib/index.js' },
+      })}\n`,
+      'utf8',
+    );
+    await mkdir(join(hoisted, 'lib'), { recursive: true });
+    await writeFile(join(hoisted, 'lib', 'index.js'), 'module.exports = {};\n', 'utf8');
+
+    await expect(readPlaywrightVersion(pathToFileURL(runJs))).resolves.toBe('1.97.0-nested');
+  });
+
+  it('is "unknown" — never a throw — when playwright-core cannot be resolved at all', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vdiff-noplaywright-'));
+    tempRoots.push(root);
+    await expect(readPlaywrightVersion(pathToFileURL(join(root, 'run.js')))).resolves.toBe('unknown');
   });
 });

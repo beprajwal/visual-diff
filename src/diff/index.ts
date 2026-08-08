@@ -19,7 +19,17 @@ export {
 } from './engine.js';
 export type { DiffRequest, DiffContext, DiffArtifacts, DiffRunsResult } from './engine.js';
 
-export { diffCacheKey, diffDirFor, isCacheHit, pairId, readCachedDiff, writeDiff } from './cache.js';
+export {
+  diffCacheKey,
+  diffConfigFingerprint,
+  diffDirFor,
+  isCacheHit,
+  pairId,
+  readCachedDiff,
+  writeDiff,
+  type CachedDiffResult,
+  type DiffCacheOptions,
+} from './cache.js';
 
 /**
  * Stage 1 (the structural flow diff) is implemented in `flow/`, because spec §5 assigns "structural

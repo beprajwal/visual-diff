@@ -359,11 +359,13 @@ export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
     );
 
   if (options.force !== true) {
+    // The whole options object, not just `engineVersion`: the ignore list and the region knobs
+    // change the engine's output without changing its version (see `cache.ts`).
     const cached = await readCachedDiff(
       outDir,
       baseLoad.run.meta.runId,
       headLoad.run.meta.runId,
-      options.engineVersion,
+      options,
     );
     if (cached !== null) return cached;
   }
@@ -429,7 +431,7 @@ export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
     }
   }
 
-  await writeDiff(outDir, result);
+  await writeDiff(outDir, result, options);
   return result;
 }
 

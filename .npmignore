@@ -12,6 +12,11 @@ docs/
 .superpowers/
 .visual-diff/
 
+# The skill *sources*. Their built copy at `dist/skills/` is part of the package and must survive,
+# so this pattern is anchored with a leading slash: an unanchored `skills/` matches a directory of
+# that name at any depth and would silently drop `dist/skills/` from the tarball.
+/skills/
+
 tsconfig.json
 tsconfig.test.json
 vitest.config.ts
