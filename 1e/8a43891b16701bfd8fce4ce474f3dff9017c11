@@ -1,0 +1,200 @@
+src/diff/engine.ts
+  s_81bbe05709be29::t_25d4978305c3b8 200-207
+  s_81bbe05709be29::t_e73478347c3425 36,40
+tests/slow/vitest.config.ts
+  s_81bbe05709be29::t_a62c68e06b765a 1-35
+src/cli/commands/install.test.ts
+  s_81bbe05709be29::t_4c71dd0a9ec140 1-172
+src/cli/log.ts
+  s_81bbe05709be29::t_a0c027b3fad7ea 1-77
+src/diff/flow-stage1.test.ts
+  s_81bbe05709be29::t_54d1eb472879fc 32
+  s_81bbe05709be29::t_d8373b9dc55250 1-31,33-35
+src/cli/commands/run.ts
+  s_81bbe05709be29::t_fff2ac631dbf3b 91-93,96-98,101-103
+  s_81bbe05709be29::t_45b55eb0ad86b4 99-100
+  s_81bbe05709be29::t_257cee22dd42cc 9-13,16,19
+tests/slow/historical-replay.e2e.ts
+  s_81bbe05709be29::t_757086b71072cd 347
+  s_81bbe05709be29::t_aea529fdc97620 645-650
+  s_81bbe05709be29::t_9be916125cb861 294-304
+  s_81bbe05709be29::t_51da6ebb97b150 48-55
+  s_81bbe05709be29::t_921b51719cae2c 485-507,509-510,513-514,516-526
+  s_81bbe05709be29::t_fefbe4ccc5331b 670-679
+  s_81bbe05709be29::t_c13fddbe7f9f60 344
+  s_81bbe05709be29::t_2bf1c1b0ba60e0 1-47,56-293,305-343,345-346,348-373,377-428,432-484,508,511-512,515,527-644,651-669,680-789
+  s_81bbe05709be29::t_94839fa0727eca 374-376
+  s_81bbe05709be29::t_20168c57560035 429-431
+src/cli/commands/install-browser.test.ts
+  s_81bbe05709be29::t_cee2b781f7838a 1-151
+src/runner/index.ts
+  s_81bbe05709be29::t_8882b0e26fc4be 9
+  s_81bbe05709be29::t_a190022f4d84c5 26,28-29,33,36-37,41-42,46-47,50
+src/flow/structural-diff.test.ts
+  s_81bbe05709be29::t_ef11c6fa0ef946 2-13,15,22,26-28,51-54,56-59,81,89-233,243,251-264,267-352,356-358,363-378,381-391,408,415,418-431,433-435,440-442,444-449,451-517
+src/index.ts
+  s_81bbe05709be29::t_50469fbfc57591 19,21
+  s_81bbe05709be29::t_34199127fcf99b 33
+src/cli/args.ts
+  s_81bbe05709be29::t_b230783a79443f 40-48
+  s_81bbe05709be29::t_39a7d948c88dcf 489-501
+  s_81bbe05709be29::t_ef54271927c335 150-160
+src/cli/ports.ts
+  s_81bbe05709be29::t_7515463b0b395b 22,37
+  s_81bbe05709be29::t_6e11bad5211b63 99-116
+src/cli/testing.ts
+  s_81bbe05709be29::t_08d0b5afb18ed2 30
+  s_81bbe05709be29::t_7dce3ac2534a0e 32-56
+  s_81bbe05709be29::t_cd448f3e7e4d86 341-342
+  s_81bbe05709be29::t_a9230981329e65 28-29
+  s_81bbe05709be29::t_1ca748abd47197 31
+src/diff/selector.test.ts
+  s_81bbe05709be29::t_ff96c5f456fcfd 2-9
+  s_81bbe05709be29::t_92eb812ed93b0a 76-96
+src/cli/deps.test.ts
+  s_81bbe05709be29::t_fb724bd5e212af 57,59-63
+  s_81bbe05709be29::t_befc1cc2327d8f 33-34,45
+  s_81bbe05709be29::t_1f28ae01571151 13
+  s_81bbe05709be29::t_e965d1435b5744 90-91,99-104
+  s_81bbe05709be29::t_694ab6f8092fbd 105
+src/cli/commands/install-browser.ts
+  s_81bbe05709be29::t_3b87caec8e07ab 2,8-12,35-57,60-73,76,101
+src/diff/viewportDiff.test.ts
+  s_81bbe05709be29::t_f1eefcb6e73f11 148-167
+  s_81bbe05709be29::t_b9ac3d2162194f 100-117
+  s_81bbe05709be29::t_21f7085904291f 1-99,118-147,168-344
+src/runner/run.test.ts
+  s_81bbe05709be29::t_90b803f6eb0d1f 219,221-374
+  s_81bbe05709be29::t_84d2ff0fd3b7a2 145-218
+  s_81bbe05709be29::t_5100149de4f7a8 37-47
+  s_81bbe05709be29::t_2390352df9cdb9 19-20
+  s_81bbe05709be29::t_bbee12d392cb7c 1-3,5-18
+  s_81bbe05709be29::t_309410a889c0d2 220
+src/adapters/content.test.ts
+  s_81bbe05709be29::t_6970f477bb63ed 56
+src/runner/browser.test.ts
+  s_81bbe05709be29::t_bb34527e80156f 55-60
+  s_81bbe05709be29::t_1598d8b88c3566 224,229-246
+  s_81bbe05709be29::t_4f12fdf532a22b 1-21,23-54,61-223,225-228,247-251,253-402
+  s_81bbe05709be29::t_345909d765f7bb 22
+  s_81bbe05709be29::t_f0de7af23b49fa 252
+src/diff/index.ts
+  s_81bbe05709be29::t_c08d0e1bee1c27 24-30
+src/diff/viewportDiff.ts
+  s_81bbe05709be29::t_5ef9ec1e90b1a4 233-234,242,251-258,260-261
+  s_81bbe05709be29::t_6f5121b940a337 107-113,115-128,130-132,135
+  s_81bbe05709be29::t_202358d2bec033 274-275,277-280
+  s_81bbe05709be29::t_69ca18b435fdf1 63-68
+  s_81bbe05709be29::t_588d30632587ad 41
+  s_81bbe05709be29::t_4fb52397f2bdda 7-11
+  s_81bbe05709be29::t_d8d913ec9f58c8 454
+  s_81bbe05709be29::t_afd0e1a949c4cd 90-106,114,129,133-134,136-138,144-145,151,153,160-199
+  s_81bbe05709be29::t_b095404e13c1b2 315-316,319-322,325-328,331-345
+  s_81bbe05709be29::t_802ec045112355 298-303,306
+  s_81bbe05709be29::t_94d31a654f8969 200
+src/cli/shapes.ts
+  s_81bbe05709be29::t_fbf6726777bc25 94-110
+  s_81bbe05709be29::t_5f494f2ca752ab 13,22
+src/cli/args.test.ts
+  s_81bbe05709be29::t_237cad8d2277af 101-105
+  s_81bbe05709be29::t_be7df74a398535 83-86,91
+  s_81bbe05709be29::t_c43e20002f5a10 61-82,87-89
+package.json
+  s_81bbe05709be29::t_3cdf801239136f 64
+  s_81bbe05709be29::t_0764064f6ad4a3 21-22,29,32,40
+  s_81bbe05709be29::t_75176d55a8389e 37
+  s_81bbe05709be29::t_a49da57ae2dac8 54
+src/cli/deps.ts
+  s_81bbe05709be29::t_e97cf03d924c60 34-35,37
+  s_81bbe05709be29::t_34592f97447544 187-212
+  s_81bbe05709be29::t_d0ce22b000523c 48
+tests/packaging/pack.test.ts
+  s_81bbe05709be29::t_72432fdfabac22 2,4-6,8-18,21-55,58-59,61-66,68-69,71-73,75-77,79-81,83-86,88-93,96-100,102-104,106-123,125,127-128,132,134-135
+  s_81bbe05709be29::t_08d98a1ee48e6d 129-131,133
+src/runner/browser.ts
+  s_81bbe05709be29::t_09bd7516d26311 13-19
+  s_81bbe05709be29::t_95b4a15d50c9dd 39-46,50,54,56
+  s_81bbe05709be29::t_61e28bb83cac43 90,95-115,131-135,140-160,167,169,172,174-182,206-207,219-239,243-248,250-261,265-267,278-295
+  s_81bbe05709be29::t_b45bcb8ceca0ff 73
+  s_81bbe05709be29::t_205cb20a706bd6 162-166,168,170-171,173,183-187,189-190,192-205,208-213
+  s_81bbe05709be29::t_607cf7e75c918a 22,24
+  s_81bbe05709be29::t_c56510d78d5bff 161
+src/cli/commands/install.ts
+  s_81bbe05709be29::t_cf09a431c5e545 1-98
+src/adapters/content.ts
+  s_81bbe05709be29::t_796517af1a79c3 163-164,166
+  s_81bbe05709be29::t_f55d1b12dd3ae1 165
+src/types.ts
+  s_81bbe05709be29::t_99c73009a05510 233-235
+  s_81bbe05709be29::t_a6cabdb36b15bc 313-319
+src/runner/run.ts
+  s_81bbe05709be29::t_fa4f91be621fb8 51
+  s_81bbe05709be29::t_d5c4395c628572 312-322,324-332,334-349,351-352
+  s_81bbe05709be29::t_2d6d182b09f37d 452-453,456,461-481,487,490-491
+  s_81bbe05709be29::t_8084b64e344fef 513-514,519-521,524,530-539
+  s_81bbe05709be29::t_39af674a3f1950 630-646
+  s_81bbe05709be29::t_9b36ddaf3b4b36 171-174
+  s_81bbe05709be29::t_2c784688b089ed 112-132
+src/diff/engine.test.ts
+  s_81bbe05709be29::t_51ada8626ceb85 441-512
+src/cli/log.test.ts
+  s_81bbe05709be29::t_998f76b8852824 1-111
+src/cli/main.test.ts
+  s_81bbe05709be29::t_ba1d4b9e40d302 860-861
+  s_81bbe05709be29::t_178a6df4b6681c 8
+  s_81bbe05709be29::t_5cf45ac14406e2 675-736
+  s_81bbe05709be29::t_6831fae18bedf7 31
+  s_81bbe05709be29::t_2ef59fb1f44781 243-343
+src/diff/selector.ts
+  s_81bbe05709be29::t_54b5ab5aa72f77 46-73
+scripts/finalize-bin.mjs
+  s_81bbe05709be29::t_7df476b4f4dd2c 1-54
+tests/integration/runner-determinism.test.ts
+  s_81bbe05709be29::t_6c146129f1caff 24-30
+  s_81bbe05709be29::t_e9f728f3b2404e 183-215
+.npmignore
+  s_81bbe05709be29::t_40d1c9c5fae9d6 23-27
+src/runner/capture.ts
+  s_81bbe05709be29::t_a13395a3719c6c 6-7
+  s_81bbe05709be29::t_228ea2731ff725 328-505,507,509-512
+  s_81bbe05709be29::t_c622162a7b5acc 19-20
+src/runner/replay.ts
+  s_81bbe05709be29::t_e5e6809d9c4fe6 14
+  s_81bbe05709be29::t_d25c09d9ee4f56 220
+  s_81bbe05709be29::t_f4683fb9985577 37
+  s_81bbe05709be29::t_8da8a826a98169 46-47
+  s_81bbe05709be29::t_a68a03b3310990 243,246-249
+README.md
+  s_81bbe05709be29::t_ff37bdd66887c4 72-73
+  s_81bbe05709be29::t_6129c95f797db3 103,106-113
+  s_81bbe05709be29::t_6cee5f06045837 19-47,51,56-57
+  s_81bbe05709be29::t_ffb739bbe1ba39 114
+src/runner/capture.test.ts
+  s_81bbe05709be29::t_d26ad078dc137b 5-8,10-16
+  s_81bbe05709be29::t_d8328b142c1825 3-4,9
+  s_81bbe05709be29::t_8b9fcfc6a9470f 129-248,256,261-291
+  s_81bbe05709be29::t_ac6a678d3c68e5 249-255,257-260
+src/cli/main.ts
+  s_81bbe05709be29::t_478711780cca54 38
+  s_81bbe05709be29::t_df4c4b8ce34dc1 78-79
+src/flow/index.ts
+  s_81bbe05709be29::t_17e5c210db509c 30-31,35,38
+package-lock.json
+  s_81bbe05709be29::t_d74caebfaf9b3a 15,28,1351,1562
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "1e8a43891b16701bfd8fce4ce474f3dff9017c11",
+  "prompts": {},
+  "sessions": {
+    "s_81bbe05709be29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c05a727-400c-4533-9612-0f1d4fd575b1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
