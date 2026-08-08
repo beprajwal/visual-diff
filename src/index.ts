@@ -16,7 +16,9 @@ export { TOOL_VERSION, toolVersion } from './version.js';
 
 export {
   canonicalFlow,
+  describeStepChanges,
   diffFlows,
+  flowLevelChanges,
   hashFlow,
   hashFlowSource,
   loadFlowFile,
@@ -28,6 +30,7 @@ export {
   structuralFlowDiff,
   validateFlowSpec,
   SpecError,
+  type FlowDiffInput,
 } from './flow/index.js';
 
 export {

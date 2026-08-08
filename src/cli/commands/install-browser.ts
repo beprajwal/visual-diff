@@ -1,10 +1,15 @@
 /**
- * `vdiff install-browser` — download the Chromium build Playwright needs (spec §9, §10).
+ * `vdiff install-browser` — download the Chromium build the runner needs (spec §9, §10).
  *
  * Everything else in the tool refuses to touch the network; this command exists so that refusal
  * has an escape hatch a user runs deliberately. It shells out to Playwright's own installer rather
  * than reimplementing a download, and resolves that installer out of the dependency tree so the
  * downloaded browser always matches the Playwright the runner will drive.
+ *
+ * The runtime dependency is `playwright-core` (spec §12: the package is distributed for `npx`, and
+ * `playwright` drags in a test runner plus, historically, an install hook that downloads every
+ * browser before the CLI can print its help). `playwright-core` ships the same `install` CLI, so
+ * this command is the *only* thing that ever fetches a browser — which is the whole point.
  */
 
 import { createRequire } from 'node:module';
@@ -27,27 +32,48 @@ export interface ModuleResolver {
 }
 
 /**
- * Prefer the installed Playwright's own CLI, executed with the running Node binary: no PATH
- * lookup, no shell, no registry round trip, and the version is guaranteed to match. `npx` is the
- * fallback for when Playwright is not resolvable from here — a global install, for instance.
+ * Tried in order. `playwright-core` is the declared dependency; `playwright` is accepted because a
+ * source checkout has it as a devDependency and a user may have installed it alongside, and its
+ * `install` CLI is the same program.
+ */
+export const INSTALLER_PACKAGES = ['playwright-core', 'playwright'] as const;
+
+/** Every `bin` entry of a manifest, as [name, relative path] pairs. */
+function binEntries(manifest: unknown): Array<[string, string]> {
+  if (typeof manifest !== 'object' || manifest === null) return [];
+  const parsed = manifest as { name?: unknown; bin?: unknown };
+  if (typeof parsed.bin === 'string') {
+    return typeof parsed.name === 'string' ? [[parsed.name, parsed.bin]] : [];
+  }
+  if (typeof parsed.bin !== 'object' || parsed.bin === null) return [];
+  return Object.entries(parsed.bin as Record<string, unknown>).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0,
+  );
+}
+
+/**
+ * Prefer an installed Playwright's own CLI, executed with the running Node binary: no PATH lookup,
+ * no shell, no registry round trip, and the version is guaranteed to match the one the runner will
+ * drive. `npx` is the fallback for when neither package is resolvable from here.
  */
 export function resolvePlaywrightCommand(resolver: ModuleResolver): PlaywrightCommand {
-  try {
-    const packageJsonPath = resolver.resolve('playwright/package.json');
-    const parsed = resolver.readJson(packageJsonPath) as {
-      bin?: string | Record<string, string>;
-    };
-    const bin = typeof parsed.bin === 'string' ? parsed.bin : parsed.bin?.['playwright'];
-    if (typeof bin === 'string' && bin.length > 0) {
-      return {
-        command: process.execPath,
-        args: [join(dirname(packageJsonPath), bin), 'install', 'chromium'],
-      };
+  for (const pkg of INSTALLER_PACKAGES) {
+    try {
+      const packageJsonPath = resolver.resolve(`${pkg}/package.json`);
+      const entries = binEntries(resolver.readJson(packageJsonPath));
+      // Prefer the bin named after the package; otherwise the sole entry, whatever it is called.
+      const chosen = entries.find(([name]) => name === pkg) ?? entries[0];
+      if (chosen !== undefined) {
+        return {
+          command: process.execPath,
+          args: [join(dirname(packageJsonPath), chosen[1]), 'install', 'chromium'],
+        };
+      }
+    } catch {
+      /* try the next package, then npx */
     }
-  } catch {
-    /* falls through to npx */
   }
-  return { command: 'npx', args: ['--yes', 'playwright', 'install', 'chromium'] };
+  return { command: 'npx', args: ['--yes', 'playwright-core', 'install', 'chromium'] };
 }
 
 function nodeResolver(): ModuleResolver {
@@ -72,7 +98,7 @@ export async function installBrowser(
     throw runFailure('browser-install-failed', `\`${printable}\` exited ${result.code}`, {
       hint:
         output.length === 0
-          ? 'npx playwright install chromium'
+          ? 'npx playwright-core install chromium'
           : output.split('\n').slice(-5).join('\n'),
     });
   }

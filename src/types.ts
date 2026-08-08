@@ -230,7 +230,9 @@ export type RunWarningKind =
   | 'unstable-git'
   | 'dom-truncated'
   | 'step-blocked'
-  | 'console-error';
+  | 'console-error'
+  /** The pre-shoot settle gate hit its deadline: a screenshot was taken with requests outstanding. */
+  | 'settle-timeout';
 
 export interface RunWarning {
   kind: RunWarningKind;
@@ -308,6 +310,13 @@ export interface StepResult {
   consoleErrors: number;
   networkRequests: number;
   harMisses: number;
+  /**
+   * Present only when the pre-shoot settle gate lost its race in at least one viewport, i.e. the
+   * screenshot for this step was taken with requests still outstanding and is not a deterministic
+   * capture. Absent is the normal, settled case — the field is never written as a "0 outstanding"
+   * record, so its presence alone is the signal.
+   */
+  unsettled?: { waitedMs: number; inFlight: number; urls: string[] };
   failure?: StepFailure;
 }
 

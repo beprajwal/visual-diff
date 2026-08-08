@@ -3,7 +3,8 @@
  *
  * Per step, per viewport, in one pass: a full-page screenshot, `dom.json` (visible nodes with a
  * stable path, tag, role, accessible name, text, bounding rect and the **fixed** style subset from
- * `types.ts#STYLE_PROPS`), and `a11y.json`.
+ * `types.ts#STYLE_PROPS`), and `a11y.json` — the latter taken *from the browser's accessibility
+ * snapshot* (`captureA11ySnapshot`), never rebuilt from the DOM walk.
  *
  * The collector runs inside the page, so it is written as one self-contained function that closes
  * over nothing: Playwright serializes it to source and evaluates it in the page context. Every
@@ -14,6 +15,8 @@
  * document order and sets `truncated`, and DOM attribution degrades to the nearest retained
  * ancestor rather than failing.
  */
+
+import { parse as parseYaml } from 'yaml';
 
 import {
   CAPTURED_ATTRS,
@@ -322,13 +325,191 @@ export function collectArgs(
   };
 }
 
+/* ------------------------------------------------------------------ a11y.json (§7) */
+
 /**
- * `a11y.json`, derived from the captured DOM.
+ * The slice of Playwright's `Locator` / `Page` the accessibility capture needs.
  *
- * Playwright removed `page.accessibility` in 1.5x, and the diff engine derives every a11y finding
- * from `dom.json`'s role/name/aria attributes anyway (there is no spec decision on diffing the
- * accessibility tree itself). So the snapshot is the role/name tree implied by the captured nodes:
- * it is real captured data, not a stub, and it keeps the §6 file present for future work.
+ * Structural rather than the real `Page` type so `capture.ts` stays testable without a browser —
+ * a real Playwright `Page` satisfies it.
+ */
+export interface AriaSnapshotSource {
+  locator(selector: string): { ariaSnapshot(): Promise<string> };
+  title(): Promise<string>;
+}
+
+/** Root of the tree the accessibility snapshot is hung under. Matches the store's fixtures. */
+export const A11Y_ROOT_ROLE = 'WebArea';
+
+/** `role "name" [level=2] [checked]` — one line of Playwright's ARIA YAML. */
+interface AriaHeader {
+  role: string;
+  name?: string;
+  level?: number;
+  /** Remaining state annotations, space-joined in source order, e.g. `checked disabled`. */
+  states?: string;
+}
+
+/**
+ * Split an ARIA snapshot key into role, accessible name and state annotations.
+ *
+ * The grammar Playwright emits is `role`, `role "accessible name"`, and either form followed by
+ * zero or more ` [key]` / ` [key=value]` annotations.
+ */
+export function parseAriaHeader(header: string): AriaHeader {
+  const states: string[] = [];
+  let level: number | undefined;
+
+  const withoutStates = header.replace(/\s*\[([^\]]*)\]/g, (_match, body: string) => {
+    const trimmed = body.trim();
+    if (trimmed === '') return '';
+    const eq = trimmed.indexOf('=');
+    const key = eq === -1 ? trimmed : trimmed.slice(0, eq);
+    const value = eq === -1 ? undefined : trimmed.slice(eq + 1);
+    if (key === 'level' && value !== undefined) {
+      const parsed = Number(value);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        level = parsed;
+        return '';
+      }
+    }
+    states.push(trimmed);
+    return '';
+  });
+
+  const quoted = /^(\S+)\s+"((?:[^"\\]|\\.)*)"\s*$/.exec(withoutStates.trim());
+  const out: AriaHeader = { role: quoted === null ? withoutStates.trim() : (quoted[1] as string) };
+  if (quoted !== null) out.name = (quoted[2] as string).replace(/\\(.)/g, '$1');
+  if (level !== undefined) out.level = level;
+  if (states.length > 0) out.states = states.join(' ');
+  return out;
+}
+
+function ariaEntryToNode(entry: unknown): A11yNode | null {
+  if (typeof entry === 'string') {
+    const header = parseAriaHeader(entry);
+    return headerToNode(header);
+  }
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return null;
+
+  const record = entry as Record<string, unknown>;
+  const key = Object.keys(record)[0];
+  if (key === undefined) return null;
+  const value = record[key];
+
+  // `- text: some words` is Playwright's generic static text node.
+  if (key === 'text') {
+    const node: A11yNode = { role: 'text' };
+    if (typeof value === 'string' && value !== '') node.name = value;
+    return node;
+  }
+  // `- /url: /about` is a node *property*, not a child; the caller folds it into its parent.
+  if (key.startsWith('/')) return null;
+
+  const node = headerToNode(parseAriaHeader(key));
+  if (Array.isArray(value)) {
+    const children: A11yNode[] = [];
+    for (const child of value) {
+      if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+        const childKey = Object.keys(child as Record<string, unknown>)[0];
+        if (childKey !== undefined && childKey.startsWith('/')) {
+          const property = (child as Record<string, unknown>)[childKey];
+          if (typeof property === 'string' && property !== '') {
+            node.description =
+              node.description === undefined
+                ? `${childKey}=${property}`
+                : `${node.description} ${childKey}=${property}`;
+          }
+          continue;
+        }
+      }
+      const converted = ariaEntryToNode(child);
+      if (converted !== null) children.push(converted);
+    }
+    if (children.length > 0) node.children = children;
+  } else if (typeof value === 'string' && value !== '') {
+    // The scalar Playwright renders for a leaf: its text content, or a form control's value.
+    node.value = value;
+  } else if (typeof value === 'number') {
+    node.value = value;
+  }
+  return node;
+}
+
+function headerToNode(header: AriaHeader): A11yNode {
+  const node: A11yNode = { role: header.role === '' ? 'generic' : header.role };
+  if (header.name !== undefined) node.name = header.name;
+  if (header.level !== undefined) node.level = header.level;
+  if (header.states !== undefined) node.description = header.states;
+  return node;
+}
+
+/**
+ * Parse Playwright's ARIA snapshot YAML into the `a11y.json` tree.
+ *
+ * Pure, so the parser is tested without a browser. `level` becomes `A11yNode.level`; any other
+ * state annotation Playwright rendered (`checked`, `disabled`, `selected`, `expanded`, …) is kept
+ * verbatim in `description`, and a node's `/url`-style properties are appended there too, so a
+ * change in any of them still shows up in a future a11y diff.
+ */
+export function parseAriaSnapshot(yaml: string, step: StepId, viewport: ViewportId, title = ''): A11ySnapshot {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(yaml);
+  } catch {
+    // Refuse to invent a tree from a snapshot we could not read.
+    return { step, viewport, root: null };
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return { step, viewport, root: null };
+
+  const children: A11yNode[] = [];
+  for (const entry of parsed) {
+    const node = ariaEntryToNode(entry);
+    if (node !== null) children.push(node);
+  }
+  if (children.length === 0) return { step, viewport, root: null };
+
+  const root: A11yNode = { role: A11Y_ROOT_ROLE };
+  if (title !== '') root.name = title;
+  root.children = children;
+  return { step, viewport, root };
+}
+
+/**
+ * `a11y.json` — spec §7: "`a11y.json` from the accessibility snapshot".
+ *
+ * This is the browser's own accessibility tree, taken through Playwright's `ariaSnapshot()`, not a
+ * tree reconstructed from a DOM walk. A hand-rolled role table and name algorithm agree with the
+ * platform accessibility tree only for the easy cases, so a reconstruction is exactly wrong where
+ * an a11y regression is most worth catching.
+ *
+ * If the snapshot cannot be taken — the page navigated away, the context closed — the result is an
+ * explicit empty tree. There is no DOM-derived substitute: a synthesized tree that claims to be the
+ * accessibility snapshot is worse than an honest absence.
+ */
+export async function captureA11ySnapshot(
+  page: AriaSnapshotSource,
+  step: StepId,
+  viewport: ViewportId,
+): Promise<A11ySnapshot> {
+  try {
+    const [yaml, title] = await Promise.all([
+      page.locator('body').ariaSnapshot(),
+      page.title().catch(() => ''),
+    ]);
+    return parseAriaSnapshot(yaml, step, viewport, title);
+  } catch {
+    return { step, viewport, root: null };
+  }
+}
+
+/**
+ * The role/name tree *implied by* `dom.json` — an additive, DOM-derived view, **not** `a11y.json`.
+ *
+ * Kept because the diff engine's a11y findings are computed from `dom.json`'s role/name/aria
+ * attributes, so this projection is a useful lens on the captured nodes. It is deliberately not
+ * what capture persists: only `captureA11ySnapshot` produces the accessibility snapshot spec §7
+ * asks for, and this function must never be used as a stand-in for it.
  */
 export function toA11ySnapshot(nodes: readonly DomNode[], step: StepId, viewport: ViewportId): A11ySnapshot {
   const byPath = new Map<string, { node: A11yNode; parent: string | null }>();

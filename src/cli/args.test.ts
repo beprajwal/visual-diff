@@ -58,7 +58,37 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       runId: '0007',
       json: false,
     });
+    expect(ok(['install', 'claude-code'])).toEqual({
+      kind: 'install',
+      harness: 'claude-code',
+      force: false,
+      dryRun: false,
+      json: false,
+    });
     expect(ok(['install-browser'])).toEqual({ kind: 'install-browser', json: false });
+  });
+
+  it('carries every `install` flag through to the invocation', () => {
+    expect(ok(['install', 'claude-code', '--dir', '../other', '--force', '--dry-run'])).toEqual({
+      kind: 'install',
+      harness: 'claude-code',
+      dir: '../other',
+      force: true,
+      dryRun: true,
+      json: false,
+    });
+  });
+
+  it('requires the harness argument — `vdiff install` alone is exit 2', () => {
+    expect(err(['install'])).toMatchObject({
+      code: 'missing-argument',
+      exitCode: EXIT.CONFIG_ERROR,
+    });
+  });
+
+  it('does not confuse `install` with `install-browser`', () => {
+    expect(ok(['install-browser'])).toEqual({ kind: 'install-browser', json: false });
+    expect(err(['install-browser', 'claude-code']).code).toBe('unexpected-argument');
   });
 
   it('accepts --json on every command', () => {
@@ -68,9 +98,11 @@ describe('parseArgs — the documented surface (spec §9)', () => {
           ? ['flow', 'check', 'checkout', '--json']
           : command === 'pin' || command === 'prune'
             ? [command, '0007', '--json']
-            : ['run', 'runs', 'diff'].includes(command)
-              ? [command, 'checkout', '--json']
-              : [command, '--json'];
+            : command === 'install'
+              ? ['install', 'claude-code', '--json']
+              : ['run', 'runs', 'diff'].includes(command)
+                ? [command, 'checkout', '--json']
+                : [command, '--json'];
       expect(ok(argv).json, `${command} should accept --json`).toBe(true);
     }
   });

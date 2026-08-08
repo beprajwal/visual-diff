@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import * as adaptersModule from '../adapters/index.js';
 import * as diffModule from '../diff/index.js';
 import * as flowModule from '../flow/index.js';
 import * as reportModule from '../report/index.js';
@@ -29,6 +30,8 @@ describe('module edges', () => {
     expect(typeof runnerModule.runFlow).toBe('function');
     expect(typeof diffModule.computeDiff).toBe('function');
     expect(typeof reportModule.serveReport).toBe('function');
+    expect(typeof adaptersModule.installAdapter).toBe('function');
+    expect(Array.isArray(adaptersModule.ADAPTERS)).toBe(true);
   });
 
   it('binds specifiers that resolve to those modules', () => {
@@ -39,6 +42,7 @@ describe('module edges', () => {
       '../runner/index.js',
       '../diff/index.js',
       '../report/index.js',
+      '../adapters/index.js',
     ]);
   });
 
@@ -50,10 +54,13 @@ describe('module edges', () => {
     const runFlow: Ports['runFlow'] = runnerModule.runFlow;
     const computeDiff: Ports['computeDiff'] = diffModule.computeDiff;
     const serveReport: Ports['serveReport'] = reportModule.serveReport;
+    const installAdapter: Ports['installAdapter'] = adaptersModule.installAdapter;
 
-    expect([loadConfig, parseFlowFile, runFlow, computeDiff, serveReport].every((fn) => typeof fn === 'function')).toBe(
-      true,
-    );
+    expect(
+      [loadConfig, parseFlowFile, runFlow, computeDiff, serveReport, installAdapter].every(
+        (fn) => typeof fn === 'function',
+      ),
+    ).toBe(true);
   });
 
   it('adapts the store facade to the narrow StorePort the commands use', async () => {
@@ -80,11 +87,20 @@ describe('module edges', () => {
     const ports = createPorts();
     expect(Object.keys(ports).sort()).toEqual([
       'computeDiff',
+      'installAdapter',
+      'listAdapters',
       'loadConfig',
       'openStore',
       'parseFlowFile',
       'runFlow',
       'serveReport',
     ]);
+  });
+
+  it('listAdapters reports the real registry, so `vdiff install` cannot list a fiction', async () => {
+    const ports = createPorts();
+    await expect(ports.listAdapters()).resolves.toEqual(
+      adaptersModule.ADAPTERS.map((adapter) => ({ id: adapter.id, label: adapter.label })),
+    );
   });
 });

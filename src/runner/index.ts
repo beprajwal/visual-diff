@@ -6,7 +6,7 @@
  * (determinism knobs, worktrees, the dep cache, the dev server probe) without a browser.
  */
 
-export { runFlow, mergeStep, statusOf, type RunContext } from './run.js';
+export { runFlow, mergeStep, planHar, statusOf, worstUnsettled, type HarPlan, type RunContext } from './run.js';
 
 export {
   CHROMIUM_LAUNCH_ARGS,
@@ -23,20 +23,31 @@ export {
 } from './determinism.js';
 
 export {
+  INSTALL_BROWSER_HINT,
   contextOptions,
+  describeSettle,
+  inFlightRequests,
   launchChromium,
   loadPlaywright,
   newContext,
+  requireHarPath,
   settle,
   type ContextOptions,
+  type SettleOptions,
+  type SettleReport,
 } from './browser.js';
 
 export {
+  A11Y_ROOT_ROLE,
+  captureA11ySnapshot,
   collectArgs,
   collectDom,
   emptyStyles,
+  parseAriaHeader,
+  parseAriaSnapshot,
   toA11ySnapshot,
   toDomSnapshot,
+  type AriaSnapshotSource,
   type CollectArgs,
   type CollectResult,
 } from './capture.js';

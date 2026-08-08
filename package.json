@@ -18,22 +18,26 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.js.map",
+    "!dist/**/*.d.ts.map",
     "README.md"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build:ts && npm run build:ui",
+    "build": "npm run build:ts && npm run build:ui && npm run build:bin",
     "build:ts": "tsc -p tsconfig.json",
     "build:ui": "node scripts/build-ui.mjs",
+    "build:bin": "node scripts/finalize-bin.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run src",
+    "test:slow": "vitest run --config tests/slow/vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "tsc -p tsconfig.test.json --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "keywords": [
     "visual-diff",
@@ -47,7 +51,7 @@
     "chokidar": "^4.0.3",
     "citty": "^0.1.6",
     "pixelmatch": "^6.0.0",
-    "playwright": "^1.49.0",
+    "playwright-core": "^1.49.0",
     "pngjs": "^7.0.0",
     "preact": "^10.25.4",
     "yaml": "^2.7.0",
@@ -57,6 +61,7 @@
     "@types/node": "^22.10.5",
     "@types/pngjs": "^6.0.5",
     "esbuild": "^0.25.0",
+    "playwright": "^1.49.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"

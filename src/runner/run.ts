@@ -48,7 +48,7 @@ import { hashFlow, parseFlowSource } from '../flow/index.js';
 import { loadConfigOrThrow, openStore, paths, type Store } from '../store/index.js';
 import type { RunDraft } from '../store/run-store.js';
 
-import { launchChromium, loadPlaywright } from './browser.js';
+import { describeSettle, launchChromium, loadPlaywright } from './browser.js';
 import { ensureDeps, linkNodeModules } from './deps.js';
 import { startDevServer, portOfUrl, probe, substitutePort, type DevServerHandle } from './devserver.js';
 import { RunnerError, errorMessage } from './errors.js';
@@ -109,6 +109,27 @@ async function runEnv(deviceScaleFactor: number): Promise<RunEnv> {
   };
 }
 
+/**
+ * The most unsettled gate across a step's viewports, or `undefined` when every viewport settled.
+ *
+ * "Most unsettled" is the largest outstanding request count, tie-broken by the longest wait, with
+ * the URLs unioned so the warning names every request that kept any viewport busy.
+ */
+export function worstUnsettled(
+  outcomes: ReadonlyArray<{ shot?: { unsettled?: { waitedMs: number; inFlight: number; urls: string[] } } }>,
+): { waitedMs: number; inFlight: number; urls: string[] } | undefined {
+  const reports = outcomes
+    .map((outcome) => outcome.shot?.unsettled)
+    .filter((report): report is { waitedMs: number; inFlight: number; urls: string[] } => report !== undefined);
+  if (reports.length === 0) return undefined;
+
+  const worst = reports.reduce((a, b) =>
+    b.inFlight > a.inFlight || (b.inFlight === a.inFlight && b.waitedMs > a.waitedMs) ? b : a,
+  );
+  const urls = [...new Set(reports.flatMap((report) => report.urls))].slice(0, 20);
+  return { waitedMs: worst.waitedMs, inFlight: worst.inFlight, urls };
+}
+
 /** Merge one step's per-viewport outcomes into the single `step.json` the store holds. */
 export function mergeStep(
   step: Step,
@@ -147,6 +168,10 @@ export function mergeStep(
     networkRequests: present.reduce((sum, outcome) => sum + outcome.network.length, 0),
     harMisses: present.reduce((sum, outcome) => sum + outcome.harMisses, 0),
   };
+  // An unsettled gate in *any* viewport taints the step, so the worst one is what step.json records:
+  // reporting the calmest viewport would understate a capture the user cannot trust.
+  const unsettled = worstUnsettled(present);
+  if (unsettled !== undefined) result.unsettled = unsettled;
   // The D4 drift signal must survive a step that never ran in any viewport, so the spec's own
   // selector is the fallback when no replay reported a resolved one.
   const resolved =
@@ -284,18 +309,47 @@ async function bindServer(
   return { mode: 'spawn', baseUrl: `http://127.0.0.1:${handle.port}`, handle };
 }
 
-interface HarPlan {
-  mode: NetworkMode;
-  path?: string;
-  recording: boolean;
-}
+/**
+ * The resolved network plan.
+ *
+ * A discriminated union on purpose: `{ mode: 'record' | 'replay' }` with no `path` is precisely the
+ * state that lets a run reach the live network while `meta.json` claims a HAR mode, so the type
+ * makes it unrepresentable rather than leaving it to a downstream `!== undefined` check.
+ */
+export type HarPlan =
+  | { mode: 'off'; path?: undefined; recording: false }
+  | { mode: 'record'; path: string; recording: true }
+  | { mode: 'replay'; path: string; recording: false };
 
-async function planHar(store: Store, spec: FlowSpec, options: RunOptions): Promise<HarPlan> {
+/**
+ * Choose the network plan for this run (spec §7, D9).
+ *
+ * A record or replay mode with no resolvable HAR path is a **configuration error**, not a degraded
+ * run: proceeding would put the page on the real network unconstrained while reporting 0 hits and
+ * 0 misses. Reachable today by a flow declaring `network: { mode: off }` — which the flow validator
+ * lets omit `har` — run with `--record`.
+ */
+export async function planHar(store: Store, spec: FlowSpec, options: RunOptions): Promise<HarPlan> {
   const requested: NetworkMode = options.network ?? spec.network.mode;
-  if (requested === 'off' || spec.network.har === undefined) {
-    return { mode: requested === 'off' ? 'off' : requested, recording: false };
+  if (requested === 'off') return { mode: 'off', recording: false };
+
+  const declared = spec.network.har;
+  if (declared === undefined || declared.trim() === '') {
+    throw new RunnerError({
+      code: 'har-path-missing',
+      message:
+        `flow "${options.flow}": network mode '${requested}' needs a HAR file, ` +
+        'but the flow spec declares no `network.har`',
+      exitCode: EXIT.CONFIG_ERROR,
+      kind: 'flow-invalid',
+      hint:
+        `add \`network: { mode: ${requested}, har: ${options.flow}.har }\` to ` +
+        `${paths.flowFileRepoPath(options.flow)}, or drop --record and use --no-net to block the ` +
+        'network instead — the run will never be allowed to fall through to it',
+    });
   }
-  const file = paths.harFile(store.root, spec.network.har);
+
+  const file = paths.harFile(store.root, declared);
   if (requested === 'record') return { mode: 'record', path: file, recording: true };
   // The first run of a flow records; later runs serve (spec §7).
   if (!(await exists(file))) return { mode: 'record', path: file, recording: true };
@@ -395,31 +449,46 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
     const scratch = join(tmpdir(), `vdiff-har-${process.pid}-${Date.now().toString(36)}`);
     try {
       const harTargets = new Map<ViewportId, string>();
-      let replayHar = har.path;
-      if (har.recording && har.path !== undefined) {
+      let replayHar: string | undefined;
+      if (har.recording) {
         await mkdir(scratch, { recursive: true });
         for (const viewport of viewports) harTargets.set(viewport.id, join(scratch, `${viewport.id}.har`));
-      } else if (har.mode === 'replay' && har.path !== undefined) {
+      } else if (har.mode === 'replay') {
         await mkdir(scratch, { recursive: true });
         replayHar = await retargetHarFile(har.path, server.baseUrl, join(scratch, 'replay.har'));
       }
 
-      const outcomes = await runPool(viewports, DEFAULTS.viewportConcurrency, (viewport) =>
-        replayViewport({
+      // The last place a HAR path can go missing. `har.path` is typed present for record and
+      // replay, but the per-viewport recording targets are built in a Map, and a Map lookup that
+      // silently returns `undefined` would hand the context no `recordHar` — a live-network run
+      // labelled `record`. So the lookup is total (spec §7: never a silent fallthrough).
+      const harPathFor = (viewport: Viewport): string | undefined => {
+        if (har.mode === 'off') return undefined;
+        if (!har.recording) return replayHar;
+        const target = harTargets.get(viewport.id);
+        if (target === undefined) {
+          throw new RunnerError({
+            code: 'har-target-missing',
+            message: `no HAR recording target for viewport ${viewport.id}; refusing to record against the live network untraced`,
+            kind: 'internal',
+          });
+        }
+        return target;
+      };
+
+      const outcomes = await runPool(viewports, DEFAULTS.viewportConcurrency, (viewport) => {
+        const harPath = harPathFor(viewport);
+        return replayViewport({
           browser,
           viewport,
           flow: spec,
           baseUrl: (server as ServerBinding).baseUrl,
           network: har.mode,
-          ...(har.recording
-            ? { har: harTargets.get(viewport.id) as string }
-            : replayHar === undefined
-              ? {}
-              : { har: replayHar }),
+          ...(harPath === undefined ? {} : { har: harPath }),
           ...(options.continueOnError === undefined ? {} : { continueOnError: options.continueOnError }),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
-        }),
-      );
+        });
+      });
 
       const failures = outcomes.filter((outcome) => !outcome.ok);
       replays = outcomes.flatMap((outcome) => (outcome.ok ? [outcome.value] : []));
@@ -441,24 +510,33 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
         });
       }
 
-      if (har.recording && har.path !== undefined) {
+      if (har.recording) {
+        const destination = har.path;
         const first = viewports[0];
         const source = first === undefined ? undefined : harTargets.get(first.id);
         if (source !== undefined && (await exists(source))) {
           await mkdir(paths.flowsDir(root), { recursive: true });
-          await rename(source, har.path).catch(async () => {
-            await rm(har.path as string, { force: true });
-            await rename(source, har.path as string);
+          await rename(source, destination).catch(async () => {
+            await rm(destination, { force: true });
+            await rename(source, destination);
           });
           if (options.noScrub !== true) {
-            await scrubHarFile(har.path, { redact: store.config.network.redact });
+            await scrubHarFile(destination, { redact: store.config.network.redact });
           }
           warnings.push({
             kind: 'har-recorded',
             message:
               options.noScrub === true
-                ? `recorded ${har.path} WITHOUT scrubbing (--no-scrub)`
-                : `recorded ${har.path}; commit it so replays are deterministic across machines`,
+                ? `recorded ${destination} WITHOUT scrubbing (--no-scrub)`
+                : `recorded ${destination}; commit it so replays are deterministic across machines`,
+          });
+        } else {
+          // The run reached the live network to record, and produced nothing to replay. Saying so
+          // is the difference between "the next run replays this" and "the next run records again
+          // against whatever the backend looks like then".
+          warnings.push({
+            kind: 'har-recorded',
+            message: `recording produced no HAR at ${destination}; the next run will record again rather than replay`,
           });
         }
       }
@@ -547,6 +625,23 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
         message: `${harMisses} request(s) had no HAR entry and were aborted; the diff may be misleading`,
         urls: missedUrls.slice(0, 20),
       });
+    }
+
+    // A screenshot taken with requests outstanding is a non-deterministic capture, which is exactly
+    // the failure mode the whole tool exists to rule out — so it is a run warning, like a HAR miss.
+    const unsettledSteps = steps.filter((step) => step.unsettled !== undefined);
+    if (unsettledSteps.length > 0) {
+      const worst = worstUnsettled(
+        unsettledSteps.map((step) => ({ shot: { unsettled: step.unsettled } })),
+      );
+      if (worst !== undefined) {
+        warnings.push({
+          kind: 'settle-timeout',
+          message: describeSettle({ settled: false, ...worst }),
+          steps: unsettledSteps.map((step) => step.id),
+          urls: worst.urls,
+        });
+      }
     }
 
     const blockedSteps = steps.filter((step) => step.status === 'blocked').map((step) => step.id);

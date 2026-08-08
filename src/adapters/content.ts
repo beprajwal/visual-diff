@@ -160,6 +160,10 @@ export const LOOP: readonly LoopStage[] = [
 
 /** The CLI surface from spec §9. Reproduced so an agent never has to guess a flag. */
 export const COMMAND_REFERENCE: ReadonlyArray<{ command: string; purpose: string }> = [
+  {
+    command: `${CLI} install <harness>`,
+    purpose: "Write this harness's skill and command files into the project",
+  },
   { command: `${CLI} init`, purpose: 'Scaffold config, gitignore rules, and an example flow' },
   { command: `${CLI} flow new|check <name>`, purpose: 'Scaffold or validate a spec without running it' },
   {

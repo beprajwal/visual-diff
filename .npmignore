@@ -20,6 +20,11 @@ vitest.config.ts
 *.test.tsx
 *.tsbuildinfo
 
+# Sourcemaps and declaration maps point at `src/`, which is never published, so in the tarball they
+# are dead weight — roughly half the file count. `.d.ts` stays: the package has a library export.
+*.js.map
+*.d.ts.map
+
 .git/
 .github/
 .vscode/

@@ -53,6 +53,7 @@ describe('command reference (spec §9)', () => {
 
   it('covers every command in the spec CLI surface, in spec order', () => {
     expect(commands.map((c) => c.split(' ')[1])).toEqual([
+      'install',
       'init',
       'flow',
       'run',

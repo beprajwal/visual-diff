@@ -438,3 +438,75 @@ describe('masked regions', () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------ DiffResult.warnings (§8) */
+
+describe('the warnings the engine hands the CLI and the report', () => {
+  let tmp: string;
+  let vdiffDir: string;
+
+  beforeAll(async () => {
+    tmp = await mkdtemp(path.join(os.tmpdir(), 'vdiff-warn-'));
+    vdiffDir = path.join(tmp, '.visual-diff');
+    await writeRunFixture(path.join(vdiffDir, 'runs', 'checkout', '0001'), baseRun('0001'));
+    await writeRunFixture(path.join(vdiffDir, 'runs', 'checkout', '0002'), headRun('0002'));
+  });
+
+  afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  const diffWith = async (options: Parameters<typeof defaultDiffOptions>[0]): Promise<DiffResult> =>
+    computeDiff({
+      baseRunDir: path.join(vdiffDir, 'runs', 'checkout', '0001'),
+      headRunDir: path.join(vdiffDir, 'runs', 'checkout', '0002'),
+      vdiffDir,
+      options: defaultDiffOptions(options),
+    });
+
+  it('names a diff.ignore selector it cannot evaluate, instead of silently ignoring nothing', async () => {
+    const result = await diffWith({ deviceScaleFactor: 1, force: true, ignore: ['div > .clock'] });
+
+    const warning = result.warnings.find((w) => w.includes('div > .clock'));
+    expect(warning, JSON.stringify(result.warnings)).toBeDefined();
+    expect(warning).toContain('diff.ignore');
+    expect(warning).toContain('not supported');
+  });
+
+  it('says it exactly once, not once per (step, viewport)', async () => {
+    const result = await diffWith({ deviceScaleFactor: 1, force: true, ignore: ['div > .clock'] });
+    expect(result.warnings.filter((w) => w.includes('div > .clock'))).toHaveLength(1);
+  });
+
+  it('stays quiet about ignore selectors it can evaluate', async () => {
+    const result = await diffWith({
+      deviceScaleFactor: 1,
+      force: true,
+      ignore: ['#pay', '.clock', '[data-test=pay]'],
+    });
+    expect(result.warnings.filter((w) => w.includes('diff.ignore'))).toEqual([]);
+  });
+
+  it('reports flow-level drift, which no flowDiff entry can carry', async () => {
+    const shifted = path.join(vdiffDir, 'runs', 'checkout', '0003');
+    await writeRunFixture(shifted, { ...headRun('0003'), viewports: ['1280x800', '390x844'] });
+
+    const result = await computeDiff({
+      baseRunDir: path.join(vdiffDir, 'runs', 'checkout', '0001'),
+      headRunDir: shifted,
+      vdiffDir,
+      options: defaultDiffOptions({ deviceScaleFactor: 1 }),
+    });
+
+    expect(result.warnings.some((w) => w.startsWith('viewports ')), JSON.stringify(result.warnings)).toBe(
+      true,
+    );
+  });
+
+  it('says nothing about flow-level drift when the two flows agree', async () => {
+    const result = await diffWith({ deviceScaleFactor: 1, force: true });
+    expect(result.warnings.filter((w) => w.startsWith('viewports ') || w.startsWith('baseUrl '))).toEqual(
+      [],
+    );
+  });
+});

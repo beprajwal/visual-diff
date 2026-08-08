@@ -16,15 +16,45 @@ The package is `visual-diff`; the binary is `vdiff`.
 - **The report never executes anything.** It appends structured JSON feedback to a file; an agent
   decides what to do with it.
 
-## Install
+## Quickstart (no install)
+
+Everything runs through `npx`. Nothing is installed into your project, and nothing is downloaded
+until you ask for it — the package depends on `playwright-core`, so `npx visual-diff --help` costs
+one small download rather than a browser bundle.
+
+```sh
+cd your-project
+
+npx visual-diff install claude-code   # write the visual-diff skill + /vdiff commands into .claude/
+npx visual-diff init                  # scaffold .visual-diff/config.yaml, gitignore rules, a flow
+npx visual-diff install-browser       # one-time Chromium download (the only network step)
+
+# edit .visual-diff/config.yaml (your dev command) and .visual-diff/flows/example.yaml
+npx visual-diff run example           # replay the flow against the working tree
+npx visual-diff run example --at HEAD~1
+npx visual-diff diff example          # findings for the last two runs
+npx visual-diff serve --open          # live local report; hand the URL to a human
+```
+
+`install <harness>` takes `--dir <path>` to target another directory, `--force` to overwrite files
+it wrote before that you have since edited, and `--dry-run` to print what it would write. The only
+harness in this release is `claude-code`; an unrecognised one exits 2 and lists what is supported.
+
+Requires Node 20 or newer.
+
+## Install it properly
+
+If you would rather not go through `npx` every time, add it to the project. The binary is `vdiff`.
 
 ```sh
 npm install --save-dev visual-diff
+npx vdiff install claude-code
 npx vdiff install-browser     # one-time Chromium download
 npx vdiff init                # scaffold .visual-diff/config.yaml, gitignore rules, example flow
 ```
 
-Requires Node 20 or newer.
+A global install (`npm install -g visual-diff`) puts `vdiff` on your PATH, and every command below
+works unprefixed.
 
 ## The four core commands
 
@@ -39,8 +69,8 @@ Every command accepts `--json` and emits a single envelope object on stdout, whi
 agent-facing API. Exit codes: `0` success, `1` run or replay failure, `2` config or spec error.
 `vdiff diff` exits `0` even when findings exist — findings are information, not a gate.
 
-Supporting commands: `vdiff init`, `vdiff flow new|check <name>`, `vdiff runs <flow>`,
-`vdiff pin|prune <run>`, `vdiff install-browser`.
+Supporting commands: `vdiff install <harness>`, `vdiff init`, `vdiff flow new|check <name>`,
+`vdiff runs <flow>`, `vdiff pin|prune <run>`, `vdiff install-browser`.
 
 ## A flow spec
 
@@ -70,8 +100,17 @@ npm install
 npm run test        # everything
 npm run test:unit   # colocated unit + golden tests, no browser
 npm run typecheck
-npm run build       # tsc emit + prebuilt report UI bundle
+npm run build       # tsc emit + prebuilt report UI bundle + executable bin
 ```
+
+The runtime dependency is `playwright-core`; `playwright` is a devDependency only, because the
+published package must not make an `npx` user download browsers before the CLI can print its help.
+`vdiff install-browser` fetches Chromium on demand, and the two packages share one browser
+registry, so a browser installed either way is found by both.
+
+`npm pack` runs the build (`prepack`) and produces the tarball a consumer actually gets;
+`tests/packaging/pack.test.ts` asserts its shape — executable bin with a shebang, `.d.ts` present,
+no sourcemaps.
 
 ## Design
 

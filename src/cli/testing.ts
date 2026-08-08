@@ -25,7 +25,35 @@ import {
   type ServeInfo,
 } from '../types.js';
 
-import type { Ports, ServeHandle, StorePort } from './ports.js';
+import type { AdapterInstallDetail, FileOutcome } from '../adapters/index.js';
+
+import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
+
+/**
+ * The registry as the CLI sees it. Deliberately mirrors the real one (spec §5 registers exactly
+ * one adapter in slice 1); `src/adapters/index.test.ts` is what pins the real list.
+ */
+export function fakeHarnesses(): HarnessInfo[] {
+  return [{ id: 'claude-code', label: 'Claude Code' }];
+}
+
+/** A successful first install: three managed files, all created. */
+export function fakeInstallDetail(
+  overrides: Partial<AdapterInstallDetail> = {},
+): AdapterInstallDetail {
+  const files: FileOutcome[] = [
+    { path: '.claude/skills/visual-diff/SKILL.md', status: 'created' },
+    { path: '.claude/commands/vdiff.md', status: 'created' },
+    { path: '.claude/commands/vdiff-review.md', status: 'created' },
+  ];
+  return {
+    id: 'claude-code',
+    written: files.map((file) => file.path),
+    skipped: [],
+    files,
+    ...overrides,
+  };
+}
 
 export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): Config {
   return {
@@ -310,6 +338,8 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
       info: fakeServeInfo(),
       close: async () => undefined,
     }),
+    listAdapters: async () => fakeHarnesses(),
+    installAdapter: async () => fakeInstallDetail(),
     ...overrides,
   };
 }

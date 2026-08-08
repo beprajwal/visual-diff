@@ -43,6 +43,34 @@ export function isSupportedSelector(selector: string): boolean {
   return s.split(',').every((part) => SIMPLE.test(part.trim()) && part.trim() !== '');
 }
 
+/** The entries of a selector list this matcher cannot evaluate, in order, de-duplicated. */
+export function unsupportedSelectors(selectors: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const selector of selectors) {
+    if (isSupportedSelector(selector)) continue;
+    if (out.includes(selector)) continue;
+    out.push(selector);
+  }
+  return out;
+}
+
+const IGNORE_HINT =
+  'only simple compound selectors are evaluated (tag, #id, .class, [attr=value], ' +
+  'and comma-separated lists of those) — combinators such as ">", "+", "~" and descendant ' +
+  'spaces are not';
+
+/**
+ * Human-readable warnings for `diff.ignore` entries that match nothing because this matcher
+ * cannot evaluate them. Silence here is the worst outcome: the user believes a noisy element is
+ * covered and reads the resulting findings as real regressions.
+ */
+export function ignoreSelectorWarnings(selectors: readonly string[]): string[] {
+  return unsupportedSelectors(selectors).map(
+    (selector) =>
+      `diff.ignore selector ${JSON.stringify(selector)} is not supported and matches nothing: ${IGNORE_HINT}`,
+  );
+}
+
 function parseSimple(part: string): SimpleSelector | null {
   const sel: SimpleSelector = { classes: [], attrs: [] };
   let i = 0;

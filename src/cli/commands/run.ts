@@ -6,11 +6,17 @@
  * and picks the exit code. A run whose steps did not all replay is a replay failure — exit 1 —
  * even though the run directory was still written and is still diffable: `status: partial` exists
  * precisely so the evidence survives the failure.
+ *
+ * When the failure retained a log — §10's "dev server never ready → exit 1 with the last 50 lines
+ * of server log", and the same for `install.log` — the tail is read back and travels on the error,
+ * so the reason is in the output of the command that failed rather than in a file the reader has
+ * to go and find.
  */
 
-import { EXIT, type RunOptions, type RunResult, type RunWarning } from '../../types.js';
+import { EXIT, DEFAULTS, type CliError, type RunOptions, type RunResult, type RunWarning } from '../../types.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import type { Invocation } from '../args.js';
+import { formatLogTail, readLogTail } from '../log.js';
 import { table } from '../output.js';
 
 type RunInvocation = Extract<Invocation, { kind: 'run' }>;
@@ -82,16 +88,17 @@ export async function run(
       ? `run ${meta.runId} is ${meta.status}: ${failed.map((step) => step.id).join(', ')} failed`
       : `run ${meta.runId} is ${meta.status}`);
 
-  return {
-    data: result,
-    human,
-    warnings,
-    error: {
-      code: failure === undefined ? `run-${meta.status}` : `run-${failure.kind}`,
-      message,
-      exitCode: EXIT.RUN_FAILURE,
-      ...(failure?.logPath === undefined ? {} : { hint: `log: ${failure.logPath}` }),
-    },
+  const error: CliError = {
+    code: failure === undefined ? `run-${meta.status}` : `run-${failure.kind}`,
+    message,
     exitCode: EXIT.RUN_FAILURE,
   };
+
+  if (failure?.logPath !== undefined) {
+    const tail = await readLogTail(result.runDir, failure.logPath, DEFAULTS.serverLogTailLines);
+    // A log that vanished must not replace the real failure with a filesystem one: name it instead.
+    error.hint = tail === null ? `log: ${failure.logPath}` : formatLogTail(failure.logPath, tail);
+  }
+
+  return { data: result, human, warnings, error, exitCode: EXIT.RUN_FAILURE };
 }

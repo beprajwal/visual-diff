@@ -33,10 +33,11 @@ import type {
 } from '../types.js';
 import { diffDirFor, pairId, readCachedDiff, writeDiff } from './cache.js';
 import { consoleFindings, networkFindings, structuralFindings } from './findings.js';
-import { isComparable, structuralFlowDiff } from './flowDiff.js';
+import { flowLevelChanges, isComparable, structuralFlowDiff } from '../flow/index.js';
 import { inflate } from './geometry.js';
 import { loadRunDir } from './loadRun.js';
 import { cropImage, decodePng, encodePng } from './pixel.js';
+import { ignoreSelectorWarnings } from './selector.js';
 import { diffViewport } from './viewportDiff.js';
 import type { ShotSide } from './viewportDiff.js';
 
@@ -195,6 +196,14 @@ export async function diffRuns(
       `runs are from different flows: base '${base.meta.flow}', head '${head.meta.flow}'`,
     );
   }
+
+  // A base-URL, viewport-matrix or network-mode change alters what the two runs *mean* without
+  // changing a single step, so it cannot surface as a flowDiff entry — it belongs in the warnings.
+  warnings.push(...flowLevelChanges(base.flow, head.flow));
+
+  // Emitted once per diff rather than per (step, viewport): an unusable ignore selector is a fact
+  // about the config, and repeating it for every shot would bury the findings it sits next to.
+  warnings.push(...ignoreSelectorWarnings(options.ignore));
 
   const flowDiff = structuralFlowDiff({
     base: base.flow,

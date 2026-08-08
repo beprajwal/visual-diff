@@ -11,7 +11,7 @@
  * independent.
  */
 
-import type { Browser, BrowserContext, Locator, Page } from 'playwright';
+import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
 
 import {
   DEFAULTS,
@@ -34,7 +34,7 @@ import {
   type ViewportId,
 } from '../types.js';
 import { newContext, settle } from './browser.js';
-import { collectArgs, collectDom, toA11ySnapshot, toDomSnapshot } from './capture.js';
+import { captureA11ySnapshot, collectArgs, collectDom, toDomSnapshot } from './capture.js';
 import { RunnerError, errorMessage, errorStack } from './errors.js';
 
 export interface ShotBytes {
@@ -43,6 +43,8 @@ export interface ShotBytes {
   a11y: A11ySnapshot;
   width: number;
   height: number;
+  /** Set only when the settle gate gave up before this shot — see `StepResult.unsettled`. */
+  unsettled?: { waitedMs: number; inFlight: number; urls: string[] };
 }
 
 export interface StepOutcome {
@@ -215,7 +217,7 @@ async function captureShot(
   inFlight: () => number,
 ): Promise<ShotBytes> {
   const masks = step.mask ?? [];
-  await settle(page, inFlight);
+  const gate = await settle(page, inFlight);
 
   const screenshot = await page.screenshot({
     fullPage: true,
@@ -238,9 +240,13 @@ async function captureShot(
   return {
     screenshot,
     dom,
-    a11y: toA11ySnapshot(dom.nodes, step.id, viewport),
+    a11y: await captureA11ySnapshot(page, step.id, viewport),
     width: size.width,
     height: size.height,
+    // Only an unsettled gate is recorded: a settled one is the contract, not news.
+    ...(gate.settled
+      ? {}
+      : { unsettled: { waitedMs: gate.waitedMs, inFlight: gate.inFlight, urls: gate.urls } }),
   };
 }
 

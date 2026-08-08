@@ -21,8 +21,13 @@ export type { DiffRequest, DiffContext, DiffArtifacts, DiffRunsResult } from './
 
 export { diffCacheKey, diffDirFor, isCacheHit, pairId, readCachedDiff, writeDiff } from './cache.js';
 
-export { describeStepChanges, isComparable, structuralFlowDiff } from './flowDiff.js';
-export type { FlowDiffInput } from './flowDiff.js';
+/**
+ * Stage 1 (the structural flow diff) is implemented in `flow/`, because spec §5 assigns "structural
+ * diff of two flow versions" there. It is re-exported at this edge — not reimplemented behind it —
+ * so the engine and the report can never disagree about what a step bucket means.
+ */
+export { describeStepChanges, isComparable, structuralFlowDiff } from '../flow/index.js';
+export type { FlowDiffInput } from '../flow/index.js';
 
 export {
   createImage,

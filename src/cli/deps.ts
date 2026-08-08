@@ -31,8 +31,10 @@ import type {
   ValidationResult,
 } from '../types.js';
 
+import type { AdapterInstallDetail, WriteOptions } from '../adapters/index.js';
+
 import { runFailure } from './error.js';
-import type { Ports, ServeHandle, StorePort } from './ports.js';
+import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
 
 /** Module edges, relative to this file. Mirrors the `index.ts` of each module (plan §1). */
 export const MODULE_SPECIFIERS = {
@@ -43,6 +45,7 @@ export const MODULE_SPECIFIERS = {
   runner: '../runner/index.js',
   diff: '../diff/index.js',
   report: '../report/index.js',
+  adapters: '../adapters/index.js',
 } as const;
 
 type AnyFn = (...args: never[]) => unknown;
@@ -180,6 +183,32 @@ export function createPorts(): Ports {
         (config: Config, options: ServeOptions) => Promise<ServeHandle>
       >(MODULE_SPECIFIERS.report, 'serveReport');
       return await fn(config, options);
+    },
+
+    async listAdapters(): Promise<HarnessInfo[]> {
+      const module = await loadModule(MODULE_SPECIFIERS.adapters);
+      const adapters = module['ADAPTERS'];
+      if (!Array.isArray(adapters)) {
+        throw runFailure(
+          'module-contract',
+          `internal module '${MODULE_SPECIFIERS.adapters}' does not export 'ADAPTERS'`,
+        );
+      }
+      return (adapters as HarnessInfo[]).map((adapter) => ({
+        id: adapter.id,
+        label: adapter.label,
+      }));
+    },
+
+    async installAdapter(
+      id: string,
+      root: string,
+      options: WriteOptions,
+    ): Promise<AdapterInstallDetail> {
+      const fn = await loadExport<
+        (id: string, root: string, options: WriteOptions) => Promise<AdapterInstallDetail>
+      >(MODULE_SPECIFIERS.adapters, 'installAdapter');
+      return await fn(id, root, options);
     },
   };
 }

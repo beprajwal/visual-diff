@@ -4,6 +4,11 @@
  *
  * Pure: images and snapshots in, a `ViewportDiff` plus the artifacts the engine writes out. All
  * geometry it returns is image-space, matching `pixel.png`, `regions.json` and the crops.
+ *
+ * Config `ignore` applies to every finding-producing path here, not only to region clustering: an
+ * ignored node (and its subtree) contributes no region, no node change — including the
+ * pixel-free a11y pass — and no page-size finding it alone explains. Half-applied noise control is
+ * worse than none, because the user believes the element is covered.
  */
 
 import type {
@@ -33,7 +38,7 @@ import type { NodeChange } from '../types.js';
 import { classifyNodeChange, LAYOUT_SHIFT_PX } from './severity.js';
 import type { ContrastContext, Verdict } from './severity.js';
 import { pixelDiff, renderPixelOverlay } from './pixel.js';
-import { matchesAny, selectorFor } from './selector.js';
+import { ignoreSelectorWarnings, matchesAny, selectorFor } from './selector.js';
 
 export interface ShotSide {
   shot: LoadedShot;
@@ -55,6 +60,12 @@ export interface ViewportDiffOutput {
   regionSet: ClusterResult | null;
   /** The image crops are cut from: head where it exists, base for a removed step. */
   cropSource: PixelImage | null;
+  /**
+   * Configuration problems found while applying this diff — today, `diff.ignore` entries the
+   * selector matcher cannot evaluate. Identical for every (step, viewport) of a run, so the caller
+   * de-duplicates before merging them into `DiffResult.warnings`.
+   */
+  warnings: string[];
 }
 
 function scaleFor(shot: LoadedShot, fallback: number): number {
@@ -76,22 +87,115 @@ function byPath(nodes: readonly DomNode[]): Map<string, DomNode> {
   return m;
 }
 
+/**
+ * Every node covered by config `ignore`: the nodes matching a selector, plus their descendants.
+ *
+ * The subtree is included because the contract is stated in rects — an ignored node's rect covers
+ * its children, so a child-level finding would contradict the region that was already excluded.
+ * Ignoring `[data-test=session-id]` has to mean the whole widget, not just its outermost box.
+ */
+export function ignoredNodes(
+  nodes: readonly DomNode[],
+  ignore: readonly string[],
+): Set<DomNode> {
+  const out = new Set<DomNode>();
+  if (ignore.length === 0) return out;
+
+  const nodeByPath = byPath(nodes);
+  const verdict = new Map<string, boolean>();
+
+  // Walked iteratively, and every node on the walked chain is memoized: a 5,000-node capture is
+  // one pass, and a malformed parent chain can neither recurse deeply nor loop forever.
+  const resolve = (start: DomNode): boolean => {
+    const chain: DomNode[] = [];
+    const seen = new Set<string>();
+    let result = false;
+    let current: DomNode | undefined = start;
+
+    while (current !== undefined) {
+      const cached = verdict.get(current.path);
+      if (cached !== undefined) {
+        result = cached;
+        break;
+      }
+      if (seen.has(current.path)) break;
+      seen.add(current.path);
+      chain.push(current);
+      if (matchesAny(current, ignore)) {
+        result = true;
+        break;
+      }
+      current = current.parent === null ? undefined : nodeByPath.get(current.parent);
+    }
+
+    for (const node of chain) verdict.set(node.path, result);
+    return result;
+  };
+
+  for (const node of nodes) if (resolve(node)) out.add(node);
+  return out;
+}
+
 /** Flow `mask` rects plus the rects of nodes matching config `ignore`, in image space. */
 export function exclusionRects(
   side: ShotSide | null,
   ignore: readonly string[],
   fallbackScale: number,
+  /** Pre-computed {@link ignoredNodes} for this side, to avoid matching the tree twice. */
+  ignored?: ReadonlySet<DomNode>,
 ): Rect[] {
   if (side === null) return [];
   const scale = scaleFor(side.shot, fallbackScale);
   const out: Rect[] = side.shot.dom.masks.map((r) => roundRect(scaleRect(r, scale)));
   if (ignore.length > 0) {
+    const covered = ignored ?? ignoredNodes(side.shot.dom.nodes, ignore);
     for (const node of side.shot.dom.nodes) {
-      if (!matchesAny(node, ignore)) continue;
+      if (!covered.has(node)) continue;
       out.push(roundRect(scaleRect(node.rect, scale)));
     }
   }
   return out;
+}
+
+/**
+ * Signed size deltas, in CSS pixels, contributed by the ignored nodes along one axis: a pair that
+ * resized, an ignored node that appeared (its full extent), or one that disappeared (negative).
+ */
+function ignoredDeltas(pairs: readonly NodePair[], axis: 'w' | 'h'): number[] {
+  const out: number[] = [];
+  for (const pair of pairs) {
+    const delta =
+      pair.base !== null && pair.head !== null
+        ? pair.head.rect[axis] - pair.base.rect[axis]
+        : pair.head !== null
+          ? pair.head.rect[axis]
+          : pair.base === null
+            ? 0
+            : -pair.base.rect[axis];
+    if (Math.abs(delta) > SIZE_ATTRIBUTION_EPSILON) out.push(delta);
+  }
+  return out;
+}
+
+/** A page-size delta this close (CSS px) to the ignored contribution counts as explained by it. */
+const SIZE_ATTRIBUTION_EPSILON = 1;
+
+/**
+ * True when the ignored nodes alone account for a page-size delta — either one of them changed by
+ * exactly that much, or their contributions sum to it. An ignored banner that grows the document
+ * must not resurface as a `page size changed` finding: that is the same noise under another name.
+ */
+function ignoredExplainsSize(
+  pairs: readonly NodePair[],
+  axis: 'w' | 'h',
+  pageDeltaCss: number,
+): boolean {
+  const deltas = ignoredDeltas(pairs, axis);
+  if (deltas.length === 0) return false;
+  const total = deltas.reduce((sum, d) => sum + d, 0);
+  return [...deltas, total].some(
+    (candidate) => Math.abs(candidate - pageDeltaCss) <= SIZE_ATTRIBUTION_EPSILON,
+  );
 }
 
 function sortFindings(findings: Finding[]): Finding[] {
@@ -126,6 +230,8 @@ function emptyDiff(
 
 export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const { step, viewport, base, head, options } = input;
+  // An ignore rule that cannot be evaluated must never pass for a rule that matched nothing.
+  const warnings = ignoreSelectorWarnings(options.ignore);
 
   if (base === null || head === null) {
     return {
@@ -133,6 +239,7 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
       overlay: null,
       regionSet: null,
       cropSource: head?.image ?? base?.image ?? null,
+      warnings,
     };
   }
 
@@ -141,9 +248,17 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   });
 
   const headScale = scaleFor(head.shot, options.deviceScaleFactor);
+
+  // `ignore` is a findings contract, not just a region filter (spec §8, noise control): an ignored
+  // node contributes no region, no node change, and no page-size finding of its own.
+  const ignoredBase = ignoredNodes(base.shot.dom.nodes, options.ignore);
+  const ignoredHead = ignoredNodes(head.shot.dom.nodes, options.ignore);
+  const isIgnored = (node: DomNode | null): boolean =>
+    node !== null && (ignoredHead.has(node) || ignoredBase.has(node));
+
   const exclude = [
-    ...exclusionRects(base, options.ignore, options.deviceScaleFactor),
-    ...exclusionRects(head, options.ignore, options.deviceScaleFactor),
+    ...exclusionRects(base, options.ignore, options.deviceScaleFactor, ignoredBase),
+    ...exclusionRects(head, options.ignore, options.deviceScaleFactor, ignoredHead),
   ];
 
   const regionSet = clusterRegions(pixels.mask, pixels.compared.w, pixels.compared.h, {
@@ -156,7 +271,13 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const match = matchNodes(base.shot.dom.nodes, head.shot.dom.nodes);
   const changesByPair = new Map<NodePair, NodeChange[]>();
   const changedNodes = new Set<DomNode>();
+  /** Ignored pairs are kept only to attribute a page-size change; they never produce findings. */
+  const ignoredPairs: NodePair[] = [];
   for (const pair of match.pairs) {
+    if (isIgnored(pair.base) || isIgnored(pair.head)) {
+      ignoredPairs.push(pair);
+      continue;
+    }
     const changes = diffNodePair(pair);
     if (changes.length > 0) changesByPair.set(pair, changes);
     if (rectChanged(pair)) {
@@ -174,11 +295,15 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     for (const change of changes) verdicts.set(change, classifyNodeChange(change, contrastCtx));
   }
 
-  const headIndex: IndexedNode[] = buildIndex(head.shot.dom.nodes, headScale, (n) =>
-    changedNodes.has(n),
+  // Ignored nodes are kept out of attribution entirely, so a surviving region is explained by the
+  // nearest element the user still cares about rather than by the thing they asked to ignore.
+  const headIndex: IndexedNode[] = buildIndex(
+    head.shot.dom.nodes.filter((n) => !ignoredHead.has(n)),
+    headScale,
+    (n) => changedNodes.has(n),
   );
   const baseIndex: IndexedNode[] = buildIndex(
-    base.shot.dom.nodes,
+    base.shot.dom.nodes.filter((n) => !ignoredBase.has(n)),
     scaleFor(base.shot, options.deviceScaleFactor),
     (n) => changedNodes.has(n),
   );
@@ -187,28 +312,37 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const emitted = new Set<NodeChange>();
 
   // ---- the page grew or shrank: a finding in its own right (spec §8, stage 2).
+  // Each axis is reported only when the ignored nodes do not already account for it; a page that
+  // grew solely because an ignored banner grew yields no finding at all.
   if (pixels.dimensionsChanged) {
-    const cssDelta = Math.max(
-      Math.abs(pixels.head.w - pixels.base.w),
-      Math.abs(pixels.head.h - pixels.base.h),
-    ) / headScale;
     const changes: PropChange[] = [];
-    if (pixels.base.w !== pixels.head.w) {
+    if (
+      pixels.base.w !== pixels.head.w &&
+      !ignoredExplainsSize(ignoredPairs, 'w', (pixels.head.w - pixels.base.w) / headScale)
+    ) {
       changes.push({ prop: 'width', from: pixels.base.w, to: pixels.head.w });
     }
-    if (pixels.base.h !== pixels.head.h) {
+    if (
+      pixels.base.h !== pixels.head.h &&
+      !ignoredExplainsSize(ignoredPairs, 'h', (pixels.head.h - pixels.base.h) / headScale)
+    ) {
       changes.push({ prop: 'height', from: pixels.base.h, to: pixels.head.h });
     }
-    findings.push({
-      id: '',
-      kind: 'layout',
-      severity: cssDelta > LAYOUT_SHIFT_PX ? 'high' : 'med',
-      step,
-      viewport,
-      changes,
-      label: 'page size changed',
-      reasons: cssDelta > LAYOUT_SHIFT_PX ? ['dimensions-changed', 'layout-shift'] : ['dimensions-changed'],
-    });
+    if (changes.length > 0) {
+      const cssDelta =
+        Math.max(...changes.map((c) => Math.abs(Number(c.to) - Number(c.from)))) / headScale;
+      findings.push({
+        id: '',
+        kind: 'layout',
+        severity: cssDelta > LAYOUT_SHIFT_PX ? 'high' : 'med',
+        step,
+        viewport,
+        changes,
+        label: 'page size changed',
+        reasons:
+          cssDelta > LAYOUT_SHIFT_PX ? ['dimensions-changed', 'layout-shift'] : ['dimensions-changed'],
+      });
+    }
   }
 
   // ---- stage 4 + merge: one finding per node change under each region.
@@ -317,5 +451,6 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     overlay: renderPixelOverlay(head.image, pixels),
     regionSet,
     cropSource: head.image,
+    warnings,
   };
 }

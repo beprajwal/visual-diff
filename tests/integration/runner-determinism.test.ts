@@ -21,7 +21,13 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { DIFF_ENGINE_VERSION, type DomSnapshot, type RunResult } from '../../src/types.js';
+import {
+  DIFF_ENGINE_VERSION,
+  type A11yNode,
+  type A11ySnapshot,
+  type DomSnapshot,
+  type RunResult,
+} from '../../src/types.js';
 import { computeDiff } from '../../src/diff/index.js';
 import { loadConfigOrThrow, openStore, paths } from '../../src/store/index.js';
 import { runFlow } from '../../src/runner/index.js';
@@ -172,6 +178,39 @@ describeIfBrowser('vdiff run, end to end', () => {
 
     const heading = dom.nodes.find((node) => node.testId === 'title');
     expect(heading?.role).toBe('heading');
+  });
+
+  it('writes a11y.json from the browser accessibility snapshot, not from the DOM walk (spec §7)', async () => {
+    const a11y = JSON.parse(
+      await readFile(join(first.runDir, 'steps/cart/400x300/a11y.json'), 'utf8'),
+    ) as A11ySnapshot;
+
+    expect(a11y.step).toBe('cart');
+    expect(a11y.viewport).toBe('400x300');
+
+    // The DOM-derived projection roots at the first captured element (`body`, role `generic`). Only
+    // the real accessibility snapshot roots at a `WebArea` carrying the page title, so this is the
+    // assertion that fails if a11y.json ever regresses to being synthesized from dom.json.
+    expect(a11y.root).not.toBeNull();
+    expect(a11y.root?.role).toBe('WebArea');
+    expect(a11y.root?.name).toBe('demo');
+
+    const flat: A11yNode[] = [];
+    const walk = (node: A11yNode): void => {
+      flat.push(node);
+      for (const child of node.children ?? []) walk(child);
+    };
+    walk(a11y.root as A11yNode);
+
+    // A real tree, not an empty shell: the platform's own roles, names and heading level.
+    const heading = flat.find((node) => node.role === 'heading');
+    expect(heading?.name).toBe('Cart');
+    expect(heading?.level).toBe(1);
+    expect(flat.find((node) => node.role === 'button')?.name).toBe('Pay');
+
+    // `#panel` is in the DOM but `hidden`, so it is absent from the accessibility tree. A DOM walk
+    // has no way to know that; this is the behavioural difference the swap was made for.
+    expect(flat.some((node) => node.name === 'Payment')).toBe(false);
   });
 
   it('freezes the clock and the PRNG, so two replays paint identical text', async () => {

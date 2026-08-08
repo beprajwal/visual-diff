@@ -27,11 +27,15 @@ export { canonicalFlow, canonicalStep, serializeFlow } from './serialize.js';
 export { hashFlow, hashFlowSource } from './hash.js';
 
 export {
+  describeFillChanges,
+  describeStepChanges,
   diffFlows,
   flowLevelChanges,
   formatStepChanges,
+  isComparable,
   stepSpecChanges,
   structuralFlowDiff,
+  type FlowDiffInput,
   type StepFieldChange,
 } from './structural-diff.js';
 

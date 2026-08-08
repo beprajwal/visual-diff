@@ -19,6 +19,7 @@
  */
 
 import type {
+  AdapterId,
   Config,
   DiffEngineOptions,
   DiffResult,
@@ -33,6 +34,7 @@ import type {
   ServeOptions,
   ValidationResult,
 } from '../types.js';
+import type { AdapterInstallDetail, WriteOptions } from '../adapters/index.js';
 
 /** A running report server. `close()` releases the port and removes `serve.json`. */
 export interface ServeHandle {
@@ -94,4 +96,22 @@ export interface Ports {
    * report.
    */
   serveReport(config: Config, options: ServeOptions): Promise<ServeHandle>;
+  /**
+   * `adapters/index.ts` — every harness this build can install, in registration order. The CLI
+   * asks rather than hard-coding the list, so `vdiff install nope` names exactly the adapters that
+   * are actually registered and adding one to the registry needs no CLI change.
+   */
+  listAdapters(): Promise<HarnessInfo[]>;
+  /** `adapters/index.ts#installAdapter` — writes one harness's managed files under `root`. */
+  installAdapter(
+    id: string,
+    root: string,
+    options: WriteOptions,
+  ): Promise<AdapterInstallDetail>;
+}
+
+/** One registered harness adapter, as the CLI needs to print it. */
+export interface HarnessInfo {
+  id: AdapterId;
+  label: string;
 }

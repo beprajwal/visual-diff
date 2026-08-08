@@ -5,7 +5,7 @@
  * findings present.
  */
 
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,6 +28,7 @@ import {
   emptyDiffSummary,
   fakeDiffResult,
   fakeFeedbackEntry,
+  fakeInstallDetail,
   fakeRunMeta,
   fakeRunResult,
   fakeRunSummary,
@@ -236,6 +237,107 @@ describe('vdiff run', () => {
     expect(result.error).toMatchObject({ code: 'run-partial', exitCode: EXIT.RUN_FAILURE });
     expect(result.data?.meta.status).toBe('partial');
     expect(result.warnings).toEqual(['har-miss: 2 requests missed the HAR /api/rates']);
+  });
+});
+
+/* ------------------------- run: the retained log is printed, not just located (spec §10) ------ */
+
+describe('vdiff run — dev server never ready (spec §10)', () => {
+  /** A run directory holding a `server.log` of `lines` numbered lines. */
+  async function failedRun(
+    logName: string,
+    lines: number,
+  ): Promise<{ runDir: string; ports: Ports }> {
+    const root = await tempProject();
+    const runDir = join(root, '.visual-diff', 'runs', 'checkout', '0007');
+    await mkdir(runDir, { recursive: true });
+    const body = Array.from({ length: lines }, (_, i) => `boot line ${i + 1}`).join('\n');
+    await writeFile(join(runDir, logName), `${body}\n`, 'utf8');
+
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({
+          runDir,
+          steps: [],
+          meta: fakeRunMeta({
+            status: 'failed',
+            failure: {
+              kind: 'server-not-ready',
+              message: 'dev server never became ready at http://localhost:5173/ within 60000ms',
+              logPath: logName,
+            },
+          }),
+        }),
+    });
+    return { runDir, ports };
+  }
+
+  it('prints the last 50 lines of the server log and exits 1', async () => {
+    const { ports } = await failedRun('server.log', 200);
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'checkout'], h)).toBe(EXIT.RUN_FAILURE);
+
+    const stderr = h.writer.stderr();
+    expect(stderr).toContain('dev server never became ready');
+    expect(stderr).toContain('last 50 lines of server.log');
+    // The tail is exactly the last 50 lines: 151..200 present, 150 and earlier gone.
+    for (let line = 151; line <= 200; line += 1) {
+      expect(stderr, `line ${line}`).toContain(`boot line ${line}\n`);
+    }
+    expect(stderr).not.toContain('boot line 150\n');
+    expect(stderr).not.toContain('boot line 1\n');
+  });
+
+  it('carries the same tail in the --json envelope, so an agent never has to open the file', async () => {
+    const { runDir, ports } = await failedRun('server.log', 60);
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'checkout', '--json'], h)).toBe(EXIT.RUN_FAILURE);
+
+    const result = envelope(h);
+    expect(result.error?.code).toBe('run-server-not-ready');
+    const hint = result.error?.hint ?? '';
+    expect(hint).toContain(join(runDir, 'server.log'));
+    expect(hint).toContain('boot line 60');
+    expect(hint).toContain('boot line 11');
+    expect(hint).not.toContain('boot line 10\n');
+  });
+
+  it('prints a short log whole, with no "last N lines" claim', async () => {
+    const { ports } = await failedRun('server.log', 3);
+    const h = harness({ ports });
+
+    await runCli(['run', 'checkout', '--json'], h);
+    const hint = envelope(h).error?.hint ?? '';
+    expect(hint).not.toContain('last 50 lines');
+    expect(hint).toContain('boot line 1');
+    expect(hint).toContain('boot line 3');
+  });
+
+  it('does the same for a retained install.log', async () => {
+    const { ports } = await failedRun('install.log', 4);
+    const h = harness({ ports });
+
+    await runCli(['run', 'checkout', '--json'], h);
+    expect(envelope(h).error?.hint).toContain('install.log');
+  });
+
+  it('falls back to naming the log when it cannot be read, and still exits 1', async () => {
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({
+          steps: [],
+          meta: fakeRunMeta({
+            status: 'failed',
+            failure: { kind: 'server-not-ready', message: 'never ready', logPath: 'server.log' },
+          }),
+        }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'checkout', '--json'], h)).toBe(EXIT.RUN_FAILURE);
+    expect(envelope(h).error?.hint).toBe('log: server.log');
   });
 });
 
@@ -570,6 +672,68 @@ describe('vdiff pin | prune', () => {
   });
 });
 
+/* ------------------------------------------------------------------ install */
+
+describe('vdiff install <harness>', () => {
+  it('emits the adapter report and exits 0', async () => {
+    const h = harness();
+    expect(await runCli(['install', 'claude-code', '--json'], h)).toBe(EXIT.OK);
+
+    const result = envelope<{
+      harness: string;
+      label: string;
+      root: string;
+      written: string[];
+      dryRun: boolean;
+    }>(h);
+    expect(result.command).toBe('install');
+    expect(result.data?.harness).toBe('claude-code');
+    expect(result.data?.label).toBe('Claude Code');
+    expect(result.data?.root).toBe('/project');
+    expect(result.data?.written).toContain('.claude/skills/visual-diff/SKILL.md');
+    expect(result.data?.dryRun).toBe(false);
+  });
+
+  it('exits 2 on an unknown harness and lists the supported ones', async () => {
+    const h = harness();
+    expect(await runCli(['install', 'opencode', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+
+    expect(envelope(h).error).toEqual({
+      code: 'unknown-harness',
+      message: "unknown harness 'opencode'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'supported harnesses: claude-code',
+    });
+  });
+
+  it('exits 2 when the harness argument is missing', async () => {
+    const h = harness();
+    expect(await runCli(['install', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    expect(envelope(h).error?.code).toBe('missing-argument');
+  });
+
+  it('hands --dir, --force and --dry-run to the adapter', async () => {
+    const seen: unknown[] = [];
+    const ports = createTestPorts({
+      installAdapter: async (id, root, options) => {
+        seen.push({ id, root, options });
+        return fakeInstallDetail();
+      },
+    });
+    const h = harness({ cwd: '/project', ports });
+
+    expect(
+      await runCli(['install', 'claude-code', '--dir', 'apps/web', '--force', '--dry-run'], h),
+    ).toBe(EXIT.OK);
+    expect(seen[0]).toEqual({
+      id: 'claude-code',
+      root: join('/project', 'apps/web'),
+      options: { force: true, dryRun: true },
+    });
+    expect(h.writer.stdout()).toContain('dry run');
+  });
+});
+
 /* ------------------------------------------------------------------ install-browser */
 
 describe('vdiff install-browser', () => {
@@ -693,6 +857,8 @@ describe('--json output purity (spec §11.6)', () => {
       { argv: ['diff', 'checkout', '0003', '0007', '--json'] },
       { argv: ['serve', '--json'] },
       { argv: ['feedback', '--json'] },
+      { argv: ['install', 'claude-code', '--json'], runtime: { cwd } },
+      { argv: ['install', 'nope', '--json'] },
       { argv: ['install-browser', '--json'] },
       { argv: ['--version', '--json'] },
       { argv: ['--help', '--json'] },

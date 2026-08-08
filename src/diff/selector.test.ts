@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isSupportedSelector, matchesAny, matchesSelector, selectorFor } from './selector.js';
+import {
+  ignoreSelectorWarnings,
+  isSupportedSelector,
+  matchesAny,
+  matchesSelector,
+  selectorFor,
+  unsupportedSelectors,
+} from './selector.js';
 import { domNode } from './testkit.js';
 
 const rect = { x: 0, y: 0, w: 10, h: 10 };
@@ -64,5 +71,26 @@ describe('matchesSelector', () => {
     expect(isSupportedSelector('div > .card')).toBe(false);
     expect(isSupportedSelector('div .card')).toBe(false);
     expect(isSupportedSelector('')).toBe(false);
+  });
+});
+
+describe('ignore selector warnings', () => {
+  it('lists only the entries that cannot be evaluated, once each', () => {
+    expect(
+      unsupportedSelectors(['.clock', 'div > .card', '[data-test=pay]', 'div > .card', 'a b']),
+    ).toEqual(['div > .card', 'a b']);
+  });
+
+  it('says nothing when every selector is supported', () => {
+    expect(ignoreSelectorWarnings(['.clock', '[data-test=pay]', 'div, span'])).toEqual([]);
+  });
+
+  it('names the selector and explains what is supported', () => {
+    const [warning, ...rest] = ignoreSelectorWarnings(['div > .card']);
+    expect(rest).toEqual([]);
+    expect(warning).toContain('diff.ignore');
+    expect(warning).toContain('"div > .card"');
+    expect(warning).toContain('matches nothing');
+    expect(warning).toContain('[attr=value]');
   });
 });

@@ -35,6 +35,7 @@ import { diff } from './commands/diff.js';
 import { feedback } from './commands/feedback.js';
 import { flowCheck, flowNew } from './commands/flow.js';
 import { init } from './commands/init.js';
+import { install } from './commands/install.js';
 import { installBrowser } from './commands/install-browser.js';
 import { pin, prune } from './commands/pin.js';
 import { run } from './commands/run.js';
@@ -74,6 +75,8 @@ async function dispatch(
       return pin(ctx, invocation);
     case 'prune':
       return prune(ctx, invocation);
+    case 'install':
+      return install(ctx, invocation);
     case 'install-browser':
       return installBrowser(ctx);
   }

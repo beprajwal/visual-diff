@@ -37,6 +37,15 @@ export type Invocation =
   | { kind: 'feedback'; ack: boolean; json: boolean }
   | { kind: 'pin'; flow?: string; runId: RunId; json: boolean }
   | { kind: 'prune'; flow?: string; runId: RunId; json: boolean }
+  | {
+      kind: 'install';
+      /** Harness id, validated against the adapter registry by the command, not here. */
+      harness: string;
+      dir?: string;
+      force: boolean;
+      dryRun: boolean;
+      json: boolean;
+    }
   | { kind: 'install-browser'; json: boolean };
 
 export type ParseOutcome =
@@ -137,6 +146,17 @@ export const COMMANDS: Record<string, CommandSpec> = {
     flags: flags(),
     minPositionals: 1,
     maxPositionals: 2,
+  },
+  install: {
+    usage: 'vdiff install <harness> [--dir <path>] [--force] [--dry-run]',
+    summary: 'write the skill and command files for an agent harness',
+    flags: flags({
+      dir: { type: 'string' },
+      force: { type: 'boolean' },
+      'dry-run': { type: 'boolean' },
+    }),
+    minPositionals: 1,
+    maxPositionals: 1,
   },
   'install-browser': {
     usage: 'vdiff install-browser',
@@ -464,6 +484,19 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       return flow === undefined
         ? { ok: true, value: { kind, runId, json } }
         : { ok: true, value: { kind, flow, runId, json } };
+    }
+
+    case 'install': {
+      const invocation: Extract<Invocation, { kind: 'install' }> = {
+        kind: 'install',
+        harness: positionals[0] as string,
+        force: bool(values, 'force'),
+        dryRun: bool(values, 'dry-run'),
+        json,
+      };
+      const dir = values['dir'];
+      if (typeof dir === 'string') invocation.dir = dir;
+      return { ok: true, value: invocation };
     }
 
     case 'install-browser':

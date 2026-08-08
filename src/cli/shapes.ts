@@ -10,6 +10,7 @@
  */
 
 import type {
+  AdapterId,
   DiffResult,
   FeedbackEntry,
   PairRef,
@@ -18,6 +19,7 @@ import type {
   ValidationIssue,
   ViewportId,
 } from '../types.js';
+import type { FileOutcome } from '../adapters/index.js';
 
 /** `vdiff init` — what the scaffold wrote, and what it left alone. */
 export interface InitData {
@@ -87,6 +89,23 @@ export interface PruneData {
   flow: string;
   runId: RunId;
   pruned: boolean;
+}
+
+/** `vdiff install <harness>` — the adapter files that were (or, with `--dry-run`, would be) written. */
+export interface InstallData {
+  harness: AdapterId;
+  /** Human name of the harness, e.g. "Claude Code". */
+  label: string;
+  /** Absolute directory the paths below are relative to. */
+  root: string;
+  /** Project-relative paths created or updated. */
+  written: string[];
+  /** Paths left alone: already current, or edited by a human and preserved. */
+  skipped: string[];
+  /** Per-file outcome, so a caller can tell `preserved` from `unchanged`. */
+  files: FileOutcome[];
+  /** True when nothing was actually written. */
+  dryRun: boolean;
 }
 
 /** `vdiff install-browser` */
