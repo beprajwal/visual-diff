@@ -1,0 +1,7 @@
+{
+  "order": 6,
+  "message": "Report confirmed orders to analytics",
+  "change": "introduced console error",
+  "expect": "A `console` finding at severity `high` on the `receipt` step, and a `console-error` warning on the run.",
+  "delete": []
+}

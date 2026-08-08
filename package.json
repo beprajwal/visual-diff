@@ -1,0 +1,64 @@
+{
+  "name": "visual-diff",
+  "version": "0.1.0",
+  "description": "Replay an agent-authored UI workflow across revisions, diff the results visually and semantically, and review them in a live local report.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "vdiff": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build:ts && npm run build:ui",
+    "build:ts": "tsc -p tsconfig.json",
+    "build:ui": "node scripts/build-ui.mjs",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run src",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "lint": "tsc -p tsconfig.test.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "visual-diff",
+    "visual-regression",
+    "playwright",
+    "screenshot",
+    "ui-diff",
+    "agent"
+  ],
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "citty": "^0.1.6",
+    "pixelmatch": "^6.0.0",
+    "playwright": "^1.49.0",
+    "pngjs": "^7.0.0",
+    "preact": "^10.25.4",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/pngjs": "^6.0.5",
+    "esbuild": "^0.25.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

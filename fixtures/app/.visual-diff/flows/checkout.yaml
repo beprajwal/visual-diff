@@ -1,0 +1,35 @@
+# Checkout flow for the fixture storefront.
+#
+# Step ids are stable and load-bearing (spec D4): commit 05 renames the pay button's selector and
+# keeps the `pay-click` id, which is what makes the diff report `spec-changed` instead of a bogus
+# removed/added pair.
+version: 1
+flow: checkout
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+# The fixture app is frontend-only, so there is no traffic to freeze.
+network:
+  mode: "off"
+
+steps:
+  - id: cart
+    goto: /
+    waitFor: "[data-test=cart-list]"
+    # The order date is the only non-deterministic thing on the page.
+    mask: ["[data-test=order-date]"]
+    shoot: true
+
+  - id: pay-click
+    click: "#pay"
+    waitFor: "[data-test=payment]"
+    shoot: false
+
+  - id: pay-form
+    waitFor: "[data-test=payment-form]"
+    shoot: true
+
+  - id: fill-card
+    fill:
+      "[name=card]": "4242424242424242"
+    shoot: true

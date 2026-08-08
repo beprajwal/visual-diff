@@ -1,0 +1,7 @@
+{
+  "order": 2,
+  "message": "Restyle the primary button: indigo, fully rounded",
+  "change": "restyle",
+  "expect": "`style` findings on the pay button with per-property changes (backgroundColor, borderColor, borderRadius) and no `content` finding. Box metrics are untouched, so no `layout` finding either.",
+  "delete": []
+}

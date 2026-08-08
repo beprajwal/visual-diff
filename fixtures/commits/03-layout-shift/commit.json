@@ -1,0 +1,7 @@
+{
+  "order": 3,
+  "message": "Give the order summary more breathing room",
+  "change": "layout shift",
+  "expect": "`layout` findings: the summary block and the pay button both move down 40px. Rect deltas, no text change.",
+  "delete": []
+}

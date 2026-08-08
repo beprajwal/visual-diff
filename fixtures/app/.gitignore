@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# spec §6 git boundary: flows and config are committed, everything else the tool writes is not.
+.visual-diff/*
+!.visual-diff/config.yaml
+!.visual-diff/flows/

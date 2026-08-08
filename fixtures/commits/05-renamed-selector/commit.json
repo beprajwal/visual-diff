@@ -1,0 +1,7 @@
+{
+  "order": 5,
+  "message": "Address the pay button by data-test instead of id",
+  "change": "renamed selector",
+  "expect": "`flowDiff` reports { id: 'pay-click', status: 'spec-changed', detail: \"selector '#pay' -> '[data-test=pay]'\" } — not a removed/added pair, because the step id is unchanged.",
+  "delete": []
+}

@@ -1,0 +1,7 @@
+{
+  "order": 4,
+  "message": "Add an order confirmation screen after payment",
+  "change": "added step",
+  "expect": "`flowDiff` gains { id: 'receipt', status: 'added' }; the payment step gains a `structural` finding for the new Place order button.",
+  "delete": []
+}

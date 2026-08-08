@@ -1,0 +1,7 @@
+{
+  "order": 1,
+  "message": "Say \"Pay now\" on the cart CTA",
+  "change": "label edit",
+  "expect": "One `content` finding on the cart step for the pay button: text \"Pay\" -> \"Pay now\", plus a width change on the same element.",
+  "delete": []
+}

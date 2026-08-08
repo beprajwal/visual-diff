@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>vdiff report</title>
+  </head>
+  <body>
+    <!--
+      Shell for the prebuilt report bundle (spec §9). The stylesheet is injected by the bundle
+      itself, so this page loads exactly one asset and makes no external request.
+      `report.js` is the esbuild output of src/report/ui/main.tsx.
+    -->
+    <div id="vdiff-root"></div>
+    <script type="module" src="./report.js"></script>
+  </body>
+</html>
