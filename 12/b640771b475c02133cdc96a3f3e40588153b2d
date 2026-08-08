@@ -1,0 +1,583 @@
+src/cli/shapes.ts
+  s_81bbe05709be29::t_5fe1d5448413f3 1-109
+src/store/index.test.ts
+  s_81bbe05709be29::t_e4c7358e30121a 1-99
+src/store/config.ts
+  s_81bbe05709be29::t_0b12fbcd94c3e1 1-92,96-117,119-146,148-258,260-348
+  s_81bbe05709be29::t_239cd36ab51b73 93-95
+  s_81bbe05709be29::t_f4ca050c44b31e 118,147
+  s_81bbe05709be29::t_082ca35746cfee 259
+src/runner/worktree.test.ts
+  s_81bbe05709be29::t_22d0061c8fba3c 70-75
+  s_81bbe05709be29::t_4603a391731e5a 1-69,76-93,100-146,150-181
+  s_81bbe05709be29::t_1a850648a9b55c 94-99
+  s_81bbe05709be29::t_b64ac94c5ffa93 147-149
+src/report/ui/components/SwipeView.tsx
+  s_81bbe05709be29::t_8092eb04d66f5e 98
+  s_81bbe05709be29::t_be2847206e6144 1-97,99-105
+src/cli/main.ts
+  s_81bbe05709be29::t_3a363af6540cea 130
+  s_81bbe05709be29::t_1bd86c0a992565 15
+  s_81bbe05709be29::t_250562fd7adf0a 1-14,16-129,131-150
+src/runner/git.ts
+  s_81bbe05709be29::t_b81a1e15b6cb1a 1-315
+src/store/paths.ts
+  s_81bbe05709be29::t_e0b4a884cd5503 1-427
+src/adapters/files.test.ts
+  s_81bbe05709be29::t_4dd846a49e32e2 1-195
+src/store/lock.test.ts
+  s_81bbe05709be29::t_c6d01a5e39a0bc 1-135
+fixtures/commits/01-label-edit/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+src/diff/regions.ts
+  s_81bbe05709be29::t_cfd2dbe70a4ae4 1-107,115-120,122-123,127,137-138,141-279
+  s_81bbe05709be29::t_3dccb1e87a7d4a 108-114,121,124-126,128-136,139-140
+src/diff/nodeDiff.ts
+  s_81bbe05709be29::t_0f13318a5ed611 57-58
+  s_81bbe05709be29::t_10db5f6136162a 1-56,59-148
+fixtures/app/.gitignore
+  s_81bbe05709be29::t_2186cc8642457b 1-7
+src/cli/args.ts
+  s_81bbe05709be29::t_d478b63a1320d9 293-298
+  s_81bbe05709be29::t_5068e8e961bfac 1-292,299-475
+src/flow/parse.ts
+  s_81bbe05709be29::t_74499f699a8571 1-365
+src/report/ui/components/Warnings.tsx
+  s_81bbe05709be29::t_997f481dcdb82d 1-68
+src/runner/determinism.test.ts
+  s_81bbe05709be29::t_0061789f9c29b9 131-133,135-136
+  s_81bbe05709be29::t_cf1569738ee4de 1-130,134,137-153
+src/cli/commands/diff.ts
+  s_81bbe05709be29::t_056ac233a9ebb4 1-15,22-48,50-131
+  s_81bbe05709be29::t_067a12398a8f31 16-21
+  s_81bbe05709be29::t_ac7024e918efa8 49
+fixtures/commits/06-console-error/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+src/store/snapshot.test.ts
+  s_81bbe05709be29::t_3859ed9b18c82e 39-40
+  s_81bbe05709be29::t_d48d734241b23c 1-38,41-71
+src/cli/output.test.ts
+  s_81bbe05709be29::t_a0539ca74ba00b 1-132
+src/adapters/claude-code/index.test.ts
+  s_81bbe05709be29::t_586439397fc6d5 1-208
+src/report/ui/keys.test.ts
+  s_81bbe05709be29::t_fadcdedfc4bf40 1-75
+fixtures/commits/04-added-step/files/src/main.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-46
+tsconfig.test.json
+  s_81bbe05709be29::t_a4c4720576c428 1-14
+fixtures/commits/02-restyle/files/src/styles.css
+  s_81bbe05709be29::t_5bd651c0013a7e 1-163
+src/diff/engine.ts
+  s_81bbe05709be29::t_5bd651c0013a7e 1-379,383-387,399-415,417-427
+  s_81bbe05709be29::t_d89854b8cc3065 380-382,388-398,416
+src/diff/flowDiff.test.ts
+  s_81bbe05709be29::t_c39c65c99ec0d4 1-143
+src/report/ui/components/ViewportTabs.tsx
+  s_81bbe05709be29::t_9595cdcb08c643 1-38
+src/report/server/diff-service.ts
+  s_81bbe05709be29::t_ce031996d26d62 1-153
+src/cli/commands/flow.ts
+  s_81bbe05709be29::t_5d5103fb9e38ed 1-112
+src/store/internal/duration.ts
+  s_81bbe05709be29::t_94d2068b828fb7 1-28
+src/store/index.ts
+  s_81bbe05709be29::t_194a398fbccdb1 57
+  s_81bbe05709be29::t_5230f27dda48e7 1-21,23-56,58-221
+  s_81bbe05709be29::t_445cf97803b0d4 22
+src/runner/index.ts
+  s_81bbe05709be29::t_d5a757490ad512 1-118
+fixtures/commits/06-console-error/files/src/analytics.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-14
+fixtures/app/index.html
+  s_81bbe05709be29::t_2ecb2c67e4ce03 1-13
+src/diff/regions.test.ts
+  s_81bbe05709be29::t_2e709572bce409 1-107,109-159
+  s_81bbe05709be29::t_2d5731f594550c 108
+src/diff/nodeMatch.ts
+  s_81bbe05709be29::t_5bd651c0013a7e 1-111
+src/report/ui/state.test.ts
+  s_81bbe05709be29::t_67f38a2f45aef1 1-73,75-78,80-85,87-90,102-153,159,161-165,167-461,463-539
+  s_81bbe05709be29::t_0e6152afd7b4d0 462
+  s_81bbe05709be29::t_5a993edf0dd8ee 154-158,160,166
+  s_81bbe05709be29::t_b89bd28289d827 74,79,86,91-101
+src/report/server/watcher.ts
+  s_81bbe05709be29::t_03db37e67b5a09 1-191
+src/store/run-load.test.ts
+  s_81bbe05709be29::t_e7d7303ad0628e 1-144
+src/diff/index.ts
+  s_81bbe05709be29::t_5cd44d654513fc 1-8,20-63,70-79
+  s_81bbe05709be29::t_cdaea5118a3470 9-19
+  s_81bbe05709be29::t_f753459a0609a8 64-69
+src/runner/git.test.ts
+  s_81bbe05709be29::t_1a850648a9b55c 94-99
+  s_81bbe05709be29::t_ec8648cbb4cbfc 1-93,100-177
+src/cli/deps.test.ts
+  s_81bbe05709be29::t_1fd57439c3a171 73
+  s_81bbe05709be29::t_30de9d88400593 1-72,74-90
+src/store/fixtures.ts
+  s_81bbe05709be29::t_7255d1315d1557 1-204
+src/runner/capture.test.ts
+  s_81bbe05709be29::t_39d22cb73042d4 1-116
+src/runner/viewport.test.ts
+  s_81bbe05709be29::t_339c56626e24e6 1-72
+src/report/ui/components/OverlayView.tsx
+  s_81bbe05709be29::t_3fd4cfb99e59c3 1-34
+src/flow/index.ts
+  s_81bbe05709be29::t_88eba00c8bb7f1 1-49
+tests/integration/history.test.ts
+  s_81bbe05709be29::t_4d52a493670a1c 1-58,67-130
+  s_81bbe05709be29::t_306e031799da1c 59-66
+src/adapters/claude-code/templates.ts
+  s_81bbe05709be29::t_382f708d751f71 1-173
+tests/integration/network-isolation.test.ts
+  s_81bbe05709be29::t_ccfc4e5f172bd8 139-159,161
+  s_81bbe05709be29::t_85c81890f7e96a 1-4,8-36,38-93,98-115,117,119-130,132-138,160,162-171,173-190
+  s_81bbe05709be29::t_575b9299ab0212 5-7,37
+  s_81bbe05709be29::t_9b449fa19fa9af 94-97,116,118,131,172
+src/report/server/server.ts
+  s_81bbe05709be29::t_05a6cf9bcbeb62 1-110,114-143,145-218
+  s_81bbe05709be29::t_6b89933c7c0220 144
+  s_81bbe05709be29::t_76a513894a8502 111-113
+src/store/diff-store.ts
+  s_81bbe05709be29::t_33cdecef1dd1fe 1-59,61-63,69-185
+  s_81bbe05709be29::t_f771d22455bd23 64-68
+  s_81bbe05709be29::t_7978f28e23cf7c 60
+fixtures/commits/06-console-error/files/src/main.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-48
+src/cli/command.ts
+  s_81bbe05709be29::t_9559caa53f8e19 1-49
+src/cli/commands/flow.test.ts
+  s_81bbe05709be29::t_c0eb9518b6ca14 1-138
+src/diff/severity.ts
+  s_81bbe05709be29::t_1408e075673b1a 1-190
+src/store/feedback-store.ts
+  s_81bbe05709be29::t_40627f44dfb0cc 1-191
+src/cli/process.ts
+  s_81bbe05709be29::t_54fea355d9bf68 1-45
+fixtures/app/.visual-diff/config.yaml
+  s_81bbe05709be29::t_d494b47d403b4e 1-21
+src/store/internal/json.test.ts
+  s_81bbe05709be29::t_55e9bdc36c5a7b 11
+  s_81bbe05709be29::t_ef10007c5f8b88 1-10,12-43
+fixtures/app/vite.config.js
+  s_81bbe05709be29::t_ae1dc8a9e35deb 1-17
+.gitignore
+  s_81bbe05709be29::t_c69ff8ee65cd5f 3
+tests/integration/report-api.test.ts
+  s_81bbe05709be29::t_63981335aba8e3 1-183,186-240,244-250
+  s_81bbe05709be29::t_21accb1768e3b4 184-185
+  s_81bbe05709be29::t_1a09528ef46d85 241-243
+fixtures/commits/05-renamed-selector/files/.visual-diff/flows/checkout.yaml
+  s_81bbe05709be29::t_5bd651c0013a7e 1-40
+src/diff/pixel.ts
+  s_81bbe05709be29::t_c683e891122f38 1-147
+src/cli/commands/feedback.ts
+  s_81bbe05709be29::t_6fa2391844fbbf 1-68
+src/runner/devserver.test.ts
+  s_81bbe05709be29::t_b195231b85f268 1-152
+fixtures/app/src/main.js
+  s_81bbe05709be29::t_9d0e32b84a3335 1-42
+fixtures/commits/01-label-edit/files/src/views.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-93
+src/report/server/assets.ts
+  s_81bbe05709be29::t_59346498580d31 1-85,88-117,120-154
+  s_81bbe05709be29::t_5575cb73b249b5 86-87
+  s_81bbe05709be29::t_78cf1a14657a7b 118-119
+src/report/ui/keys.ts
+  s_81bbe05709be29::t_7e1194c446c056 1-113
+src/store/revision.test.ts
+  s_81bbe05709be29::t_1a850648a9b55c 78-82
+  s_81bbe05709be29::t_e00b4839e77aa8 1-77,83-174
+src/store/lock.ts
+  s_81bbe05709be29::t_fb34486284054f 1-86,94-148
+  s_81bbe05709be29::t_478017f894a904 87-93
+src/report/ui/components/RightRail.tsx
+  s_81bbe05709be29::t_7be11f4df0383a 1-36,38-62,64-65
+  s_81bbe05709be29::t_7aef8e4381a37d 37
+  s_81bbe05709be29::t_0121d6da1ab302 63
+src/diff/flowDiff.ts
+  s_81bbe05709be29::t_7815bed42558a9 1-222
+src/runner/browser.ts
+  s_81bbe05709be29::t_5d55af13d2a233 1-140
+src/cli/main.test.ts
+  s_81bbe05709be29::t_0eb1c085a5664a 67-68
+  s_81bbe05709be29::t_0047611066d6b4 195-196
+  s_81bbe05709be29::t_a12c1d17ba7dc9 450
+  s_81bbe05709be29::t_5f5bc1a7d214ea 451
+  s_81bbe05709be29::t_4f8730e0578823 1-7,9-49,52-66,69-194,197-449,452-721
+  s_81bbe05709be29::t_a0b6c9ca144888 8
+  s_81bbe05709be29::t_de7bea0aac0b19 50-51
+src/store/errors.ts
+  s_81bbe05709be29::t_ba88b824bd37af 1-57
+src/adapters/content.test.ts
+  s_81bbe05709be29::t_9c52a16276e48a 74-79,82-83
+  s_81bbe05709be29::t_ac071e1f24a07d 1-73,84-160
+  s_81bbe05709be29::t_4bc3993f820464 80-81
+src/store/run-store.ts
+  s_81bbe05709be29::t_700129e35925b9 168-173,175-176,181
+  s_81bbe05709be29::t_99e318c0e6a8cf 21-28
+  s_81bbe05709be29::t_c16ddec439ad0b 283-290
+  s_81bbe05709be29::t_71c6172e6e4abc 1-20,29-167,174,177-180,182-282,291-389
+src/runner/run.ts
+  s_81bbe05709be29::t_25a25e45beea64 1-54,56,58-149,156-305,307-391,396-397,399,405-415,417,419-466,468-623
+  s_81bbe05709be29::t_21d305c08d6b55 150-155
+  s_81bbe05709be29::t_17f7cf2f48c842 306
+  s_81bbe05709be29::t_9f2f3295c9644b 55,392-395,398,400-404,416,418,467
+  s_81bbe05709be29::t_11dd6e8a6e8e8d 57
+src/flow/validate.ts
+  s_81bbe05709be29::t_9f7a88e3e3a2c3 1-146
+src/types.test.ts
+  s_81bbe05709be29::t_84686e550a94b9 1-187
+src/cli/commands/serve.ts
+  s_81bbe05709be29::t_bd67619fac66bd 1-24,27-30,32-40
+  s_81bbe05709be29::t_b2d4602fc3cb20 31
+  s_81bbe05709be29::t_4273d65cccdeaa 25-26
+src/adapters/claude-code/index.ts
+  s_81bbe05709be29::t_ab23fa953f756f 1-55,58-59
+  s_81bbe05709be29::t_6f8fdab7f6bf36 56-57,60-62
+src/flow/errors.ts
+  s_81bbe05709be29::t_2c19b242e32d95 1-75
+src/report/server/api.ts
+  s_81bbe05709be29::t_03ab2a1a2ac481 1-63
+src/report/ui/main.tsx
+  s_81bbe05709be29::t_afe82e5d5fd133 367
+  s_81bbe05709be29::t_a0f6ea03298e61 79
+  s_81bbe05709be29::t_5f5fafe8af7006 32,46,63,86,106-108,244,290-291,428
+  s_81bbe05709be29::t_088c6e0bb5359f 1-31,33-45,47-62,64-78,80-85,87-105,109-158,175-243,245-289,292-366,368-427,429-452
+  s_81bbe05709be29::t_551fb3f906ef39 159-174
+src/diff/selector.test.ts
+  s_81bbe05709be29::t_8df95fc939fc0d 1-68
+src/store/internal/id.test.ts
+  s_81bbe05709be29::t_ce1415deb0b55d 1-106
+fixtures/commits/05-renamed-selector/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+fixtures/app/src/styles.css
+  s_81bbe05709be29::t_7d91942c429ce6 1-163
+fixtures/commits/03-layout-shift/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+fixtures/commits/04-added-step/files/.visual-diff/flows/checkout.yaml
+  s_81bbe05709be29::t_5bd651c0013a7e 1-40
+src/report/ui/route.test.ts
+  s_81bbe05709be29::t_c0e201d7d71a71 1-92
+src/store/revision.ts
+  s_81bbe05709be29::t_99a2ca6dff2184 1-197
+src/report/ui/test-fixtures.ts
+  s_81bbe05709be29::t_d4aec270c883ef 1-165
+src/report/ui/client.test.ts
+  s_81bbe05709be29::t_caf5151c3fc30e 29-34
+  s_81bbe05709be29::t_8943fc4e298785 124
+  s_81bbe05709be29::t_9e591490584c82 1-28,35-123,125-212
+src/adapters/index.test.ts
+  s_81bbe05709be29::t_d78d074785912a 1
+  s_81bbe05709be29::t_ac8a03a779ddb0 2-50,52-59
+  s_81bbe05709be29::t_1949203bfae802 51
+src/report/server/index.ts
+  s_81bbe05709be29::t_93e95d41b00bd8 1-23
+src/adapters/index.ts
+  s_81bbe05709be29::t_b1f279edf08ccb 12,14,17-25,33,45
+  s_81bbe05709be29::t_35117306fd293d 74-79
+  s_81bbe05709be29::t_2955ac56625f95 1-11,13,15-16,26-32,34-44,46-73
+src/flow/schema.ts
+  s_81bbe05709be29::t_fe1816d1e9c48b 1-89
+src/store/feedback-store.test.ts
+  s_81bbe05709be29::t_f22532ec6c5635 1-174
+src/runner/deps.ts
+  s_81bbe05709be29::t_e6cdd3fc7e28e3 25-33,40
+  s_81bbe05709be29::t_32116676a74c42 1-24,34-39,41-185,187-290
+  s_81bbe05709be29::t_47a41d3851a30e 186
+fixtures/app/src/views.js
+  s_81bbe05709be29::t_c19aa351f4ebda 1-93
+fixtures/README.md
+  s_81bbe05709be29::t_f3fe639522db39 1-78
+src/runner/har.ts
+  s_81bbe05709be29::t_0ede8da1922187 1-85,159-182
+  s_81bbe05709be29::t_1201f1b5c16183 86-158
+src/version.test.ts
+  s_81bbe05709be29::t_8f8321e910ae84 1-17
+src/cli/templates.ts
+  s_81bbe05709be29::t_85533f158f010f 1-86
+src/report/server/http.ts
+  s_81bbe05709be29::t_14d6c9f824acc0 1-157
+src/diff/engine.test.ts
+  s_81bbe05709be29::t_44b5660dace706 1-440
+src/diff/severity.test.ts
+  s_81bbe05709be29::t_0e99a99d729593 1-166
+src/flow/serialize.ts
+  s_81bbe05709be29::t_49a00882ba9ff5 1-104
+src/runner/har.test.ts
+  s_81bbe05709be29::t_0c59faaebba414 1-102,105-112
+  s_81bbe05709be29::t_f3e85036415701 103-104
+fixtures/commits/04-added-step/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+src/store/run-store.test.ts
+  s_81bbe05709be29::t_39398e687d447b 1-109,114-115,118-171,174-262
+  s_81bbe05709be29::t_52a8b87c19a262 110-113,116-117
+  s_81bbe05709be29::t_ff49b4f68ad41d 172-173
+src/store/config.test.ts
+  s_81bbe05709be29::t_f267be7fd4660a 1-204
+src/report/server/feedback-api.ts
+  s_81bbe05709be29::t_3d9c74e260af04 1-89,91-120
+  s_81bbe05709be29::t_39a7630b6eedc6 90
+src/store/internal/fs.ts
+  s_81bbe05709be29::t_e669fe0b865e86 1-150
+src/flow/scaffold.ts
+  s_81bbe05709be29::t_bcf747cf1d5ca4 1-82
+src/types.ts
+  s_81bbe05709be29::t_f90ed33a2a05c3 1-855,862-947
+  s_81bbe05709be29::t_9b13c5abf71e80 856-861
+README.md
+  s_81bbe05709be29::t_9ba05141ce0572 1-86
+src/runner/replay.test.ts
+  s_81bbe05709be29::t_ee42a2faf9b8da 1-55
+src/store/internal/duration.test.ts
+  s_81bbe05709be29::t_1933c292cd63e4 1-42
+fixtures/.gitignore
+  s_81bbe05709be29::t_d5d831a0e95663 1-3
+src/flow/validate.test.ts
+  s_81bbe05709be29::t_34c6a3f29d8596 1-120
+src/report/ui/state.ts
+  s_81bbe05709be29::t_85665a35aff685 1-284,291-429,434-497
+  s_81bbe05709be29::t_6e575aaa80ee7e 285-290
+  s_81bbe05709be29::t_277e39e3b0bd92 430-433
+src/cli/error.ts
+  s_81bbe05709be29::t_24af8f9a247ad5 1-105
+src/runner/run.test.ts
+  s_81bbe05709be29::t_cde723efe019ba 44
+  s_81bbe05709be29::t_7f600107f1ed64 1-43,45-145
+src/store/internal/atomic.ts
+  s_81bbe05709be29::t_47981864e16d84 1-124
+src/version.ts
+  s_81bbe05709be29::t_6719a71f0b5d61 1-12
+src/store/snapshot.ts
+  s_81bbe05709be29::t_a3a43f6ae8ef9f 1-109
+src/report/server/store-reader.ts
+  s_81bbe05709be29::t_78a27ff872afad 1-329
+src/report/ui/styles.ts
+  s_81bbe05709be29::t_f21be78cda981b 407-408
+  s_81bbe05709be29::t_f70c375d8b2e67 1-182,184-406,409-597
+  s_81bbe05709be29::t_a9e3f317a099fc 183
+src/report/ui/components/Header.tsx
+  s_81bbe05709be29::t_fa6bf257a3cd69 1-151
+src/cli/testing.ts
+  s_81bbe05709be29::t_a31a309e684f0a 309
+  s_81bbe05709be29::t_bebcfb9c2889d8 1-308,310-315
+fixtures/app/package.json
+  s_81bbe05709be29::t_a0d0e40f278f15 1-15
+src/diff/pixel.test.ts
+  s_81bbe05709be29::t_177985ba885b05 1-103
+fixtures/commits/03-layout-shift/files/src/styles.css
+  s_81bbe05709be29::t_5bd651c0013a7e 1-163
+.npmignore
+  s_81bbe05709be29::t_4a233f661aa1e0 1-29
+src/report/ui/components/RegionLayer.tsx
+  s_81bbe05709be29::t_4e77c8e315ccdd 1-56
+src/report/ui/components/FocusPane.tsx
+  s_81bbe05709be29::t_f85a05bc6d5958 1-56,58-161,163-176,178-196,198-203
+  s_81bbe05709be29::t_3991e980a83495 57
+  s_81bbe05709be29::t_6a66c0b7d99545 162,177
+  s_81bbe05709be29::t_5f7a690aa7f302 197
+src/runner/replay.ts
+  s_81bbe05709be29::t_a8cd6993809709 1-508
+src/diff/color.ts
+  s_81bbe05709be29::t_acf73f40b3b535 1-150
+vitest.config.ts
+  s_81bbe05709be29::t_4e20b7090284a1 1-24
+src/diff/cache.ts
+  s_81bbe05709be29::t_0aba240398fb76 1-62
+tsconfig.json
+  s_81bbe05709be29::t_f0b86dfd25ff06 1-40
+src/index.ts
+  s_81bbe05709be29::t_4a168733458db8 1-54
+src/cli/commands/install-browser.ts
+  s_81bbe05709be29::t_beccd76d67ebbf 1-4,8-17,19-22,29,33,35,40-50,59-62,64,66-72,77-88
+  s_81bbe05709be29::t_d2f1931ac5152d 5-7,18,23-28,30-32,34,36-39,51-58,63,65,73-76
+src/flow/parse.test.ts
+  s_81bbe05709be29::t_30fbc38e0de34e 1-484
+src/store/internal/hash.ts
+  s_81bbe05709be29::t_2cfdc6507d897a 1-35
+src/report/index.ts
+  s_81bbe05709be29::t_29627ed4abf484 1-75
+src/report/ui/paths.test.ts
+  s_81bbe05709be29::t_fcd0b36ee9177f 1-75
+src/cli/index.ts
+  s_81bbe05709be29::t_581edcf19c7304 1-9
+src/report/ui/derive.ts
+  s_81bbe05709be29::t_3a14384f8a79f8 212
+  s_81bbe05709be29::t_df1e2ffb294d4d 1-211,213-266
+src/cli/version.ts
+  s_81bbe05709be29::t_ec63452fa352fc 1-13,16-41
+  s_81bbe05709be29::t_996c33c6e9bc6e 14-15
+src/pixelmatch.d.ts
+  s_81bbe05709be29::t_54d716fee75714 1-35
+src/report/ui/components/FindingItem.tsx
+  s_81bbe05709be29::t_11d60ae0011cc0 1-97
+src/runner/errors.ts
+  s_81bbe05709be29::t_46d01281e2abc6 1-74
+src/store/internal/id.ts
+  s_81bbe05709be29::t_7ae9504654b16a 1-104
+src/diff/geometry.ts
+  s_81bbe05709be29::t_9aa03328005074 1-106
+src/report/ui/paths.ts
+  s_81bbe05709be29::t_c4576259641453 16-22
+  s_81bbe05709be29::t_611eda880a141e 1-15,23-105
+src/diff/loadRun.ts
+  s_81bbe05709be29::t_b86e10e81164d1 1-193
+src/cli/args.test.ts
+  s_81bbe05709be29::t_7efe0898f732d6 1-234
+fixtures/build-history.mjs
+  s_81bbe05709be29::t_dc13891ccfd541 14,22-23,27,29-30,44-45,52-62,74-91,93-109,139-140,149-150,152,168-170,172-173,226-229,251-255,257,268-270,282,293,316-320,322-410,412-416,418,420-426,428-430,433-437,439-461,464-465,467-474,476,478,480-481,484,486-487,489-526,534,541,552-557,562,568-578,580-582,594-596,603-606
+  s_81bbe05709be29::t_edafa663906624 1-13,15-21,24-26,28,31-43,46-51,63-73,92,110-138,141-148,151,153-167,171,174-225,230-250,256,258-267,271-281,283-292,294-315,321,411,417,419,427,431-432,438,462-463,466,475,477,479,482-483,485,488,527-533,535-540,542-551,558-561,563-567,579,583-593,597-602
+tests/integration/step-failure.test.ts
+  s_81bbe05709be29::t_127077728769c4 1-157
+src/diff/findings.ts
+  s_81bbe05709be29::t_5bd651c0013a7e 1-95,118,120-182
+  s_81bbe05709be29::t_410e8cd950e14a 96-117,119
+fixtures/app/.visual-diff/flows/checkout.yaml
+  s_81bbe05709be29::t_07b880ec4c34b0 1-35
+src/report/ui/components/Filmstrip.tsx
+  s_81bbe05709be29::t_a2b25889589e60 1-67
+src/report/server/routes.ts
+  s_81bbe05709be29::t_c0c0dc1ba7e4f7 1-244
+src/diff/attribution.ts
+  s_81bbe05709be29::t_8f64de851fd121 21-27
+  s_81bbe05709be29::t_faabe979e2502c 1-20,28-67,72-73,75-81,83-99,113-127
+  s_81bbe05709be29::t_4ae36cf0ac22bd 68-71,74,82,100-112
+src/flow/hash.ts
+  s_81bbe05709be29::t_509a262bfca958 1-27
+src/store/internal/atomic.test.ts
+  s_81bbe05709be29::t_322aef6191a8cb 1-70
+src/report/ui/client.ts
+  s_81bbe05709be29::t_2565ca5eb19537 1-190
+src/diff/selector.ts
+  s_81bbe05709be29::t_f59f255d0bc0e4 1-126
+src/cli/ports.ts
+  s_81bbe05709be29::t_b2e359417b0d52 73-77
+  s_81bbe05709be29::t_6f23c2f68a6535 91-96
+  s_81bbe05709be29::t_6d0b6ecb8df828 1-72,78-90,97
+scripts/build-ui.mjs
+  s_81bbe05709be29::t_f77bf86cfafe41 1-86
+src/report/server/auth.ts
+  s_81bbe05709be29::t_a03daa60e8c0f2 1-62,65-128,131-132,134-171
+  s_81bbe05709be29::t_c4c9cda881dbef 129-130,133
+  s_81bbe05709be29::t_f3115d4a6b5f8e 63-64
+src/report/server/deps.ts
+  s_81bbe05709be29::t_be336c7de2e464 1-71
+src/diff/findings.test.ts
+  s_81bbe05709be29::t_99d0ece7d9c140 1-89
+src/runner/devserver.ts
+  s_81bbe05709be29::t_f99b726de29201 1-205
+fixtures/commits/04-added-step/files/src/views.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-114
+tests/integration/runner-determinism.test.ts
+  s_81bbe05709be29::t_be48636739b9fd 1-242
+tests/integration/cli-wiring.test.ts
+  s_81bbe05709be29::t_0334152dddc778 1-31,41-121,123-127,133-138,140-160,163-180
+  s_81bbe05709be29::t_1a09528ef46d85 122,128-132,139,161-162
+  s_81bbe05709be29::t_306e031799da1c 32-40
+src/cli/commands/run.ts
+  s_81bbe05709be29::t_d9b8bdde4a655b 31
+  s_81bbe05709be29::t_00165fce1e4577 1-13,15-30,32-97
+  s_81bbe05709be29::t_baeb73fceb9ebb 14
+src/store/retention.ts
+  s_81bbe05709be29::t_4cd09c78188d4b 1-147
+src/runner/worktree.ts
+  s_81bbe05709be29::t_2f0e4533b79f0f 1-140
+src/cli/commands/runs.ts
+  s_81bbe05709be29::t_4ee3a897fe8d2b 1-49
+docs/superpowers/plans/2026-08-08-visual-diff-implementation-plan.md
+  s_81bbe05709be29::t_222ac3fd53d478 1-1399
+src/store/run-load.ts
+  s_81bbe05709be29::t_394f76d5cdeb41 96-99
+  s_81bbe05709be29::t_50a71fdec56f9e 1-28,30-95,100-158
+  s_81bbe05709be29::t_27f695e5078b1a 29
+src/cli/commands/pin.ts
+  s_81bbe05709be29::t_989142b9e0afc9 1-52,54-96
+  s_81bbe05709be29::t_87949015fac28c 53
+src/cli/commands/init.test.ts
+  s_81bbe05709be29::t_69d1e25ba566c3 1-111
+src/runner/determinism.ts
+  s_81bbe05709be29::t_69ab6450c32273 1-148
+fixtures/commits/02-restyle/commit.json
+  s_81bbe05709be29::t_5bd651c0013a7e 1-7
+src/cli/deps.ts
+  s_81bbe05709be29::t_41c99af5de14e5 79-84
+  s_81bbe05709be29::t_ae9e1daa4595ea 12-16,23,25-26,29,39-40,50,52,60-62,71-78,85-130,133-134,139,141,143,154-156,178-182
+  s_81bbe05709be29::t_e42111f30fa9cd 70
+  s_81bbe05709be29::t_ce378aa392ad63 1-11,17-22,24,27-28,30-38,41-49,51,53-59,63-69,131-132,135-138,140,142,144-153,157-177,183-185
+src/report/ui/components/FeedbackBox.tsx
+  s_81bbe05709be29::t_13721fcb13aa4a 1-95
+src/report/server/sse.ts
+  s_81bbe05709be29::t_0f483ede547471 1-133
+src/adapters/content.ts
+  s_81bbe05709be29::t_16c8c07fb0990c 1-221,227,231-247
+  s_81bbe05709be29::t_11aa7db9561a7c 222-226,228-230
+src/store/internal/json.ts
+  s_81bbe05709be29::t_3b0141284763fd 1-34
+src/store/retention.test.ts
+  s_81bbe05709be29::t_49004a73a90ebb 1-182
+src/cli/commands/init.ts
+  s_81bbe05709be29::t_3ee64b38811378 1-89
+src/report/server/blobs.ts
+  s_81bbe05709be29::t_a5430b66ae8e63 1-48
+src/store/paths.test.ts
+  s_81bbe05709be29::t_daeecd9e63a105 1-135
+src/diff/nodeMatch.test.ts
+  s_81bbe05709be29::t_2987d1307fee7a 1-156
+src/store/diff-store.test.ts
+  s_81bbe05709be29::t_af655c4095f23d 1-179
+src/diff/edge.ts
+  s_81bbe05709be29::t_268629fa300b96 1-37
+src/report/ui/derive.test.ts
+  s_81bbe05709be29::t_4b43928cc29d64 57-58,65
+  s_81bbe05709be29::t_d4f125ff2d7908 1-56,59-64,66-178,180-183,185-206,211-215,218-304
+  s_81bbe05709be29::t_f83c7a8433f813 179,184
+  s_81bbe05709be29::t_08c384ac759a28 207-210,216-217
+src/report/ui/index.html
+  s_81bbe05709be29::t_7763046be8bd19 1-18
+package.json
+  s_81bbe05709be29::t_c6ff34bee6b84a 1-64
+src/cli/help.ts
+  s_81bbe05709be29::t_dce7677aefc919 1-52
+src/diff/testkit.ts
+  s_81bbe05709be29::t_195dbf422b8640 57-62
+  s_81bbe05709be29::t_8d34d34dc8b43a 1-56,63-274
+src/runner/viewport.ts
+  s_81bbe05709be29::t_60e340aacbb1ba 1-95
+src/diff/viewportDiff.ts
+  s_81bbe05709be29::t_ee6f436d617464 1-15,17-194,196-228,230-235,237-321
+  s_81bbe05709be29::t_d65b390704030d 229,236
+  s_81bbe05709be29::t_44a2db44f3c694 195
+  s_81bbe05709be29::t_28bb7c504eed82 16
+src/cli/output.ts
+  s_81bbe05709be29::t_ad1996addb6c6e 1-140
+fixtures/commits/05-renamed-selector/files/src/views.js
+  s_81bbe05709be29::t_5bd651c0013a7e 1-114
+src/runner/capture.ts
+  s_81bbe05709be29::t_94df567b999db9 313-316
+  s_81bbe05709be29::t_78a1779c910753 1-312,317-371
+src/report/ui/route.ts
+  s_81bbe05709be29::t_7e7b9276e91121 1-82
+src/diff/attribution.test.ts
+  s_81bbe05709be29::t_cebdd0d1938226 1-106
+src/adapters/files.ts
+  s_81bbe05709be29::t_c80f40b23af73c 1-157
+package-lock.json
+  s_81bbe05709be29::t_4ad45800ced26b 1-3209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "12b640771b475c02133cdc96a3f3e40588153b2d",
+  "prompts": {},
+  "sessions": {
+    "s_81bbe05709be29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c05a727-400c-4533-9612-0f1d4fd575b1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
