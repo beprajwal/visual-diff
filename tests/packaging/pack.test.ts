@@ -197,11 +197,12 @@ describe('the published tarball', () => {
 
   it('depends on playwright-core, never on playwright — npx must not pay for a browser download', () => {
     expect(Object.keys(manifest.dependencies ?? {})).toContain('playwright-core');
-    // `playwright` pulls a test runner this tool never uses and is the package that has carried a
-    // browser-downloading install hook. It may stay a devDependency — a consumer never installs
-    // those — but it must never be something `npx @beprajwal/visual-diff --help` has to fetch first.
+    // `playwright` pulls a test runner this tool never uses and carries a browser-downloading
+    // install hook. It is absent entirely — not even a devDependency: the browser-backed tests
+    // probe through `playwright-core`, the same package the product launches Chromium with, so
+    // nothing installs a second copy of Playwright or triggers its postinstall download in CI.
     expect(Object.keys(manifest.dependencies ?? {})).not.toContain('playwright');
-    expect(Object.keys(manifest.devDependencies ?? {})).toContain('playwright');
+    expect(Object.keys(manifest.devDependencies ?? {})).not.toContain('playwright');
   });
 
   it('declares no runtime dependency nothing imports', async () => {

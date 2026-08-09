@@ -106,7 +106,7 @@ const requireCjs = createRequire(import.meta.url);
 function chromiumReason(): string | null {
   let path: string;
   try {
-    const { chromium } = requireCjs('playwright') as typeof import('playwright');
+    const { chromium } = requireCjs('playwright-core') as typeof import('playwright-core');
     path = chromium.executablePath();
   } catch (error) {
     return `Playwright could not be loaded: ${(error as Error).message}`;

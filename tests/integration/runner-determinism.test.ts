@@ -35,7 +35,7 @@ import { runFlow } from '../../src/runner/index.js';
 function chromiumAvailable(): boolean {
   try {
     // Resolved without launching: `executablePath()` is a pure path computation.
-    const { chromium } = require('playwright') as typeof import('playwright');
+    const { chromium } = require('playwright-core') as typeof import('playwright-core');
     return existsSync(chromium.executablePath());
   } catch {
     return false;

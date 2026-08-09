@@ -77,6 +77,21 @@ jobs:
         if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: node dist/cli/index.js install-browser
 
+      # The browser binary links against system libraries the cache never restores. Without them
+      # Chromium dies during startup and Playwright waits for a handshake that never arrives, so
+      # the failure looks like a hung test rather than a launch error.
+      - name: Install browser system dependencies
+        run: sudo npx --yes playwright install-deps chromium
+
+      - name: Chromium smoke test
+        run: |
+          node --input-type=module -e "
+            import { chromium } from 'playwright-core';
+            const browser = await chromium.launch({ headless: true });
+            console.log('launched:', browser.version());
+            await browser.close();
+          "
+
       # The full suite gates the release. A version that cannot pass its own determinism test has
       # no business being published.
       - name: Test

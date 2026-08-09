@@ -22,7 +22,7 @@ import { runFlow } from '../../src/runner/index.js';
 
 function chromiumAvailable(): boolean {
   try {
-    const { chromium } = require('playwright') as typeof import('playwright');
+    const { chromium } = require('playwright-core') as typeof import('playwright-core');
     return existsSync(chromium.executablePath());
   } catch {
     return false;

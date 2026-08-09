@@ -54,6 +54,23 @@ jobs:
         if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: node dist/cli/index.js install-browser
 
+      # `install-browser` fetches the browser, not the shared libraries it links against. Without
+      # these the process dies during startup and Playwright waits for a handshake that never
+      # arrives — which surfaces as a hung beforeAll, not as a launch error. Cached browsers need
+      # this too: the cache restores the binary, never the system packages.
+      - name: Install browser system dependencies
+        run: sudo npx --yes playwright install-deps chromium
+
+      # Fail in seconds with a real error rather than after four 240s hook timeouts.
+      - name: Chromium smoke test
+        run: |
+          node --input-type=module -e "
+            import { chromium } from 'playwright-core';
+            const browser = await chromium.launch({ headless: true });
+            console.log('launched:', browser.version());
+            await browser.close();
+          "
+
       - name: Test
         run: npm test
 
