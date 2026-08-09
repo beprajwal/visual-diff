@@ -187,10 +187,20 @@ target SHA during historical replay, exactly as flow specs are under D4.
 { "runId": "0007", "flow": "forecast", "scenario": "empty-forecast", "network": "replay", … }
 ```
 
-`runs/<flow>/<scenario>/<nnnn>/` is tidier and was rejected: it relocates every existing run and
-requires migrating a directory users already have on disk. An extra field costs nothing, every
-slice-1 run stays readable with scenario defaulting to `none`, and run ids stay monotonic per flow
-so the timeline remains one honest sequence of what was captured.
+`runs/<flow>/<scenario>/<nnnn>/` is tidier and was rejected on four grounds. Migration is *not* one
+of them — no store exists in the wild yet, so relocating runs would cost nothing today:
+
+1. **Scenario is an attribute of a run, not a level of hierarchy.** So are revision and viewport.
+   Promoting one of them into the path privileges it permanently and fights every other grouping the
+   report might want.
+2. **Run ids stay monotonic per flow**, so the timeline is one honest sequence of what was captured,
+   in order, regardless of scenario. Per-scenario counters would make `0007` ambiguous.
+3. **Filtering at query time is trivial; grouping at path time is rigid.** Regrouping by revision, or
+   listing every scenario captured at one SHA, needs no directory reshuffle.
+4. **Scenario names would become path components**, inheriting case-insensitivity on macOS and
+   Windows, reserved device names, and escaping rules. A validated YAML field has none of that.
+
+Slice-1 runs remain readable either way, with scenario defaulting to `none`.
 
 **Retention becomes scenario-aware** — the last 20 runs per `(flow, scenario)`, not per flow.
 Otherwise a frequently-run scenario evicts the history of a rarely-run one, which is backwards: the
