@@ -54,7 +54,8 @@
     "test:slow": "vitest run --config tests/slow/vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "tsc -p tsconfig.test.json --noEmit",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts"
   },
   "keywords": [
     "visual-diff",
