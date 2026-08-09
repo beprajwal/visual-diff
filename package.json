@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Replay an agent-authored UI workflow across revisions, diff the results visually and semantically, and review them in a live local report.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beprajwal/visual-diff.git"
+  },
+  "homepage": "https://github.com/beprajwal/visual-diff#readme",
+  "bugs": {
+    "url": "https://github.com/beprajwal/visual-diff/issues"
+  },
   "type": "module",
   "bin": {
     "vdiff": "./dist/cli/index.js"
