@@ -1,0 +1,31 @@
+docs/superpowers/specs/2026-08-10-harness-packaging-design.md
+  s_81bbe05709be29::t_a0fe33e303dcde 1-191
+docs/superpowers/specs/2026-08-10-e2e-mode-design.md
+  s_63a46ecbc6f681::t_5cfd9d5b991ce8 1-185
+docs/superpowers/specs/2026-08-10-variants-design.md
+  s_63a46ecbc6f681::t_5437cfe8489b74 1-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "e859bc372a31444ab0093911cfa4e0e626739553",
+  "prompts": {},
+  "sessions": {
+    "s_63a46ecbc6f681": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9640a5c0-589d-4f42-8ab9-dc846b6df457",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_81bbe05709be29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c05a727-400c-4533-9612-0f1d4fd575b1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
