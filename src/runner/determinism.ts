@@ -47,7 +47,15 @@ export const CHROMIUM_LAUNCH_ARGS: readonly string[] = [
   '--disable-lcd-text',
   '--disable-skia-runtime-opts',
   '--disable-back-forward-cache',
-  '--deterministic-mode',
+  // NOT `--deterministic-mode`. It is a meta-flag that implies `--enable-begin-frame-control`,
+  // which stops the compositor producing frames on its own and waits for BeginFrame messages
+  // Playwright never sends — so `page.screenshot()` never returns. On macOS it happens to work;
+  // on Linux headless it hangs forever, which is why this only ever failed in CI. The three flags
+  // below are the parts of it worth having: they remove the threaded, time-dependent rendering
+  // that makes two captures of an identical page differ.
+  '--disable-threaded-animation',
+  '--disable-threaded-scrolling',
+  '--disable-checker-imaging',
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--disable-ipc-flooding-protection',

@@ -143,6 +143,22 @@ describe('launch configuration', () => {
     expect(CHROMIUM_LAUNCH_ARGS.some((arg) => arg.includes('OverlayScrollbar'))).toBe(true);
   });
 
+  it('never enables begin-frame control, which hangs screenshots on Linux headless', () => {
+    // `--deterministic-mode` reads like exactly what this tool wants, and was used here until it
+    // hung every browser-backed test in CI. It implies `--enable-begin-frame-control`, which stops
+    // the compositor producing frames on its own; Playwright never sends BeginFrame, so
+    // `page.screenshot()` never resolves. It works on macOS, so this cannot be caught locally.
+    expect(CHROMIUM_LAUNCH_ARGS).not.toContain('--deterministic-mode');
+    expect(CHROMIUM_LAUNCH_ARGS).not.toContain('--enable-begin-frame-control');
+    expect(CHROMIUM_LAUNCH_ARGS).not.toContain('--run-all-compositor-stages-before-draw');
+
+    // What is worth keeping from it: threaded, time-dependent rendering is what makes two captures
+    // of an identical page differ.
+    expect(CHROMIUM_LAUNCH_ARGS).toContain('--disable-threaded-animation');
+    expect(CHROMIUM_LAUNCH_ARGS).toContain('--disable-threaded-scrolling');
+    expect(CHROMIUM_LAUNCH_ARGS).toContain('--disable-checker-imaging');
+  });
+
   it('forces UTC and en-US on spawned dev servers and passes the allocated port', () => {
     const env = deterministicEnv(4321, { PATH: '/usr/bin', TZ: 'Europe/Berlin' });
     expect(env.PORT).toBe('4321');
