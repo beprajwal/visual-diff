@@ -9,9 +9,13 @@ name: Release
 # published tarball back to this workflow run and commit. That requires `id-token: write`
 # below and only works from CI — a publish from a laptop cannot produce it.
 #
-# Auth: if the npm account has this repo configured as a trusted publisher, OIDC alone is
-# enough and NPM_TOKEN can be removed. Otherwise add a granular automation token as the
-# NPM_TOKEN repository secret.
+# Auth is trusted publishing: npm has this repo and this workflow file registered as a trusted
+# publisher, so the OIDC token minted below is exchanged for a short-lived credential. There is no
+# NPM_TOKEN secret — nothing to leak or rotate, and no other workflow in this repo can publish.
+#
+# The OIDC claim must match npm's configuration exactly. This job declares no `environment:`,
+# because none is configured on the npm side. If you add one, add it in BOTH places or the
+# exchange is rejected.
 
 on:
   push:
@@ -30,7 +34,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: npm-publish
 
     steps:
       - uses: actions/checkout@v4
@@ -97,14 +100,17 @@ jobs:
       - name: Test
         run: npm test
 
+      # Trusted publishing needs a newer npm than Node 20 bundles. It exchanges the OIDC token
+      # minted by `id-token: write` above for a short-lived credential, so there is no NPM_TOKEN
+      # secret in this repo — nothing to leak, nothing to rotate, and only this workflow file can
+      # publish. Provenance is generated automatically as part of that exchange.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm
         if: github.event_name == 'push' || inputs.dry_run == false
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Dry run (no publish)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
         run: npm publish --provenance --access public --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
