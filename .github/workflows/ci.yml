@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # Chromium lives outside node_modules, so it needs its own cache. The key is tied to the
+      # playwright-core version: a bumped dependency must fetch a matching browser build, and a
+      # stale browser is how determinism tests fail for reasons unrelated to the change under test.
+      - name: Resolve playwright-core version
+        id: pw
+        run: echo "version=$(node -p "require('./node_modules/playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # Dogfooding on purpose: if `vdiff install-browser` breaks, CI finds out before a user does.
+      - name: Install Chromium
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: node dist/cli/index.js install-browser
+
+      - name: Test
+        run: npm test
+
+      # The slow suite (real worktree + npm install + replay at a historical SHA) is deliberately
+      # excluded: it takes minutes and needs network inside the worktree. Run it with
+      # `npm run test:slow` locally, or via workflow_dispatch on the slow-path job below.
+
+  pack:
+    name: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      # Guards the npx story: the tarball must stay small, must not leak sources or sourcemaps,
+      # and must actually contain the skills that ship alongside the CLI.
+      - name: Pack and inspect the tarball
+        run: |
+          npm pack --dry-run --json --ignore-scripts > /dev/null || true
+          npm run build
+          npm pack --ignore-scripts
+          TARBALL=$(ls -t ./*.tgz | head -1)
+          echo "tarball: $TARBALL"
+          tar -tzf "$TARBALL" > /tmp/pack-list.txt
+          wc -l < /tmp/pack-list.txt
+
+          fail=0
+          if grep -q '\.map$' /tmp/pack-list.txt; then
+            echo "::error::sourcemaps present in the published tarball"; fail=1
+          fi
+          if grep -qE 'package/src/|\.test\.' /tmp/pack-list.txt; then
+            echo "::error::sources or tests leaked into the published tarball"; fail=1
+          fi
+          for skill in visual-diff visual-diff-flows visual-diff-review; do
+            if ! grep -q "package/dist/skills/$skill/SKILL.md" /tmp/pack-list.txt; then
+              echo "::error::skill $skill is missing from the tarball"; fail=1
+            fi
+          done
+          if ! grep -q 'package/dist/skills/manifest.json' /tmp/pack-list.txt; then
+            echo "::error::skills manifest is missing from the tarball"; fail=1
+          fi
+          exit $fail
+
+  slow:
+    name: slow path (historical replay)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node dist/cli/index.js install-browser
+      - run: npm run test:slow

@@ -1,0 +1,95 @@
+name: Release
+
+# Dormant until you push a version tag. Nothing here runs on a normal push.
+#
+#   npm version minor        # bumps package.json and creates the tag
+#   git push --follow-tags   # this workflow takes it from there
+#
+# Publishing uses npm provenance: the registry records a signed, verifiable link from the
+# published tarball back to this workflow run and commit. That requires `id-token: write`
+# below and only works from CI — a publish from a laptop cannot produce it.
+#
+# Auth: if the npm account has this repo configured as a trusted publisher, OIDC alone is
+# enough and NPM_TOKEN can be removed. Otherwise add a granular automation token as the
+# NPM_TOKEN repository secret.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run every check and pack the tarball, but do not publish'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # A tag that disagrees with package.json publishes a version nobody can trace back to a
+      # commit, which is exactly what provenance is supposed to prevent.
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Resolve playwright-core version
+        id: pw
+        run: echo "version=$(node -p "require('./node_modules/playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: node dist/cli/index.js install-browser
+
+      # The full suite gates the release. A version that cannot pass its own determinism test has
+      # no business being published.
+      - name: Test
+        run: npm test
+
+      - name: Publish to npm
+        if: github.event_name == 'push' || inputs.dry_run == false
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run (no publish)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        run: npm publish --provenance --access public --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
