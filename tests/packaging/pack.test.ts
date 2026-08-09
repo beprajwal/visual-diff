@@ -100,7 +100,12 @@ describe('the published tarball', () => {
   });
 
   it('declares a bin and ships the file it points at', async () => {
-    expect(manifest.bin).toEqual({ vdiff: './dist/cli/index.js' });
+    expect(manifest.bin).toEqual({ vdiff: 'dist/cli/index.js' });
+
+    // A `./` prefix makes `npm publish` warn `"bin[vdiff]" script name ... was invalid and
+    // removed` and strip the entry from the manifest it sends to the registry — which would
+    // leave `npx @beprajwal/visual-diff` with no command to run. Keep the path bare.
+    expect(manifest.bin?.['vdiff']).not.toMatch(/^\.?\//);
 
     const bin = resolve(pkgDir, manifest.bin?.['vdiff'] ?? '');
     const info = await stat(bin);
