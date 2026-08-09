@@ -25,6 +25,14 @@ export type SpawnFn = (
 export interface CommandContext {
   /** Directory the user invoked `vdiff` from. */
   cwd: string;
+  /**
+   * The user's home directory — the root a `--global` install writes under (D16).
+   *
+   * Optional so that a test may construct a context without one; `main()` always supplies
+   * `os.homedir()`. Injected rather than read at the point of use because a test that resolved the
+   * real home directory would install into the machine running it.
+   */
+  home?: string;
   ports: Ports;
   /** Tool version, stamped into every envelope. */
   version: string;

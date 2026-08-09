@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { splitFrontmatter, withFrontmatter, yamlList, yamlString } from './frontmatter.js';
+import {
+  splitFrontmatter,
+  withFrontmatter,
+  yamlList,
+  yamlString,
+  yamlUnquote,
+} from './frontmatter.js';
 
 describe('yamlString', () => {
   it('quotes and escapes so a description can never change the parse', () => {
@@ -59,5 +65,72 @@ describe('splitFrontmatter', () => {
 
   it('tolerates CRLF input', () => {
     expect(splitFrontmatter('---\r\nname: x\r\n---\r\nbody\r\n')?.fields).toEqual({ name: 'x' });
+  });
+});
+
+describe('yamlUnquote', () => {
+  it('undoes yamlString', () => {
+    for (const value of ['plain', 'has: a colon', 'a "quoted" word', 'back\\slash']) {
+      expect(yamlUnquote(yamlString(value))).toBe(value);
+    }
+  });
+
+  it('leaves a bare scalar alone', () => {
+    expect(yamlUnquote('0.2.0')).toBe('0.2.0');
+    expect(yamlUnquote('  [flow]  ')).toBe('[flow]');
+    expect(yamlUnquote('"')).toBe('"');
+  });
+});
+
+describe('withFrontmatter — nested maps (D17)', () => {
+  it('emits a map as an indented block under a bare key', () => {
+    const doc = withFrontmatter(
+      [
+        ['name', 'x'],
+        ['metadata', { 'x-vdiff-version': '"0.2.0"', 'x-vdiff-source': '"pkg"' }],
+      ],
+      '# body',
+    );
+    expect(doc).toBe(
+      '---\nname: x\nmetadata:\n  x-vdiff-version: "0.2.0"\n  x-vdiff-source: "pkg"\n---\n\n# body\n',
+    );
+  });
+
+  it('drops an empty map rather than emitting a bare key YAML reads as null', () => {
+    expect(withFrontmatter([['name', 'x'], ['metadata', {}]], '# body')).toBe(
+      '---\nname: x\n---\n\n# body\n',
+    );
+  });
+
+  it('round-trips a nested field as a dotted key', () => {
+    const doc = withFrontmatter(
+      [
+        ['name', 'visual-diff'],
+        ['metadata', { 'x-vdiff-version': yamlString('0.2.0') }],
+      ],
+      '# body',
+    );
+    const split = splitFrontmatter(doc);
+    expect(split?.fields).toEqual({
+      name: 'visual-diff',
+      metadata: '',
+      'metadata.x-vdiff-version': '"0.2.0"',
+    });
+    expect(yamlUnquote(split?.fields['metadata.x-vdiff-version'] ?? '')).toBe('0.2.0');
+    expect(split?.body.trim()).toBe('# body');
+  });
+
+  it('does not mistake a later top-level key for a child of the map', () => {
+    const doc = withFrontmatter(
+      [
+        ['metadata', { a: '"1"' }],
+        ['description', '"after"'],
+      ],
+      '# body',
+    );
+    const split = splitFrontmatter(doc);
+    expect(split?.fields['metadata.a']).toBe('"1"');
+    expect(split?.fields['description']).toBe('"after"');
+    expect(split?.fields['metadata.description']).toBeUndefined();
   });
 });

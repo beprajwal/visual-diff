@@ -18,17 +18,32 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
 
+import { applyBlock } from './blocks.js';
+
 /** Bumped only if the stamp format itself changes. */
 export const MANAGED_STAMP_VERSION = 'v1';
 
 const STAMP_RE = /^<!--\s*vdiff:managed\s+(v\d+)\s+sha256:([0-9a-f]{64})\s*-->$/;
 
+/**
+ * How much of a file this tool owns.
+ *
+ * - `file`  — all of it. The body is written verbatim above a stamp line, and a human edit is
+ *   detected and preserved. This is every skill and command file.
+ * - `block` — only the span between the `vdiff` markers (D19). The file belongs to the user, so
+ *   there is no stamp, nothing is ever preserved-and-skipped (nothing of theirs is at risk), and a
+ *   malformed block throws instead of guessing.
+ */
+export type ManagedMode = 'file' | 'block';
+
 /** One file an adapter wants to exist, addressed relative to the project root. */
 export interface ManagedFile {
   /** Path relative to the project root, always with `/` separators. */
   path: string;
-  /** Markdown body, written verbatim above the stamp line. */
+  /** Markdown body, written verbatim above the stamp line — or into the block, in `block` mode. */
   body: string;
+  /** Defaults to `file`. */
+  mode?: ManagedMode;
 }
 
 /**
@@ -126,8 +141,28 @@ async function readIfPresent(path: string): Promise<string | null> {
 }
 
 /**
+ * The decision for a block-managed file (D19). Pure, and it never returns `preserved`: the user's
+ * bytes outside the block are kept whatever happens, so there is nothing to refuse.
+ */
+export function planBlock(
+  existing: string | null,
+  body: string,
+  path: string,
+): { status: FileStatus; content: string } {
+  const content = applyBlock(existing, body, path);
+  if (existing === null) return { status: 'created', content };
+  return { status: content === existing ? 'unchanged' : 'updated', content };
+}
+
+/**
  * Write every managed file under `root`, honouring the preserve rule above.
- * Reused verbatim by later harness adapters — only the file list differs.
+ *
+ * Shared by all four harness adapters — only the file list differs, and a "global" install is the
+ * same relative paths written under the home directory rather than the project root, which is why
+ * every path here must stay relative.
+ *
+ * A `block`-mode file whose markers are malformed throws {@link MalformedBlockError} rather than
+ * being silently skipped, including under `--dry-run`: the point of a dry run is to find out.
  */
 export async function writeManagedFiles(
   root: string,
@@ -139,11 +174,21 @@ export async function writeManagedFiles(
   for (const file of files) {
     const target = resolveInsideRoot(root, file.path);
     const existing = await readIfPresent(target);
-    const status = planFile(existing, file.body, options.force ?? false);
+
+    let status: FileStatus;
+    let content: string;
+    if ((file.mode ?? 'file') === 'block') {
+      const planned = planBlock(existing, file.body, file.path);
+      status = planned.status;
+      content = planned.content;
+    } else {
+      status = planFile(existing, file.body, options.force ?? false);
+      content = renderManaged(file.body);
+    }
 
     if (!options.dryRun && (status === 'created' || status === 'updated')) {
       await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, renderManaged(file.body), 'utf8');
+      await writeFile(target, content, 'utf8');
     }
 
     outcomes.push({ path: file.path, status });

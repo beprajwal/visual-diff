@@ -1,59 +1,85 @@
 /**
- * Adapter registry (spec §5).
+ * Adapter registry (spec §5; harness-packaging spec §4).
  *
- * Slice 1 registers exactly one adapter. The registry exists so the Codex, opencode and pi adapters
- * of subsystem 1 drop in without restructuring anything: add a module next to `claude-code/`, add it
- * to `ADAPTERS`, widen `AdapterId` in `src/types.ts`. The prose they install is shared — it lives as
- * real markdown under `skills/` and is loaded by `source.ts` — so a new adapter contributes only
- * frontmatter and file paths.
+ * The registry is data. `harnesses.ts` holds one row per agent — id, label, three optional targets
+ * and a frontmatter function — `compose.ts` turns a row plus the shipped `skills/` sources into a
+ * file list, and `registry.ts` wraps that in an adapter. Adding a fifth harness is a row in the
+ * table; there is no per-harness code left to write.
+ *
+ * The prose is shared: it lives as real markdown under `skills/`, is loaded by `source.ts`, and is
+ * copied verbatim. Everything harness-specific is introduced at install time, in three places and
+ * no others — frontmatter, the composed "## Also installed" pointer, and the `AGENTS.md` block.
+ * The shipped SKILL.md bodies staying neutral is what makes that possible, and a test enforces it.
  *
  * Nothing here imports the CLI, the runner, or the diff engine — installing an adapter must not
  * pull the whole tool into memory.
  */
 
-import type { Adapter, AdapterId } from '../types.js';
-import type { ManagedFile, WriteOptions } from './files.js';
-import type { AdapterInstallDetail } from './claude-code/index.js';
-import { claudeCodeAdapter } from './claude-code/index.js';
+export {
+  ADAPTERS,
+  createAdapter,
+  getAdapter,
+  harnessFiles,
+  installAdapter,
+  installHarness,
+  listAdapters,
+} from './registry.js';
+export type {
+  HarnessAdapter,
+  HarnessInstallDetail,
+  InstallOptions,
+} from './registry.js';
 
-/**
- * `Adapter` from `src/types.ts` is the contract the CLI codes against. Registered adapters satisfy
- * it and additionally accept the install options (`force`, `dryRun`), return per-file detail, and
- * can describe what they would write without being given a project root.
- */
-export interface HarnessAdapter extends Adapter {
-  install(root: string, options?: WriteOptions): Promise<AdapterInstallDetail>;
-  /** Every file this adapter would write, fully composed. Touches no project directory. */
-  files(): Promise<ManagedFile[]>;
-}
+export {
+  CLAUDE_CODE,
+  CODEX,
+  HARNESSES,
+  HARNESS_IDS,
+  HARNESS_NOTES,
+  INSTALL_SCOPES,
+  METADATA_KEY,
+  OPENCODE,
+  PI,
+  SOURCE_KEY,
+  VDIFF_SOURCE,
+  VERSION_KEY,
+  getHarness,
+  isHarnessId,
+  targetPath,
+  versionStamp,
+} from './harnesses.js';
+export type { Harness, HarnessId, InstallScope, SkillMeta, Target } from './harnesses.js';
 
-export const ADAPTERS: readonly HarnessAdapter[] = [claudeCodeAdapter];
+export {
+  MAX_DESCRIPTION_LENGTH,
+  SKILL_NAME_RE,
+  blockStampLine,
+  commandFilePath,
+  composeCommandFile,
+  composeFiles,
+  composeInstructionsFile,
+  composeSkillFile,
+  harnessTargets,
+  instructionsContent,
+  readBlockStamp,
+  readFrontmatterStamp,
+  readInstalledVersion,
+  sharesSkillsDirectory,
+  skillFilePath,
+  validateSkillMeta,
+} from './compose.js';
+export type { ComposeContext, HarnessTargets } from './compose.js';
 
-/** Every registered harness id, in registration order. */
-export function listAdapters(): AdapterId[] {
-  return ADAPTERS.map((adapter) => adapter.id);
-}
-
-/** The adapter for an id, or undefined when the id is not registered. */
-export function getAdapter(id: string): HarnessAdapter | undefined {
-  return ADAPTERS.find((adapter) => adapter.id === id);
-}
-
-/**
- * Install one harness's files under `root`.
- * Throws on an unknown id — the caller (the CLI) maps that to exit code 2.
- */
-export async function installAdapter(
-  id: string,
-  root: string,
-  options: WriteOptions = {},
-): Promise<AdapterInstallDetail> {
-  const adapter = getAdapter(id);
-  if (!adapter) {
-    throw new Error(`unknown adapter '${id}'. Available: ${listAdapters().join(', ')}`);
-  }
-  return adapter.install(root, options);
-}
+export {
+  BLOCK_END,
+  BLOCK_START,
+  MalformedBlockError,
+  applyBlock,
+  findBlock,
+  readBlock,
+  renderBlock,
+} from './blocks.js';
+export type { BlockSpan } from './blocks.js';
 
 export {
   CLAUDE_CODE_ID,
@@ -68,25 +94,37 @@ export {
   skillPath,
 } from './claude-code/index.js';
 export type { AdapterInstallDetail } from './claude-code/index.js';
+
 export {
   bodyHash,
   isUnmodifiedManaged,
   normalizeBody,
   parseManaged,
+  planBlock,
   planFile,
   renderManaged,
   stampLine,
   writeManagedFiles,
   MANAGED_STAMP_VERSION,
 } from './files.js';
-export type { FileOutcome, FileStatus, ManagedFile, WriteOptions, WriteReport } from './files.js';
+export type {
+  FileOutcome,
+  FileStatus,
+  ManagedFile,
+  ManagedMode,
+  WriteOptions,
+  WriteReport,
+} from './files.js';
+
 export {
   splitFrontmatter,
   withFrontmatter,
   yamlList,
   yamlString,
+  yamlUnquote,
 } from './frontmatter.js';
-export type { FrontmatterField } from './frontmatter.js';
+export type { FrontmatterField, FrontmatterMap, FrontmatterValue } from './frontmatter.js';
+
 export {
   MANIFEST_FILE,
   findSkillsDir,

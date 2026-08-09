@@ -23,12 +23,12 @@ import { runCli, type CliRuntime } from './main.js';
 import { createBufferWriter, type BufferWriter } from './output.js';
 import type { Ports } from './ports.js';
 import {
+  createTestInstall,
   createTestPorts,
   createTestStore,
   emptyDiffSummary,
   fakeDiffResult,
   fakeFeedbackEntry,
-  fakeInstallDetail,
   fakePairScenarios,
   fakeRunMeta,
   fakeRunResult,
@@ -678,51 +678,116 @@ describe('vdiff pin | prune', () => {
 
 describe('vdiff install <harness>', () => {
   it('emits the adapter report and exits 0', async () => {
-    const h = harness();
+    const h = harness({ home: '/home/u' });
     expect(await runCli(['install', 'claude-code', '--json'], h)).toBe(EXIT.OK);
 
     const result = envelope<{
       harness: string;
       label: string;
+      scope: string;
       root: string;
+      version: string;
       written: string[];
       dryRun: boolean;
+      notes: string[];
     }>(h);
     expect(result.command).toBe('install');
     expect(result.data?.harness).toBe('claude-code');
     expect(result.data?.label).toBe('Claude Code');
+    expect(result.data?.scope).toBe('project');
     expect(result.data?.root).toBe('/project');
+    expect(result.data?.version).toBe('0.1.0');
     expect(result.data?.written).toContain('.claude/skills/visual-diff/SKILL.md');
     expect(result.data?.dryRun).toBe(false);
+    expect(result.data?.notes?.length).toBeGreaterThan(0);
+  });
+
+  it('--global writes the user-level root instead of the project one', async () => {
+    const adapters = createTestInstall();
+    const ports = createTestPorts(adapters);
+    const h = harness({ cwd: '/project', home: '/home/u', ports });
+
+    expect(await runCli(['install', 'claude-code', '--global', '--json'], h)).toBe(EXIT.OK);
+    const result = envelope<{ scope: string; root: string }>(h);
+    expect(result.data?.scope).toBe('global');
+    expect(result.data?.root).toBe(join('/home/u'));
+    expect(
+      adapters.state.installs.filter((entry) => entry.options.dryRun !== true),
+    ).toEqual([
+      {
+        id: 'claude-code',
+        root: join('/home/u'),
+        options: { scope: 'global', version: '0.1.0', force: false, dryRun: false },
+      },
+    ]);
   });
 
   it('--list emits the documented envelope and never asks the adapter to write', async () => {
-    const seen: unknown[] = [];
-    const ports = createTestPorts({
-      installAdapter: async (id, root, options) => {
-        seen.push({ id, root, options });
-        return fakeInstallDetail();
-      },
-    });
-    const h = harness({ cwd: '/project', ports });
+    const adapters = createTestInstall();
+    const ports = createTestPorts(adapters);
+    const h = harness({ cwd: '/project', home: '/home/u', ports });
 
     expect(await runCli(['install', '--list', '--json'], h)).toBe(EXIT.OK);
 
-    const result = envelope<{ harnesses: Array<{ id: string; label: string; files: string[] }> }>(h);
+    const result = envelope<{
+      harnesses: Array<{
+        id: string;
+        label: string;
+        notes: string[];
+        scopes: Array<{ scope: string; root: string; files: string[] }>;
+      }>;
+    }>(h);
     expect(result.ok).toBe(true);
     expect(result.command).toBe('install');
     expect(result.data?.harnesses[0]?.id).toBe('claude-code');
-    expect(result.data?.harnesses[0]?.files).toContain('.claude/skills/visual-diff/SKILL.md');
-    expect(seen).toEqual([{ id: 'claude-code', root: '/project', options: { dryRun: true } }]);
+    expect(result.data?.harnesses[0]?.scopes.map((scope) => scope.scope)).toEqual([
+      'project',
+      'global',
+    ]);
+    expect(result.data?.harnesses[0]?.scopes[0]?.root).toBe(join('/project'));
+    expect(result.data?.harnesses[0]?.scopes[1]?.root).toBe(join('/home/u'));
+    expect(result.data?.harnesses[0]?.scopes[0]?.files).toContain(
+      '.claude/skills/visual-diff/SKILL.md',
+    );
+    expect(adapters.state.installs, '--list must not reach the install edge at all').toEqual([]);
+  });
+
+  it('--check reports every scope, and exits 0 whatever it finds', async () => {
+    const adapters = createTestInstall();
+    const ports = createTestPorts(adapters);
+    const h = harness({ cwd: '/project', home: '/home/u', ports });
+
+    expect(await runCli(['install', 'claude-code', '--global', '--json'], h)).toBe(EXIT.OK);
+
+    const check = harness({ cwd: '/project', home: '/home/u', ports });
+    expect(await runCli(['install', '--check', '--json'], check)).toBe(EXIT.OK);
+
+    const result = envelope<{
+      version: string;
+      drift: boolean;
+      harnesses: Array<{
+        id: string;
+        scopes: Array<{ scope: string; root: string; status: string; duplicate: boolean }>;
+      }>;
+    }>(check);
+    expect(result.data?.version).toBe('0.1.0');
+    expect(result.data?.drift).toBe(false);
+    expect(
+      result.data?.harnesses[0]?.scopes.map((scope) => [scope.scope, scope.root, scope.status]),
+    ).toEqual([
+      ['project', '/project', 'missing'],
+      ['global', '/home/u', 'current'],
+    ]);
+    expect(result.data?.harnesses[0]?.scopes.every((scope) => scope.duplicate === false)).toBe(true);
   });
 
   it('exits 2 on an unknown harness and lists the supported ones', async () => {
     const h = harness();
-    expect(await runCli(['install', 'opencode', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    expect(await runCli(['install', 'aider', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
 
     expect(envelope(h).error).toEqual({
       code: 'unknown-harness',
-      message: "unknown harness 'opencode'",
+      message: "unknown harness 'aider'",
       exitCode: EXIT.CONFIG_ERROR,
       hint: 'supported harnesses: claude-code',
     });
@@ -734,24 +799,42 @@ describe('vdiff install <harness>', () => {
     expect(envelope(h).error?.code).toBe('missing-argument');
   });
 
-  it('hands --dir, --force and --dry-run to the adapter', async () => {
-    const seen: unknown[] = [];
+  it('exits 2 when a write is refused, naming the path', async () => {
+    const adapters = createTestInstall();
     const ports = createTestPorts({
-      installAdapter: async (id, root, options) => {
-        seen.push({ id, root, options });
-        return fakeInstallDetail();
+      ...adapters,
+      installAdapter: async () => {
+        const error: NodeJS.ErrnoException = new Error(
+          "EACCES: permission denied, mkdir '/project/.claude'",
+        );
+        error.code = 'EACCES';
+        throw error;
       },
     });
-    const h = harness({ cwd: '/project', ports });
+    const h = harness({ cwd: '/project', home: '/home/u', ports });
+
+    expect(await runCli(['install', 'claude-code', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    const error = envelope(h).error;
+    expect(error?.code).toBe('target-not-writable');
+    expect(error?.message).toContain('/project');
+    expect(error?.message).toContain('EACCES');
+  });
+
+  it('hands --dir, --force and --dry-run to the adapter', async () => {
+    const adapters = createTestInstall();
+    const ports = createTestPorts(adapters);
+    const h = harness({ cwd: '/project', home: '/home/u', ports });
 
     expect(
       await runCli(['install', 'claude-code', '--dir', 'apps/web', '--force', '--dry-run'], h),
     ).toBe(EXIT.OK);
-    expect(seen[0]).toEqual({
-      id: 'claude-code',
-      root: join('/project', 'apps/web'),
-      options: { force: true, dryRun: true },
-    });
+    expect(adapters.state.installs).toEqual([
+      {
+        id: 'claude-code',
+        root: join('/project', 'apps/web'),
+        options: { scope: 'project', version: '0.1.0', force: true, dryRun: true },
+      },
+    ]);
     expect(h.writer.stdout()).toContain('dry run');
   });
 });

@@ -9,11 +9,13 @@ import {
   isUnmodifiedManaged,
   normalizeBody,
   parseManaged,
+  planBlock,
   planFile,
   renderManaged,
   stampLine,
   writeManagedFiles,
 } from './files.js';
+import { BLOCK_END, BLOCK_START, MalformedBlockError } from './blocks.js';
 
 describe('normalizeBody', () => {
   it('converts CRLF to LF and ends with exactly one newline', () => {
@@ -191,5 +193,113 @@ describe('writeManagedFiles', () => {
     await writeFile(join(root, 'a/one.md'), renderManaged('# one\n'), 'utf8');
     const report = await writeManagedFiles(root, [{ path: 'a/one.md', body: '# one\n' }]);
     expect(report.files).toEqual([{ path: 'a/one.md', status: 'unchanged' }]);
+  });
+});
+
+describe('planBlock (D19)', () => {
+  const body = 'managed content';
+
+  it('creates when the file is absent', () => {
+    const planned = planBlock(null, body, 'AGENTS.md');
+    expect(planned.status).toBe('created');
+    expect(planned.content).toBe(`${BLOCK_START}\n${body}\n${BLOCK_END}\n`);
+  });
+
+  it('updates a file with no block, keeping the existing bytes', () => {
+    const planned = planBlock('# mine\n', body, 'AGENTS.md');
+    expect(planned.status).toBe('updated');
+    expect(planned.content.startsWith('# mine\n')).toBe(true);
+  });
+
+  it('reports unchanged when the block already says exactly this', () => {
+    const once = planBlock('# mine\n', body, 'AGENTS.md').content;
+    expect(planBlock(once, body, 'AGENTS.md').status).toBe('unchanged');
+  });
+
+  it('never returns preserved: nothing of the user is at risk', () => {
+    const edited = `# mine\n\n${BLOCK_START}\nthey edited this\n${BLOCK_END}\n`;
+    expect(planBlock(edited, body, 'AGENTS.md').status).toBe('updated');
+    expect(planBlock(edited, body, 'AGENTS.md').content.startsWith('# mine\n')).toBe(true);
+  });
+});
+
+describe('writeManagedFiles — block mode (D19)', () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'vdiff-block-'));
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const block = { path: 'AGENTS.md', body: 'vdiff instructions', mode: 'block' as const };
+
+  it('creates AGENTS.md containing just the block', async () => {
+    const report = await writeManagedFiles(root, [block]);
+    expect(report.files).toEqual([{ path: 'AGENTS.md', status: 'created' }]);
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(
+      `${BLOCK_START}\nvdiff instructions\n${BLOCK_END}\n`,
+    );
+  });
+
+  it('writes no stamp line: the file is the user, not this tool', async () => {
+    await writeManagedFiles(root, [block]);
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).not.toContain('vdiff:managed');
+  });
+
+  it('edits an existing AGENTS.md and leaves every other byte identical', async () => {
+    const existing = '# House rules\n\nRun `make lint`.\n';
+    await writeFile(join(root, 'AGENTS.md'), existing, 'utf8');
+
+    await writeManagedFiles(root, [block]);
+    const after = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    expect(after.startsWith(existing)).toBe(true);
+    expect(after).toContain('vdiff instructions');
+  });
+
+  it('replaces the block on reinstall rather than appending a second one', async () => {
+    await writeManagedFiles(root, [{ ...block, body: 'v1' }]);
+    const report = await writeManagedFiles(root, [{ ...block, body: 'v2' }]);
+
+    expect(report.files).toEqual([{ path: 'AGENTS.md', status: 'updated' }]);
+    const after = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    expect(after.match(new RegExp(BLOCK_START, 'g'))).toHaveLength(1);
+    expect(after).toContain('v2');
+    expect(after).not.toContain('v1');
+  });
+
+  it('is idempotent', async () => {
+    await writeManagedFiles(root, [block]);
+    const before = await readFile(join(root, 'AGENTS.md'), 'utf8');
+    const second = await writeManagedFiles(root, [block]);
+    expect(second.written).toEqual([]);
+    expect(second.skipped).toEqual(['AGENTS.md']);
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(before);
+  });
+
+  it('refuses a start marker with no end marker, and writes nothing', async () => {
+    const broken = `# notes\n\n${BLOCK_START}\nhalf a block\n`;
+    await writeFile(join(root, 'AGENTS.md'), broken, 'utf8');
+
+    await expect(writeManagedFiles(root, [block])).rejects.toThrow(MalformedBlockError);
+    await expect(writeManagedFiles(root, [block])).rejects.toThrow(
+      /AGENTS\.md has a malformed visual-diff block: a '<!-- vdiff:start -->' marker with no matching '<!-- vdiff:end -->'/,
+    );
+    expect(await readFile(join(root, 'AGENTS.md'), 'utf8')).toBe(broken);
+  });
+
+  it('refuses a malformed block under --dry-run too, which is the point of a dry run', async () => {
+    await writeFile(join(root, 'AGENTS.md'), `${BLOCK_START}\nx\n`, 'utf8');
+    await expect(writeManagedFiles(root, [block], { dryRun: true })).rejects.toThrow(
+      MalformedBlockError,
+    );
+  });
+
+  it('dryRun on a clean tree reports the create without touching the disk', async () => {
+    const report = await writeManagedFiles(root, [block], { dryRun: true });
+    expect(report.files).toEqual([{ path: 'AGENTS.md', status: 'created' }]);
+    await expect(readFile(join(root, 'AGENTS.md'), 'utf8')).rejects.toThrow();
   });
 });

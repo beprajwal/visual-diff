@@ -10,7 +10,6 @@
  */
 
 import type {
-  AdapterId,
   DiffResult,
   FeedbackEntry,
   PairLabel,
@@ -21,7 +20,12 @@ import type {
   ValidationIssue,
   ViewportId,
 } from '../types.js';
-import type { FileOutcome } from '../adapters/index.js';
+import type {
+  FileOutcome,
+  HarnessId,
+  HarnessTargets,
+  InstallScope,
+} from '../adapters/index.js';
 
 /** `vdiff init` — what the scaffold wrote, and what it left alone. */
 export interface InitData {
@@ -103,11 +107,20 @@ export interface PruneData {
 
 /** `vdiff install <harness>` — the adapter files that were (or, with `--dry-run`, would be) written. */
 export interface InstallData {
-  harness: AdapterId;
+  harness: HarnessId;
   /** Human name of the harness, e.g. "Claude Code". */
   label: string;
+  /** Which target layout was written: project-local by default, user-level under `--global` (D16). */
+  scope: InstallScope;
   /** Absolute directory the paths below are relative to. */
   root: string;
+  /** The version stamped into every written file (D17). */
+  version: string;
+  /**
+   * The real directories this scope resolves to. A null member is a mechanism the harness does not
+   * have — not an error, and named as such in the output (D15).
+   */
+  targets: HarnessTargets;
   /** Project-relative paths created or updated. */
   written: string[];
   /** Paths left alone: already current, or edited by a human and preserved. */
@@ -116,19 +129,100 @@ export interface InstallData {
   files: FileOutcome[];
   /** True when nothing was actually written. */
   dryRun: boolean;
+  /** What "installed" does not guarantee for this harness. Never empty in practice. */
+  notes: readonly string[];
+}
+
+/** One scope of one harness in the `vdiff install --list` payload. */
+export interface InstallListScope {
+  scope: InstallScope;
+  /** Absolute directory the paths below are relative to. */
+  root: string;
+  /** The real directories this scope writes; a null member is a mechanism the harness lacks. */
+  targets: HarnessTargets;
+  /** Root-relative paths this harness would write in this scope, in install order. */
+  files: string[];
 }
 
 /** One harness in the `vdiff install --list` payload. */
 export interface InstallListHarness {
-  id: AdapterId;
+  id: HarnessId;
   label: string;
-  /** Project-relative paths this harness would write, in install order. */
-  files: string[];
+  /** Both scopes, project first — `--list` documents targets, not just filenames (§5). */
+  scopes: InstallListScope[];
+  notes: readonly string[];
 }
 
 /** `vdiff install --list` — what ships, for every registered harness. Writes nothing. */
 export interface InstallListData {
   harnesses: InstallListHarness[];
+}
+
+/**
+ * How one installed file compares to what this build would write (§5, "Drift").
+ *
+ * - `current`          — byte-identical to what this version writes
+ * - `stale`            — written by this tool, and different from what this version writes
+ * - `missing`          — not installed at all
+ * - `modified-locally` — present, and edited after this tool wrote it
+ */
+export type InstallDriftStatus = 'current' | 'stale' | 'missing' | 'modified-locally';
+
+/**
+ * A scope's roll-up adds one case a single file cannot have: the target could not be read at all —
+ * an unreadable directory, or an `AGENTS.md` whose markers this tool refuses to guess about.
+ * Reported rather than thrown, because `--check` exits 0 always.
+ */
+export type InstallScopeStatus = InstallDriftStatus | 'unreadable';
+
+export interface InstallCheckFile {
+  /** Root-relative path, as the adapter names it. */
+  path: string;
+  status: InstallDriftStatus;
+  /** The version stamp read off the installed copy; null when it carries none. */
+  installedVersion: string | null;
+}
+
+export interface InstallCheckScope {
+  scope: InstallScope;
+  /** Absolute directory the paths below are relative to. */
+  root: string;
+  /**
+   * The worst case present among this scope's files, ranked
+   * `modified-locally` > `stale` > `missing` > `current`.
+   */
+  status: InstallScopeStatus;
+  /**
+   * True on *both* scopes when both hold an install.
+   *
+   * Deliberately not called "shadowed": which copy a harness actually reads differs per harness —
+   * Claude Code prefers the personal one, pi keeps whichever it finds first, Codex shows both — so
+   * the payload reports the duplication as a fact and leaves the consequence to `notes`.
+   */
+  duplicate: boolean;
+  /** The underlying error when `status` is `unreadable`; null otherwise. */
+  error: string | null;
+  files: InstallCheckFile[];
+}
+
+export interface InstallCheckHarness {
+  id: HarnessId;
+  label: string;
+  /** Project first, then global. Both are always reported, installed or not (D16). */
+  scopes: InstallCheckScope[];
+  notes: readonly string[];
+}
+
+/** `vdiff install --check [<harness>]` — drift, never a fix. Exit 0 always. */
+export interface InstallCheckData {
+  /** The running CLI version every stamp was compared against. */
+  version: string;
+  harnesses: InstallCheckHarness[];
+  /**
+   * True when any scope is `stale` or `modified-locally`. A harness that is simply not installed
+   * is not drift, so `vdiff install --check` on a fresh machine reports `false`.
+   */
+  drift: boolean;
 }
 
 /** `vdiff install-browser` */

@@ -62,14 +62,23 @@ export type Invocation =
       kind: 'install';
       /**
        * Harness id, validated against the adapter registry by the command, not here.
-       * Absent only under `--list`, which describes every registered harness instead of writing one.
+       * Absent under `--list`, which describes every registered harness instead of writing one,
+       * and optional under `--check`, which reports every harness when given none.
        */
       harness?: string;
       dir?: string;
       force: boolean;
       dryRun: boolean;
+      /**
+       * Write the user-level target instead of the project-local one (D16). Absent rather than
+       * `false` when unasked, so the invocation of a plain `vdiff install <harness>` stays the
+       * object it has always been.
+       */
+      global?: true;
       /** Print what would ship, for every harness, and write nothing. */
       list?: boolean;
+      /** Report drift per harness and per scope, writing nothing. Always exit 0 (§5, "Drift"). */
+      check?: true;
       json: boolean;
     }
   | { kind: 'install-browser'; json: boolean };
@@ -184,7 +193,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 2,
   },
   install: {
-    usage: 'vdiff install <harness> [--dir <path>] [--force] [--dry-run] | vdiff install --list',
+    usage:
+      'vdiff install <harness> [--global] [--dir <path>] [--force] [--dry-run] | ' +
+      'vdiff install --list [--dir <path>] | vdiff install --check [<harness>] [--dir <path>]',
     summary: 'write the skill and command files for an agent harness',
     // `--list` takes no harness, so the arity check moves into the case below — which keeps the
     // `missing-argument` error code identical for a bare `vdiff install`.
@@ -192,7 +203,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
       dir: { type: 'string' },
       force: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
+      global: { type: 'boolean' },
       list: { type: 'boolean' },
+      check: { type: 'boolean' },
     }),
     minPositionals: 0,
     maxPositionals: 1,
@@ -650,8 +663,21 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
 
     case 'install': {
       const list = bool(values, 'list');
+      const check = bool(values, 'check');
+      const global = bool(values, 'global');
+      const force = bool(values, 'force');
+      const dryRun = bool(values, 'dry-run');
       const harness = positionals[0];
-      if (!list && harness === undefined) {
+
+      if (list && check) {
+        return fail(
+          'install',
+          'conflicting-flags',
+          "'--list' and '--check' describe different things: what would ship, and what is installed",
+          spec.usage,
+        );
+      }
+      if (!list && !check && harness === undefined) {
         return fail(
           'install',
           'missing-argument',
@@ -667,15 +693,39 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
           spec.usage,
         );
       }
+      // `--check` reports both scopes precisely so a shadowed global copy stays visible (D16);
+      // narrowing it to one scope would hide the thing it exists to show.
+      if (check && global) {
+        return fail(
+          'install',
+          'conflicting-flags',
+          "'--check' reports every scope and takes no '--global'",
+          spec.usage,
+        );
+      }
+      // Nothing is written under `--list` or `--check`, so a write flag is a misunderstanding
+      // rather than a no-op worth swallowing.
+      if ((list || check) && (force || dryRun)) {
+        const asked = force ? '--force' : '--dry-run';
+        const mode = list ? '--list' : '--check';
+        return fail(
+          'install',
+          'conflicting-flags',
+          `'${mode}' writes nothing, so '${asked}' has nothing to act on`,
+          spec.usage,
+        );
+      }
 
       const invocation: Extract<Invocation, { kind: 'install' }> = {
         kind: 'install',
-        force: bool(values, 'force'),
-        dryRun: bool(values, 'dry-run'),
+        force,
+        dryRun,
         json,
       };
       if (harness !== undefined) invocation.harness = harness;
       if (list) invocation.list = true;
+      if (check) invocation.check = true;
+      if (global) invocation.global = true;
       const dir = values['dir'];
       if (typeof dir === 'string') invocation.dir = dir;
       return { ok: true, value: invocation };

@@ -30,7 +30,9 @@ describe('module edges', () => {
     expect(typeof runnerModule.runFlow).toBe('function');
     expect(typeof diffModule.computeDiff).toBe('function');
     expect(typeof reportModule.serveReport).toBe('function');
+    expect(typeof adaptersModule.getAdapter).toBe('function');
     expect(typeof adaptersModule.installAdapter).toBe('function');
+    expect(typeof adaptersModule.readInstalledVersion).toBe('function');
     expect(Array.isArray(adaptersModule.ADAPTERS)).toBe(true);
   });
 
@@ -64,6 +66,19 @@ describe('module edges', () => {
     ).toBe(true);
   });
 
+  /**
+   * `adapterFiles` is the one edge `deps.ts` reaches through a registry lookup rather than binding
+   * a named export directly, so the assertion is that the lookup produces something with the
+   * `files()` the port calls — a registry entry missing it would otherwise fail inside `install`.
+   */
+  it('resolves an adapter that can compose its own files', async () => {
+    const adapter = adaptersModule.getAdapter('claude-code');
+    expect(adapter, 'claude-code must stay registered').toBeDefined();
+    expect(typeof adapter?.files).toBe('function');
+    expect(typeof adapter?.targets).toBe('function');
+    expect(adaptersModule.getAdapter('nope')).toBeUndefined();
+  });
+
   it('adapts the store facade to the narrow StorePort the commands use', async () => {
     const config = fakeConfig('/tmp/vdiff-adapter-check');
     const port = toStorePort(storeModule, config);
@@ -87,6 +102,8 @@ describe('module edges', () => {
   it('createPorts produces every port the CLI declares', () => {
     const ports = createPorts();
     expect(Object.keys(ports).sort()).toEqual([
+      'adapterFiles',
+      'adapterTargets',
       'computeDiff',
       'installAdapter',
       'listAdapters',
@@ -95,6 +112,7 @@ describe('module edges', () => {
       'openStore',
       'parseFlowFile',
       'parseScenarioFile',
+      'readInstalledVersion',
       'runFlow',
       'scenarioFile',
       'scenariosDir',
@@ -127,7 +145,11 @@ describe('module edges', () => {
   it('listAdapters reports the real registry, so `vdiff install` cannot list a fiction', async () => {
     const ports = createPorts();
     await expect(ports.listAdapters()).resolves.toEqual(
-      adaptersModule.ADAPTERS.map((adapter) => ({ id: adapter.id, label: adapter.label })),
+      adaptersModule.ADAPTERS.map((adapter) => ({
+        id: adapter.id,
+        label: adapter.label,
+        notes: adaptersModule.HARNESS_NOTES[adapter.id],
+      })),
     );
   });
 });
