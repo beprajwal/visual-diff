@@ -125,6 +125,33 @@ Anything outside this list fails validation with the file, line, and offending k
 deliberate — an open vocabulary would make flows unanalyzable, and the structural diff is what
 produces the "step added" and "selector drifted" rows in the report.
 
+## Explore the running app before you guess selectors
+
+Authoring a flow from source alone means guessing at what the DOM actually renders. Framework
+abstractions, component libraries and conditional wrappers all mean the markup in the JSX is often
+not the markup in the page. A flow built on a guessed selector fails on its first run, or worse,
+matches something unintended.
+
+If the app is running, look at it first.
+
+Where an interactive browser tool is available (`agent-browser` is one — `agent-browser open <url>`
+then `agent-browser snapshot -i` returns the accessibility tree with element references), drive the
+workflow by hand once, read the real DOM hooks off the page, and write the spec from what you
+actually saw. The same technique diagnoses a `spec-changed` drift finding: open the page, snapshot,
+and see what the selector became.
+
+Two rules if you do this:
+
+- **Never use such a tool for capture or diffing.** It attaches to a real browser session with your
+  profile, cookies and clock — none of the determinism `vdiff` depends on. Exploration is a separate
+  phase from replay; capture is always `vdiff run`.
+- **The exploration is throwaway.** What survives is the flow spec. Do not leave a parallel
+  browser-driving script beside it.
+
+If no such tool is available, infer selectors from the source, then run `vdiff run <flow>` and read
+the step failures — a failing step names the selector it could not find, which is a slower version of
+the same loop.
+
 ## Selectors: prefer stable hooks
 
 Order of preference: `[data-test=…]` → role + accessible name → text → CSS path.
