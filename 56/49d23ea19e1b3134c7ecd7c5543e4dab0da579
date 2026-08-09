@@ -1,0 +1,647 @@
+fixtures/app/src/units.js
+  s_81bbe05709be29::t_5b18c82d0f557f 1-64
+src/report/ui/components/ScenarioNotes.tsx
+  s_63a46ecbc6f681::t_975218ffebff7b 10-13,16-17,25-27,30,32-33
+  s_63a46ecbc6f681::t_2f720838490655 1-9,14-15,18-24,28-29,31,34-47
+src/report/ui/styles.ts
+  s_63a46ecbc6f681::t_3b043f2292de9c 202-204,536-571
+fixtures/app/vite.config.js
+  s_81bbe05709be29::t_35df5540997790 4-14,17-20,29-39
+src/report/server/api.ts
+  s_63a46ecbc6f681::t_0208edfd3ca8a5 3,9
+  s_63a46ecbc6f681::t_e8658a4f91ada4 56-78
+fixtures/app/src/components/AirQualityPanel.jsx
+  s_81bbe05709be29::t_c406d6efa96b8e 1-97
+src/cli/templates.ts
+  s_63a46ecbc6f681::t_d992f0f21d6285 14-18,20,24
+  s_63a46ecbc6f681::t_f5d66e5ef27d29 91-141
+  s_63a46ecbc6f681::t_ff9518eb930ca6 2-3
+src/scenario/structural-diff.ts
+  s_63a46ecbc6f681::t_422055c3175a2c 1-288
+src/store/retention.test.ts
+  s_63a46ecbc6f681::t_d380175434ed34 11
+  s_63a46ecbc6f681::t_f424ed377957b1 183-255
+src/report/ui/components/PairBanner.tsx
+  s_63a46ecbc6f681::t_ba18e97f6bd06e 1-4,9,11-12,15-20,23-25,30-34
+  s_63a46ecbc6f681::t_adc0ee585460d5 5-8,10,13-14,21-22,26-29
+package.json
+  s_81bbe05709be29::t_5816ea0b348d5e 40-42
+src/report/index.ts
+  s_63a46ecbc6f681::t_6eff8de23da28f 31-33
+src/flow/validate.ts
+  s_63a46ecbc6f681::t_31cdd4cda8bb59 91-94,97
+src/store/index.test.ts
+  s_63a46ecbc6f681::t_e30486d98ccabb 78-126
+fixtures/app/src/chart.js
+  s_81bbe05709be29::t_bb5630b6e96324 1-120,122-175,180-233
+  s_81bbe05709be29::t_afb1e3bd1035c2 176-179
+  s_81bbe05709be29::t_9f0b21e627b068 121
+src/report/ui/route.ts
+  s_63a46ecbc6f681::t_e1e6de29e18411 7-10,13,26-27,54-56,79
+src/runner/scenario.ts
+  s_63a46ecbc6f681::t_103b38969c11b3 443,445,450,452,455,483,486
+  s_63a46ecbc6f681::t_b0c16f3b0f8e0f 1,3,8,20-31,47-49,51,53,60-61,65,76-84,86-94,96-103,107-108,110-143,145,148,151-155,157-158,160-163,168-180,185-196,203-207,215-225,227-228,230-232,235-238,240-243,246-251,253,255-258,260-275,277,282-283,290,314,323-328,330,332-334,336,340-342,352-354,357-360,376-377,388-391,399-400,402-406,418,420-429,433-435,437-438,440-442,487-492,494-510
+  s_63a46ecbc6f681::t_062c317c300686 468-474,476-482,484-485
+  s_63a46ecbc6f681::t_197128d192b432 436,439
+  s_63a46ecbc6f681::t_1d71828183251c 43,54-59
+  s_63a46ecbc6f681::t_4dd7bcbe24a5f6 398
+  s_63a46ecbc6f681::t_8031add5ddef4c 2,4-7,9-19,32-42,44-46,50,52,62-64,66-75,85,95,104-106,109,144,146-147,149-150,156,159,164-167,181-184,197-202,208-214,226,229,233-234,239,244-245,252,254,259,276,278-281,284-289,291-299,301-311,313,315,317-322,329,331,335,337-339,343-351,355-356,361-375,378-387,392-397,401,407-417,419,430-432,444,446-449,451,453-454,456-467,475,493
+  s_63a46ecbc6f681::t_20e94fa530fb63 300,312,316
+src/types.ts
+  s_63a46ecbc6f681::t_8ab24c23ead3a7 309,901,1174-1218
+  s_81bbe05709be29::t_109ad73c35d3d9 30-36
+  s_81bbe05709be29::t_8503e44c61cbce 434-442,449-450
+  s_81bbe05709be29::t_8e947d184cd5a2 965-966
+  s_81bbe05709be29::t_32632217863edb 911-915
+  s_81bbe05709be29::t_b41e1172d3f29f 8-10
+  s_81bbe05709be29::t_efdb715b679729 109-115
+  s_81bbe05709be29::t_84614d26fed3f5 1145-1150
+  s_81bbe05709be29::t_b3f5afc7e6e8d9 1274-1277
+  s_81bbe05709be29::t_46195aceaada96 142-308
+  s_81bbe05709be29::t_27dee2c8eea6af 457-459,463-464
+  s_63a46ecbc6f681::t_f00e616f53bd8d 471-481
+  s_81bbe05709be29::t_9c83e3be4246ce 408-417
+  s_81bbe05709be29::t_7a345444ad4cc6 874-900
+  s_81bbe05709be29::t_e4292278ba5fdc 358-362
+  s_63a46ecbc6f681::t_52bdd7ceb8a869 460-462
+  s_81bbe05709be29::t_530500c13f9063 577-582
+  s_81bbe05709be29::t_fa274eabfa78c5 1168-1169
+  s_63a46ecbc6f681::t_30223500a93c8f 310
+  s_63a46ecbc6f681::t_4877f8030480d7 902
+  s_63a46ecbc6f681::t_75e89171eb59c5 1219
+src/cli/commands/init.test.ts
+  s_63a46ecbc6f681::t_b2fbe62bc05cb0 67-69
+src/store/fixtures.ts
+  s_63a46ecbc6f681::t_8dad60ba83ef1b 11
+  s_63a46ecbc6f681::t_4ce136707323dc 127-128
+src/report/ui/client.ts
+  s_63a46ecbc6f681::t_98dcfe1a44cd1c 19,57-58,127-130
+  s_63a46ecbc6f681::t_5c5b26708bdd9c 131-132
+src/cli/commands/diff.ts
+  s_63a46ecbc6f681::t_1e34215f805f81 19,22-23,32-61
+  s_63a46ecbc6f681::t_5242403893f1b7 103-109,111
+  s_63a46ecbc6f681::t_3f8ebebe608870 179-187,189,191
+  s_63a46ecbc6f681::t_998d78b16383bd 69-74
+  s_63a46ecbc6f681::t_0c9be346bc1a35 121-128
+  s_63a46ecbc6f681::t_132cc588d69d74 62
+src/store/run-store.test.ts
+  s_63a46ecbc6f681::t_7b97b393ddf0f8 312-314
+  s_63a46ecbc6f681::t_9594e57c56e98f 18,25-26
+  s_63a46ecbc6f681::t_3db022a313c903 24
+  s_63a46ecbc6f681::t_412a5792a1525b 267-311,315-483
+fixtures/app/README.md
+  s_63a46ecbc6f681::t_a4e9a758c36751 99-100,116-147
+  s_81bbe05709be29::t_cddca38d69595d 1-98,101-115,148-179
+  s_63a46ecbc6f681::t_9d289854587405 180-203
+src/report/ui/state.ts
+  s_63a46ecbc6f681::t_4c4271dd2b7fec 190-209
+  s_63a46ecbc6f681::t_83f5906a860c91 19,24-32,54-61,69-70,97,104,127-128
+  s_63a46ecbc6f681::t_e6b90a4938a78a 228-231,247-250,253,256,300-303,320-321,323,326,333-379,388-390,403-405,533-542,555,557,606
+fixtures/app/src/api.js
+  s_81bbe05709be29::t_849db72aeff733 1-136
+src/mocking/glob.ts
+  s_63a46ecbc6f681::t_9fc4f8966fac4d 18
+  s_63a46ecbc6f681::t_a24d991717c5cd 1-17,19-180,183-210,217-249
+  s_63a46ecbc6f681::t_ad252aee593ac1 182
+  s_63a46ecbc6f681::t_df16e170e7b53d 211-216
+  s_63a46ecbc6f681::t_2381111bcd45d9 181
+src/report/ui/test-fixtures.ts
+  s_63a46ecbc6f681::t_e06732495eabaf 9-21,23,29,65,171-194
+src/store/run-store.ts
+  s_63a46ecbc6f681::t_483cc759a7a5b6 13-15
+  s_63a46ecbc6f681::t_d563cc6e98f199 195-197
+  s_63a46ecbc6f681::t_f5d19e204e587e 345-349,351-361,367,370-371,373-374,377-381,385
+  s_63a46ecbc6f681::t_2738eb8aad11fd 441-444
+  s_63a46ecbc6f681::t_cc6854a7afa051 33-37,40,51
+  s_63a46ecbc6f681::t_e1684a5248e510 306-313
+  s_63a46ecbc6f681::t_7694e915eaa5bc 261-263,271-292,445
+  s_63a46ecbc6f681::t_a8580204791554 404-408,410-420,427,436-440,454-460,464-465,474-480,482-492
+  s_63a46ecbc6f681::t_3379b127003fe3 446
+src/mocking/glob.test.ts
+  s_63a46ecbc6f681::t_79ce134f1065ee 1-154
+src/report/attribution.test.ts
+  s_63a46ecbc6f681::t_1c2cefc98b6414 1-192
+fixtures/app/tests/api.test.ts
+  s_81bbe05709be29::t_aae1e3113dc32d 1-179
+fixtures/app/index.html
+  s_81bbe05709be29::t_6ab83c37175a70 6-11,15
+fixtures/app/src/components/ForecastDetail.jsx
+  s_81bbe05709be29::t_eaeb450ea87b2f 1-117
+src/cli/main.ts
+  s_63a46ecbc6f681::t_eeb04cf203c9c1 43
+  s_63a46ecbc6f681::t_25b31ecddb9166 65-70,74
+src/diff/index.ts
+  s_63a46ecbc6f681::t_9d074263c7f62f 30,35-40
+  s_63a46ecbc6f681::t_399d6412d41946 41
+src/report/server/deps.ts
+  s_63a46ecbc6f681::t_9834619980f6f2 24
+  s_63a46ecbc6f681::t_d8862b11741e68 63-67
+src/cli/deps.ts
+  s_63a46ecbc6f681::t_25d959564a3437 161-167
+  s_63a46ecbc6f681::t_b4de324e95e935 168-194
+  s_63a46ecbc6f681::t_2cf6b0701c4fd2 45
+  s_63a46ecbc6f681::t_0ab67ddfe28337 119-122
+  s_63a46ecbc6f681::t_7349d793e2e452 46
+  s_63a46ecbc6f681::t_5ad7c8587e7ee6 30
+src/store/retention.ts
+  s_63a46ecbc6f681::t_e32570421a08cd 131
+  s_63a46ecbc6f681::t_94a5afe6c48d1f 30,32,34
+  s_63a46ecbc6f681::t_7e5ccb3556575f 33
+  s_63a46ecbc6f681::t_1693bdbbbbdc2e 17-21
+  s_63a46ecbc6f681::t_0bb5e131a8aaf6 109-112,116-130,132-142,153
+fixtures/app/src/useResource.js
+  s_81bbe05709be29::t_e8337f41e35eaf 1-50
+fixtures/app/src/transform.js
+  s_81bbe05709be29::t_a45255d042cc59 1-210
+src/runner/browser.ts
+  s_63a46ecbc6f681::t_46c1d5def525b0 100-105
+  s_63a46ecbc6f681::t_996e3114948622 200-210
+  s_63a46ecbc6f681::t_a2041032f0ef39 271
+  s_63a46ecbc6f681::t_39eaa526c5ca99 176-194,213-214,218-220
+  s_63a46ecbc6f681::t_b0e7b6d1feab0d 32
+  s_63a46ecbc6f681::t_37c91ec6b33fc8 295-306
+  s_63a46ecbc6f681::t_10e7dae901e223 175,237-246,248-250,252-260
+  s_63a46ecbc6f681::t_2db30cefe08f28 270,272-289,291
+  s_63a46ecbc6f681::t_ac2143b80fa7d7 94-99
+  s_63a46ecbc6f681::t_2c2f40ad67f50d 247,251
+src/mocking/golden.test.ts
+  s_63a46ecbc6f681::t_d0d76f62d1709b 100-101
+  s_63a46ecbc6f681::t_8e41c18356e5f9 1-99,102-129,132,134-404
+  s_63a46ecbc6f681::t_ab261fe2f6e954 130-131,133
+src/report/ui/components/Warnings.tsx
+  s_63a46ecbc6f681::t_b88369aedad25f 3-11,27-28,37-42
+fixtures/app/tests/flows.test.ts
+  s_81bbe05709be29::t_af81880cd9db82 125-132
+  s_63a46ecbc6f681::t_98d4d232d72db2 68-74,76-79
+  s_81bbe05709be29::t_f38aaf58e6e086 51,53-56,58-60
+  s_63a46ecbc6f681::t_6fd7197b46aef6 32-39
+  s_81bbe05709be29::t_ba36c9a0f5dfc2 1-31,40-50,52,57,61-67,75,80-124,133-154
+src/report/ui/main.tsx
+  s_63a46ecbc6f681::t_0593a7c83fb5d1 15,17,25,92-113,156-163,371-378
+  s_63a46ecbc6f681::t_20eb482cd78486 379
+src/runner/replay.ts
+  s_63a46ecbc6f681::t_55467dc3eb454d 28
+  s_63a46ecbc6f681::t_50f9f9c3020cd2 156-162
+  s_63a46ecbc6f681::t_f7af3a0b8934c3 399,412-414
+  s_63a46ecbc6f681::t_f3f7ff577cfd05 119-131,141-153
+  s_63a46ecbc6f681::t_fc440553dd8698 41,463,479-484
+  s_63a46ecbc6f681::t_4ef9d8b9f698ce 82
+  s_63a46ecbc6f681::t_773dbab2f6fffb 362-369,374
+  s_63a46ecbc6f681::t_75d1557ba63d8d 140
+  s_63a46ecbc6f681::t_9ea5b79f2ef02d 133-139
+  s_63a46ecbc6f681::t_6318e863d9937d 79-81,97-116,118,132,154
+  s_63a46ecbc6f681::t_6e0a3fd34029e0 40
+  s_63a46ecbc6f681::t_6dbbea1a21146d 447-450,456-457,465-468,478,485-487,493,496
+  s_63a46ecbc6f681::t_26ba510ba1af66 76-77
+  s_63a46ecbc6f681::t_9458922255aefb 376
+  s_63a46ecbc6f681::t_5c7db70fa100d9 602-606,608-611
+  s_63a46ecbc6f681::t_0ab52116b93c5e 117
+  s_63a46ecbc6f681::t_13a3b917dd81be 607
+  s_63a46ecbc6f681::t_771fa9b87672c7 155
+src/runner/har.test.ts
+  s_63a46ecbc6f681::t_9c3587ba7a6ce1 113-250
+  s_63a46ecbc6f681::t_85e7aa771a8fbd 6
+fixtures/app/.visual-diff/flows/detail.yaml
+  s_63a46ecbc6f681::t_ddef5ad917507a 1-53
+src/flow/validate.test.ts
+  s_63a46ecbc6f681::t_c671769464d04d 76-100
+src/diff/cache.ts
+  s_63a46ecbc6f681::t_b8dfd09535929e 84-85,92-95,97-100,107-112,117-124,128-129,139,142,150,155
+  s_63a46ecbc6f681::t_315499e4f60fbf 21-28,35-42
+  s_63a46ecbc6f681::t_274c7a7728d5b1 60-70
+  s_63a46ecbc6f681::t_0ef94e83ee104f 169-171,179-184
+src/report/ui/derive.test.ts
+  s_63a46ecbc6f681::t_14b83c3f0f4afe 5,10,12,15-16,18,24-28,30-32,321-392
+  s_63a46ecbc6f681::t_2671500ebe476e 11,17,29,393-502
+fixtures/app/.visual-diff/flows/search.yaml
+  s_81bbe05709be29::t_032752aef37941 1-41,45-66
+  s_81bbe05709be29::t_3d32248583edc3 42-44
+fixtures/app/src/useMediaQuery.js
+  s_81bbe05709be29::t_50c1429b7df289 1-30
+src/types.test.ts
+  s_63a46ecbc6f681::t_430d504e476e65 490-641
+  s_81bbe05709be29::t_4e06cbba8dda98 210-489
+  s_63a46ecbc6f681::t_dd1b785918ecec 22,24,27-29,31-33,36
+  s_81bbe05709be29::t_f2d908b5f9dc54 11-17,23,25-26,30,34-35
+fixtures/README.md
+  s_81bbe05709be29::t_5978ae60e58a15 80
+  s_81bbe05709be29::t_5d844423f295e3 44
+  s_81bbe05709be29::t_71c124464be078 1,3-12,16,18,21-26,29-34
+  s_1aeb05c117f6f7::t_dc8c749ce4816e 35
+src/mocking/response.ts
+  s_63a46ecbc6f681::t_a4a5a8dcec2532 2,4-15,19-32,34,44,47-49,55-57,62-65,67-70,77-79,81,89-99,103-106,108-109,112,122-123,128,142-147,155-160
+  s_63a46ecbc6f681::t_cbe25aedfd0ba8 1,3,16-18,33,35-43,45-46,50-54,58-61,66,71-76,80,82-88,100-102,107,110-111,113-121,124-127,129-141,148-154,161
+src/scenario/serialize.ts
+  s_63a46ecbc6f681::t_b1fa7feab6237b 62,69
+  s_63a46ecbc6f681::t_5e7b98c6cbab97 1-61,63-68,70-101
+src/mocking/paths.test.ts
+  s_63a46ecbc6f681::t_e448ea2067f694 1-90,92-95,97-98
+  s_63a46ecbc6f681::t_a4495d5c46ba2f 91,96
+src/runner/har.ts
+  s_63a46ecbc6f681::t_951be49f285711 169-172
+  s_63a46ecbc6f681::t_8ac2bb0b4513f8 159-168,173-314
+src/cli/args.test.ts
+  s_63a46ecbc6f681::t_8b7d955659d19e 291-430
+  s_63a46ecbc6f681::t_f103ed5e941d0e 121-122
+fixtures/app/tests/router.test.ts
+  s_81bbe05709be29::t_e12a2f967cac68 1-101
+fixtures/app/tests/units.test.ts
+  s_81bbe05709be29::t_84478ee408f448 1-105
+src/cli/args.ts
+  s_63a46ecbc6f681::t_f9e5e56bca0f9e 216-221
+  s_63a46ecbc6f681::t_6492309a26f6e6 16-24,32-34,41-42,47-56
+  s_63a46ecbc6f681::t_d2c0c786e062ca 119-127,130,134,145-147,152,154
+  s_63a46ecbc6f681::t_14f455737683de 235-276
+  s_63a46ecbc6f681::t_7e8491d75f38b6 486-526,538-551
+  s_63a46ecbc6f681::t_6c3b4ddae1f10a 552,578,585-598,610-615
+fixtures/app/.visual-diff/flows/forecast.yaml
+  s_81bbe05709be29::t_17642bc88ea323 1-28,33-36,41-42,44-59,61-64
+  s_63a46ecbc6f681::t_ba0fa56a4d2d35 37-40,43
+  s_81bbe05709be29::t_5f08bc655632d3 60
+  s_81bbe05709be29::t_893f6385d1e97c 29-32
+src/mocking/engine.ts
+  s_63a46ecbc6f681::t_68f30423fd7eee 1-127,133,135-141,147-158,160-237,240-246,251-409,412-433
+  s_63a46ecbc6f681::t_642523ed9ee068 142,146
+  s_63a46ecbc6f681::t_30adf6497dd6b2 143-145
+  s_63a46ecbc6f681::t_7d90de2fc74ae1 238-239
+  s_63a46ecbc6f681::t_e08ac8a70fd451 159
+  s_63a46ecbc6f681::t_a1fe2260078d30 250
+  s_63a46ecbc6f681::t_0034defd776088 128-132,134
+  s_63a46ecbc6f681::t_19046b755b9938 410-411
+  s_63a46ecbc6f681::t_d6462b2f4fe66e 247-249
+fixtures/app/src/router.js
+  s_81bbe05709be29::t_b50245f4f07255 37-40
+  s_81bbe05709be29::t_077f5c3bd84098 1-36,41-80
+src/report/server/attribution-api.test.ts
+  s_63a46ecbc6f681::t_563d8a1237a9aa 1-111,115-256
+  s_63a46ecbc6f681::t_b99022cb322179 112-114
+src/scenario/validate.ts
+  s_63a46ecbc6f681::t_a51ff94526c990 1-64,70-812
+  s_63a46ecbc6f681::t_c0b3462d2bfa03 65-69
+src/mocking/json-patch.ts
+  s_63a46ecbc6f681::t_f03a6723aec047 406-408,412-413,416,420-421
+  s_63a46ecbc6f681::t_d56c67acfd4f61 1-23,25-405,409-411,414-415,417-419,422-539
+  s_63a46ecbc6f681::t_0d4a2544b7eef9 24
+src/diff/pairing.test.ts
+  s_63a46ecbc6f681::t_f6c611e29bf2e5 1-390
+fixtures/app/tests/replay.e2e.test.ts
+  s_81bbe05709be29::t_9813dc82b75fb1 1-10,18-203,216-331
+  s_63a46ecbc6f681::t_4dbfc2870929bf 11-17
+  s_81bbe05709be29::t_f28385791aba8d 204-215
+fixtures/app/scripts/record-har.mjs
+  s_81bbe05709be29::t_aecfc67f3ffd9d 158-160,170-175
+  s_81bbe05709be29::t_0784586361f801 54-82
+  s_81bbe05709be29::t_a8d53eae0a540a 1-53,83-157,161-169,176-308
+src/store/run-load.test.ts
+  s_63a46ecbc6f681::t_d9be9b2877923e 144-165
+fixtures/app/tests/scenarios.test.ts
+  s_63a46ecbc6f681::t_69c2c32391a298 1-191
+src/store/index.ts
+  s_63a46ecbc6f681::t_7abef6d8b01111 223
+  s_63a46ecbc6f681::t_df54b72bbe776d 53-56,61-67
+  s_63a46ecbc6f681::t_d314929cf529ac 170,177-190
+  s_63a46ecbc6f681::t_34a93a01b27f7e 23-26,38
+  s_63a46ecbc6f681::t_104d64b3b969f5 108-115,120-121
+  s_63a46ecbc6f681::t_ed82040a7e7f10 22
+src/report/server/store-reader.ts
+  s_63a46ecbc6f681::t_0befc2a9491076 51-57,62
+  s_63a46ecbc6f681::t_c687b2cf3d91aa 16-24,26
+  s_63a46ecbc6f681::t_2bce795d29a45b 250-279
+src/mocking/match.test.ts
+  s_63a46ecbc6f681::t_fb06bafe628425 1-101
+src/report/ui/client.test.ts
+  s_63a46ecbc6f681::t_92b0aa6bf6f607 213-248
+src/mocking/merge-patch.ts
+  s_63a46ecbc6f681::t_3cb4fbfeab4292 1-72
+fixtures/app/src/styles.css
+  s_81bbe05709be29::t_a91b741b1c2ab4 871-873
+  s_81bbe05709be29::t_c04b21724d00bf 863
+  s_81bbe05709be29::t_5daaafa6b26c13 1-2,4-13,17-21,23-42,45,49-54,57,59-74,77-103,105,108-113,117-120,123-135,137-139,142-192,195-197,200-202,205-210,213,215-216,219-221,225-250,253-260,263,265,267-268,271,273-274,277-359,361-383,388,390,393-395,397-398,401-412,418-448,450-485,488-501,503-504,507-533,538-671,675-779,781,784-862,864-870,874-890
+  s_81bbe05709be29::t_32899d7b8fc342 414-417
+  s_81bbe05709be29::t_3128d15ad923ca 672-674
+  s_81bbe05709be29::t_ca9dfdb2ad7b6d 534-537
+src/mocking/json-patch.test.ts
+  s_63a46ecbc6f681::t_82ba1579de9d9a 1-405
+src/scenario/schema.ts
+  s_63a46ecbc6f681::t_852e92282e98a6 1-95
+src/scenario/locate.ts
+  s_63a46ecbc6f681::t_582b3805645acb 1-95
+fixtures/app/src/weather-codes.js
+  s_81bbe05709be29::t_5e0645dd5f2db0 1-47
+src/report/ui/route.test.ts
+  s_63a46ecbc6f681::t_92b0aa6bf6f607 93-115
+src/runner/replay.test.ts
+  s_63a46ecbc6f681::t_878f0dcf495813 85-88,90,95-100,107,111-112,114-117
+  s_63a46ecbc6f681::t_a77ad07ecc099b 4
+  s_63a46ecbc6f681::t_e93572b4edc3c8 37-82,119-120
+  s_63a46ecbc6f681::t_9a77ff41c5e197 83-84,89,91-94,101-106,108-110,113,118
+  s_63a46ecbc6f681::t_cdd174a302ca5c 5
+  s_63a46ecbc6f681::t_2bb0402e1e242a 121-146
+src/diff/loadRun.ts
+  s_63a46ecbc6f681::t_e1539d5ccb023c 101-105
+  s_63a46ecbc6f681::t_039ac57d1afeb8 17
+fixtures/app/src/locations.js
+  s_81bbe05709be29::t_904968b321c864 59-74
+  s_81bbe05709be29::t_ae148fd503017d 1-58,75-81
+src/cli/commands/runs.ts
+  s_63a46ecbc6f681::t_b8d6349bfb617c 14
+  s_63a46ecbc6f681::t_7a32396deec0a4 2-3,7-11,15,20-21,35-48,52-60,62-84
+  s_63a46ecbc6f681::t_2d23b6ecbbcd5c 51,61
+src/cli/main.test.ts
+  s_63a46ecbc6f681::t_5f9ac0cc4f2160 915-1143,1150-1156,1159-1173,1175,1191-1374,1380-1381
+  s_63a46ecbc6f681::t_e7e7bdbdf24086 1144-1149,1157-1158,1174,1176-1190
+  s_63a46ecbc6f681::t_e481f6769caeb6 1375-1379
+  s_63a46ecbc6f681::t_dc2422a3c28d82 32,36,879-883
+src/scenario/glob.conformance.test.ts
+  s_63a46ecbc6f681::t_888007747347d2 1-160
+fixtures/app/src/main.jsx
+  s_81bbe05709be29::t_40a03d3498b785 1-13
+src/flow/schema.ts
+  s_63a46ecbc6f681::t_84f0b54abeea46 72-77
+src/scenario/index.ts
+  s_63a46ecbc6f681::t_62e1fd713f887e 1-96
+fixtures/app/src/recording.js
+  s_81bbe05709be29::t_7650bca61d5a15 1-10,17-42,60-78,90-91
+  s_81bbe05709be29::t_458532dc1e034c 43-59
+  s_81bbe05709be29::t_9c2f229ef7e0b8 11-16
+  s_81bbe05709be29::t_b0e7479486687b 79-89
+fixtures/app/.gitignore
+  s_63a46ecbc6f681::t_587f6798b0f0e2 7-10,14
+  s_81bbe05709be29::t_1a93baadfeae51 4-6
+src/diff/pairing.ts
+  s_63a46ecbc6f681::t_81f3e0c4662326 1-115
+src/mocking/match.ts
+  s_63a46ecbc6f681::t_c481609ec66ac6 1-94
+fixtures/app/vitest.config.js
+  s_81bbe05709be29::t_8240ac7e31d4e7 1-25
+src/store/internal/scenario.test.ts
+  s_63a46ecbc6f681::t_6532a5ed554943 48-54,61-62
+  s_63a46ecbc6f681::t_c65cb65371fc28 94
+  s_63a46ecbc6f681::t_c3fda7dff13e5c 111
+  s_63a46ecbc6f681::t_893c3020712e36 1-47,55-60,63-93,95-110,112-117
+src/scenario/scaffold.ts
+  s_63a46ecbc6f681::t_b9ea438fdb1357 34
+  s_63a46ecbc6f681::t_9a82ee67d64fcb 1-33,35-119
+src/runner/index.ts
+  s_63a46ecbc6f681::t_0d3a21439450ab 109-119
+  s_63a46ecbc6f681::t_dd5e6fb6db490d 64
+  s_63a46ecbc6f681::t_9a1e945373eead 22,25,31
+  s_63a46ecbc6f681::t_ae111ab4fd05d7 13,21,23-24,26-30,32-39
+  s_63a46ecbc6f681::t_0077044fc9a1da 86
+  s_63a46ecbc6f681::t_2ad5247f574d53 40
+fixtures/app/package.json
+  s_81bbe05709be29::t_4d5093eaa9c64c 19
+  s_81bbe05709be29::t_f5c29f6987468c 2,6-7,11-16
+src/report/ui/components/Header.tsx
+  s_63a46ecbc6f681::t_8fe3144d991f85 114-119,170,178
+  s_63a46ecbc6f681::t_7d9e5aaee51478 2-9,13,15,35-38,42,71-78,80-83,110-112,144-165,169,171,177,179
+  s_63a46ecbc6f681::t_4f4b8b53a89c0b 12,79
+  s_63a46ecbc6f681::t_a8281babe2c6c2 113
+src/diff/testkit.ts
+  s_63a46ecbc6f681::t_6f1eb511b8dbba 12
+  s_63a46ecbc6f681::t_751ddaa0e7205e 110-111
+src/report/ui/derive.ts
+  s_63a46ecbc6f681::t_15bbbdc328adf0 316-403
+  s_63a46ecbc6f681::t_54a3a06b7a281e 25
+  s_63a46ecbc6f681::t_ddc07f1db150e5 265-315
+  s_63a46ecbc6f681::t_2facc7ab601a25 15,17,24
+fixtures/app/src/components/Icons.jsx
+  s_81bbe05709be29::t_d77a2d7c410fa6 39
+  s_81bbe05709be29::t_be737dddf7b249 1-16,18-21,23-38,40-135
+  s_81bbe05709be29::t_82492c8083f60c 17,22
+src/runner/run.test.ts
+  s_63a46ecbc6f681::t_f80a14feda2d28 379-538
+  s_63a46ecbc6f681::t_34ed20fc1ae478 21
+src/cli/deps.test.ts
+  s_63a46ecbc6f681::t_2c8db20f3b7214 41,93,97,99-100,105-124
+  s_63a46ecbc6f681::t_6d813be2e0c652 125-126
+fixtures/app/.visual-diff/flows/weather.har
+  s_81bbe05709be29::t_954a01a1d109b9 68-83,161-176,204,255-262,264-271,292,349-352,354-365,439-450,452-455,482,529-544,566,620-635,645,651,709-724,975-990,1061-1068,1070-1077,1091,1097,1147-1150,1152-1163,1335-1350
+  s_81bbe05709be29::t_08e4d00512bac2 15-16,89,95,104,109-110,183,189,198,203,277,281,283,287,297-298,371,375,377,381,386,391-392,461,467,476,481,551,555,557,561,571-572,641,647,656,661-662,731,735,737,741-925,930,935-936,997,1001,1005,1007,1011,1016,1021-1022,1083,1087,1093,1102,1107-1108,1169,1173,1177,1179,1183,1188,1193-1194,1234-1323,1357,1363,1372
+  s_81bbe05709be29::t_7e7df67d79252b 1-14,17-67,84-88,90-94,96-103,105-108,111-160,177-182,184-188,190-197,199-202,205-254,263,272-276,278-280,282,284-286,288-291,293-296,299-348,353,366-370,372-374,376,378-380,382-385,387-390,393-438,451,456-460,462-466,468-475,477-480,483-528,545-550,552-554,556,558-560,562-565,567-570,573-619,636-640,642-644,646,648-650,652-655,657-660,663-708,725-730,732-734,736,738-740,926-929,931-934,937-974,991-996,998-1000,1002-1004,1006,1008-1010,1012-1015,1017-1020,1023-1060,1069,1078-1082,1084-1086,1088-1090,1092,1094-1096,1098-1101,1103-1106,1109-1146,1151,1164-1168,1170-1172,1174-1176,1178,1180-1182,1184-1187,1189-1192,1195-1233,1324-1334,1351-1356,1358-1362,1364-1371,1373-1379
+src/cli/ports.ts
+  s_63a46ecbc6f681::t_4e7f126dca88f1 59-64
+  s_63a46ecbc6f681::t_61f9536178ef51 33-34
+  s_63a46ecbc6f681::t_0142b4d4d5249d 116,120-121
+  s_63a46ecbc6f681::t_10c729c6b2e493 65-75
+  s_63a46ecbc6f681::t_0eba6ead063202 110-111,113
+  s_63a46ecbc6f681::t_c15690a339bdc4 102-109,112,114-115,117-119
+src/scenario/parse.ts
+  s_63a46ecbc6f681::t_0f203fff7207fa 1-180,183-184,186-439
+  s_63a46ecbc6f681::t_bc7518ed814090 181-182,185
+src/scenario/errors.ts
+  s_63a46ecbc6f681::t_8d05e517d0cb85 1-78
+src/cli/commands/scenario.ts
+  s_63a46ecbc6f681::t_1ff49f48caafab 1-52,55,57-85,87-117,119-152,156-160,162-176,179-191
+  s_63a46ecbc6f681::t_ae01b6851d3a98 153-155,161
+  s_63a46ecbc6f681::t_4e4fb02ac1bd36 86
+  s_63a46ecbc6f681::t_ebe755e66fdecf 53-54,56
+  s_63a46ecbc6f681::t_5f0221f358ed68 118
+  s_63a46ecbc6f681::t_ad33e5625ade16 177-178
+src/mocking/testkit.ts
+  s_63a46ecbc6f681::t_d7867bca292e0d 1-119
+src/cli/commands/run.ts
+  s_63a46ecbc6f681::t_5cb22234fd6782 16-24,32-37,42-44
+  s_63a46ecbc6f681::t_2a6c7df469aa98 90-93,96
+  s_63a46ecbc6f681::t_648c3f19dc7e1e 61,67-69,71
+  s_63a46ecbc6f681::t_9966cc4a12af98 106-112
+  s_63a46ecbc6f681::t_318cae1af5ae44 88-89,94-95,97,100
+src/cli/commands/scenario.test.ts
+  s_63a46ecbc6f681::t_0560fdf3bd59b7 19,46-47,53
+  s_63a46ecbc6f681::t_f435cf72cbddf7 150-152,166-168
+  s_63a46ecbc6f681::t_b4e42db8424363 154
+  s_63a46ecbc6f681::t_ff39aa1a3fce36 188,191-195,198-199,216,262,285,297
+  s_63a46ecbc6f681::t_784e4913d1ba8a 314
+  s_63a46ecbc6f681::t_6682d1b96d3245 1-18,20-45,48-52,54-149,153,155-165,169-187,189-190,196-197,200-215,217-261,263-284,286-296,298-313,315-318
+src/scenario/scaffold.test.ts
+  s_63a46ecbc6f681::t_0c0de152d3b522 1-226
+fixtures/app/.visual-diff/scenarios/empty-forecast.yaml
+  s_63a46ecbc6f681::t_97dd2d2039948d 1-23
+fixtures/app/src/app.jsx
+  s_81bbe05709be29::t_df13e3ce115261 1-170
+src/scenario/name.ts
+  s_63a46ecbc6f681::t_6301ae6e24a731 1-89
+fixtures/app/tests/transform.test.ts
+  s_81bbe05709be29::t_3b7d60c402bfdf 1-283
+src/mocking/engine.test.ts
+  s_63a46ecbc6f681::t_1bfd60e302b6d0 1-528,530-598
+  s_63a46ecbc6f681::t_0974085b88cd91 529
+src/store/run-load.ts
+  s_63a46ecbc6f681::t_55f448433a76c5 56-57,60-61
+  s_63a46ecbc6f681::t_4e08a777b34d71 17
+src/mocking/errors.ts
+  s_63a46ecbc6f681::t_60cb43a64e243c 1-85
+src/mocking/index.ts
+  s_63a46ecbc6f681::t_c7c63448deef68 76-108
+  s_63a46ecbc6f681::t_4f7b580eba1860 1-15,24-75,109-122
+  s_63a46ecbc6f681::t_2a188e3904c1be 16-23
+fixtures/app/.visual-diff/config.yaml
+  s_81bbe05709be29::t_97c90721594b29 1,3-6,17-19,23-24
+src/mocking/response.test.ts
+  s_63a46ecbc6f681::t_428e4c2a064e55 1-184
+src/scenario/validate.test.ts
+  s_63a46ecbc6f681::t_19fa778f3fe644 175,381,389-390,393,395-397,577,585-593,595-597,601
+  s_63a46ecbc6f681::t_69b453cc400a25 8,11
+  s_63a46ecbc6f681::t_de16a99a3ff6d5 1-7,9-10,12-174,176-380,382-388,398-576,578-584,594,598-600,602-679
+  s_63a46ecbc6f681::t_cc784e7d2880d2 391-392,394
+fixtures/app/src/components/LocationCard.jsx
+  s_81bbe05709be29::t_3ec189a59faa2a 1-91
+fixtures/app/src/components/DailyStrip.jsx
+  s_81bbe05709be29::t_7f832ac8f1c2df 1-10,12-69,71-78
+  s_81bbe05709be29::t_4ca1180250188d 70
+  s_81bbe05709be29::t_b54cfb6eb7c824 11
+src/runner/browser.test.ts
+  s_63a46ecbc6f681::t_7bf970bd3033fd 203,212,214-216,220-254
+  s_63a46ecbc6f681::t_d47d5d1a6c3604 56-57,69,76
+  s_63a46ecbc6f681::t_25bfec7242aa27 345-347
+  s_63a46ecbc6f681::t_627a636a9a07c7 115-122
+  s_63a46ecbc6f681::t_6214115e20162b 255,332-344,348-405
+  s_63a46ecbc6f681::t_a46c2790cedf9c 113-114,123-124,126,133-138
+  s_63a46ecbc6f681::t_726767aace46af 45,48-49
+  s_63a46ecbc6f681::t_0097c633af2532 140
+  s_63a46ecbc6f681::t_c63f8b8801b990 58-59
+  s_63a46ecbc6f681::t_cc4866c662a11a 75
+  s_63a46ecbc6f681::t_985d7a89fe5f5e 13,20,25,29-40
+  s_63a46ecbc6f681::t_c6eee9c11ee385 41
+  s_63a46ecbc6f681::t_0be72f60a074a1 256
+src/index.ts
+  s_63a46ecbc6f681::t_1c6744b54fc0e4 35-65
+src/scenario/parse.test.ts
+  s_63a46ecbc6f681::t_0f5c0d866e6077 1-428
+src/scenario/glob.test.ts
+  s_63a46ecbc6f681::t_af533c297ed6c5 1-96,102-154
+  s_63a46ecbc6f681::t_bff2b569578c45 97-101
+src/cli/testing.ts
+  s_63a46ecbc6f681::t_4c25d31857470a 370-375,382-385
+  s_63a46ecbc6f681::t_84439f87cd3ca7 321-326
+  s_63a46ecbc6f681::t_b39e3ceabe5d83 99-126,131
+  s_63a46ecbc6f681::t_524be5b8bf3907 317-320
+  s_63a46ecbc6f681::t_7d468226464ea0 164
+  s_63a46ecbc6f681::t_07443db2fc7202 15,22,27-28
+  s_63a46ecbc6f681::t_c78f9cca89ccd9 381
+src/scenario/structural-diff.test.ts
+  s_63a46ecbc6f681::t_b82c55916134ab 1-31,33-65,68-69,71-124,126-180,182-243
+  s_63a46ecbc6f681::t_075ccdbf703cd0 32,66-67,70,125,181
+src/runner/scenario.test.ts
+  s_63a46ecbc6f681::t_9ab84bd75e9b31 781-789
+  s_63a46ecbc6f681::t_3331738cfd3144 838
+  s_63a46ecbc6f681::t_71d0a089148079 1-53,56-59,63-64,66-702,707-780,790-837,839-854
+  s_63a46ecbc6f681::t_b7196580d92af7 54-55,60-62,65
+  s_63a46ecbc6f681::t_ea42ce24325ba6 703-706
+src/mocking/merge-patch.test.ts
+  s_63a46ecbc6f681::t_29c2adc0242b08 1-109
+src/runner/scenario.browser.test.ts
+  s_63a46ecbc6f681::t_02ab0073826ff2 1-20,22-268
+  s_63a46ecbc6f681::t_e12060afa03f9e 21
+src/cli/shapes.ts
+  s_63a46ecbc6f681::t_40c0daf3f23225 16,20
+  s_63a46ecbc6f681::t_b58cdca8d0fd8e 56,59-60,64,72-77
+fixtures/build-history.mjs
+  s_81bbe05709be29::t_48d4f6362ca91e 38-44
+  s_81bbe05709be29::t_5687825abba3b4 7
+  s_81bbe05709be29::t_18e4f149d4ef79 561
+src/report/ui/state.test.ts
+  s_63a46ecbc6f681::t_ca42cb0b29c128 4,8,16,18-26,551-717
+src/mocking/paths.ts
+  s_63a46ecbc6f681::t_9522650f93c292 1-42,49-60,62-69
+  s_63a46ecbc6f681::t_f4488043575560 61
+  s_63a46ecbc6f681::t_db5a97d0142fac 43-48
+fixtures/app/tests/chart.test.ts
+  s_81bbe05709be29::t_e72d298897b7a9 1-210,223-238
+  s_81bbe05709be29::t_b9a9e227624721 211-222
+src/scenario/glob.ts
+  s_63a46ecbc6f681::t_2bc0ff1985de5b 48,54-57,59
+  s_63a46ecbc6f681::t_b1bb25104055aa 207
+  s_63a46ecbc6f681::t_631414e5b891b3 1-47,49-53,58,60-62,74-185,188-206,208-213,215-252
+  s_63a46ecbc6f681::t_bff2b569578c45 186-187
+  s_63a46ecbc6f681::t_e96f9d4365679b 214
+  s_63a46ecbc6f681::t_63a65bde1f18fa 63-73
+fixtures/app/.visual-diff/flows/states.yaml
+  s_81bbe05709be29::t_ebf30f507a2012 12-17
+  s_81bbe05709be29::t_dc9e2dc99886bb 1-11,18-46
+src/report/server/routes.ts
+  s_63a46ecbc6f681::t_d3996a0689e386 8,23,128-144
+  s_63a46ecbc6f681::t_64681ee10b29ad 145-147
+fixtures/app/tests/har.test.ts
+  s_81bbe05709be29::t_2a5133ced3c390 218-241
+  s_81bbe05709be29::t_1949266835525a 1-217,242-301
+fixtures/app/src/components/States.jsx
+  s_81bbe05709be29::t_26cc6ae0c9b07d 1-89
+fixtures/app/src/components/SearchPanel.jsx
+  s_81bbe05709be29::t_a9e64a9ddd039e 1-119
+fixtures/app/src/components/TemperatureChart.jsx
+  s_81bbe05709be29::t_54bfc32007048d 15,20-30,32-34
+  s_81bbe05709be29::t_75747fd5c2d42d 1-14,16-19,31,35-46,48-51,59-151
+  s_81bbe05709be29::t_04f7e5f94f5a6b 47
+  s_81bbe05709be29::t_de4062517e2168 52-58
+src/diff/engine.ts
+  s_63a46ecbc6f681::t_ed2eb60fc5ffd6 201-206
+  s_63a46ecbc6f681::t_be3fbebbcaf928 371-372,378
+  s_63a46ecbc6f681::t_cc106fe8272865 339
+  s_63a46ecbc6f681::t_342c67ef703601 36
+src/store/internal/scenario.ts
+  s_63a46ecbc6f681::t_9162ffb5ba728b 1-51
+fixtures/app/.visual-diff/flows/detail-mock.yaml
+  s_63a46ecbc6f681::t_6539baa3cb5c9f 1-37
+fixtures/app/.visual-diff/flows/locations.yaml
+  s_81bbe05709be29::t_95347338f00cad 1-45
+src/runner/run.ts
+  s_63a46ecbc6f681::t_6761b266db7444 263-266
+  s_63a46ecbc6f681::t_d70472d286dbf0 328-329
+  s_63a46ecbc6f681::t_a637af3f9eb90d 57,60-64,66-70
+  s_63a46ecbc6f681::t_8edc3c778da0cc 407-409
+  s_63a46ecbc6f681::t_1cbbccad12eadd 500-503
+  s_63a46ecbc6f681::t_74bf16a4b5c770 296
+  s_63a46ecbc6f681::t_3d67f915299c4e 28
+  s_63a46ecbc6f681::t_aea55f9f5ddbd2 559
+  s_63a46ecbc6f681::t_ddd6a381611456 704-707
+  s_63a46ecbc6f681::t_a41facf33df012 392-394
+  s_63a46ecbc6f681::t_5b847d17d030a7 434-469,491-492,497-498
+  s_63a46ecbc6f681::t_75a68a8551bf87 911-913
+  s_63a46ecbc6f681::t_e7b3ff7b264b16 825-829
+  s_63a46ecbc6f681::t_8f56e7de3da077 65
+  s_63a46ecbc6f681::t_82ec71d640b27b 470-490,493-496
+  s_63a46ecbc6f681::t_72e7fb2a602d94 523-542
+  s_63a46ecbc6f681::t_d65e4105822bef 701-703,708
+  s_63a46ecbc6f681::t_cd163b2f7fedf4 644-664,667,675
+  s_63a46ecbc6f681::t_ee5089c9137119 820-824,830-848,850-852
+  s_63a46ecbc6f681::t_2e3df9eb64eb2a 566,817,920
+  s_63a46ecbc6f681::t_11263ed2e627fa 849
+  s_63a46ecbc6f681::t_47d5bac6a5ea2a 631
+fixtures/app/.visual-diff/scenarios/mock-detail.yaml
+  s_63a46ecbc6f681::t_73d1e21681241d 1-68
+package-lock.json
+  s_63a46ecbc6f681::t_ed2b12e865c066 11-13,38-48,1352-1354,2485-2488
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "5649d23ea19e1b3134c7ecd7c5543e4dab0da579",
+  "prompts": {},
+  "sessions": {
+    "s_1aeb05c117f6f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d1368b9b-2836-4dfe-b845-57d88e78ff0d",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_63a46ecbc6f681": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9640a5c0-589d-4f42-8ab9-dc846b6df457",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_81bbe05709be29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c05a727-400c-4533-9612-0f1d4fd575b1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
