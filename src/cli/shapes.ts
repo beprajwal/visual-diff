@@ -13,9 +13,11 @@ import type {
   AdapterId,
   DiffResult,
   FeedbackEntry,
+  PairLabel,
   PairRef,
   RunId,
   RunSummary,
+  ScenarioName,
   ValidationIssue,
   ViewportId,
 } from '../types.js';
@@ -51,13 +53,15 @@ export interface FlowCheckData {
   warnings: ValidationIssue[];
 }
 
-/** `vdiff runs <flow>` — mirrors `RunsResponse` from the report API. */
+/** `vdiff runs <flow> [--scenario <name>]` — mirrors `RunsResponse` from the report API. */
 export interface RunsData {
   flow: string;
+  /** The `--scenario` filter that was applied, absent when the whole timeline was listed. */
+  scenario?: ScenarioName;
   runs: RunSummary[];
 }
 
-/** `vdiff diff <flow> [base] [head]` */
+/** `vdiff diff <flow> [base] [head] [--scenario <name>]` */
 export interface DiffData {
   flow: string;
   pair: PairRef;
@@ -65,6 +69,12 @@ export interface DiffData {
   path: string;
   /** True when the stored diff was reused rather than recomputed (spec §8). */
   cached: boolean;
+  /**
+   * The pairings the tool permits but refuses to let pass as ordinary regressions (mocking spec
+   * §6): `cross-scenario`, `mock-vs-recorded`. Empty for a same-scenario pair. Lifted out of
+   * `result.scenarios` so an agent reads one field rather than deriving two booleans.
+   */
+  labels: PairLabel[];
   result: DiffResult;
 }
 

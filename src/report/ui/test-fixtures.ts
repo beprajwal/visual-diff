@@ -6,23 +6,27 @@
  * Not part of the shipped bundle: nothing in `main.tsx` imports this module.
  */
 
-import type {
-  DiffResult,
-  DiffSummary,
-  Finding,
-  FlowDiffEntry,
-  RunMeta,
-  RunSummary,
-  StepDiff,
-  StepId,
-  ViewportDiff,
-  ViewportId,
+import {
+  SCENARIO_NONE,
+  type DiffResult,
+  type DiffSummary,
+  type Finding,
+  type FlowDiffEntry,
+  type PairScenarios,
+  type RunMeta,
+  type RunSummary,
+  type StepDiff,
+  type StepId,
+  type ViewportDiff,
+  type ViewportId,
 } from '../../types.js';
+import type { RunAttribution, StepAttribution } from '../attribution.js';
 
 export function makeRunMeta(runId: string, patch: Partial<RunMeta> = {}): RunMeta {
   return {
     runId,
     flow: 'checkout',
+    scenario: SCENARIO_NONE,
     flowHash: 'sha256:deadbeef',
     revision: { sha: `sha-${runId}`, ref: 'main', dirty: false },
     mode: 'attach',
@@ -58,6 +62,7 @@ export function makeRun(
   return {
     runId,
     flow: 'checkout',
+    scenario: SCENARIO_NONE,
     revision: { sha: `sha-${runId}`, ref: 'main', dirty: false, ...revision },
     mode: 'attach',
     status: 'ok',
@@ -162,4 +167,28 @@ export function makeDiff(
     warnings: [],
     ...patch,
   };
+}
+
+export function makePairScenarios(patch: Partial<PairScenarios> = {}): PairScenarios {
+  return {
+    base: SCENARIO_NONE,
+    head: SCENARIO_NONE,
+    crossScenario: false,
+    mockVsRecorded: false,
+    ...patch,
+  };
+}
+
+export function makeStepAttribution(
+  step: StepId,
+  patch: Partial<StepAttribution> = {},
+): StepAttribution {
+  return { step, rules: [], passthroughs: 0, misses: 0, ...patch };
+}
+
+export function makeAttribution(
+  runId: string,
+  patch: Partial<RunAttribution> = {},
+): RunAttribution {
+  return { flow: 'checkout', runId, scenario: SCENARIO_NONE, steps: [], ...patch };
 }

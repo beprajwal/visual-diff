@@ -12,7 +12,9 @@ import { Filmstrip } from './components/Filmstrip.js';
 import { FeedbackBox } from './components/FeedbackBox.js';
 import { FocusPane } from './components/FocusPane.js';
 import { Header } from './components/Header.js';
+import { PairBanner } from './components/PairBanner.js';
 import { RightRail } from './components/RightRail.js';
+import { ScenarioNotes } from './components/ScenarioNotes.js';
 import { ViewportTabs } from './components/ViewportTabs.js';
 import { Warnings } from './components/Warnings.js';
 import { createClient, type ApiClient } from './client.js';
@@ -20,7 +22,7 @@ import { buildFilmstrip, findingsForStep, viewportDiffOf, viewportsOf, visibleCe
 import { KEY_BINDINGS, resolveKey } from './keys.js';
 import { formatHash, parseHash } from './route.js';
 import { pairId, screenshotPath } from './paths.js';
-import { initialState, reduce, routeOf } from './state.js';
+import { attributionForRun, initialState, reduce, routeOf } from './state.js';
 import { STYLES } from './styles.js';
 
 export interface AppProps {
@@ -87,6 +89,28 @@ export function App({ client }: AppProps) {
       });
   }, [client, flow, base, head, diffStale]);
 
+  /*
+   * Scenario attribution for both ends of the pair (mocking spec §8). Fetched per run rather than
+   * with the diff because it is a property of a run, and a cross-scenario pair was shaped by
+   * different rules on each side. A failure here is deliberately swallowed into `undefined`: an
+   * annotation that could not be loaded must never replace the diff the reviewer came for.
+   */
+  useEffect(() => {
+    if (!flow || !base || !head) return undefined;
+    let cancelled = false;
+    for (const runId of base === head ? [head] : [base, head]) {
+      client
+        .attribution(flow, runId)
+        .then((attribution) => {
+          if (!cancelled) dispatch({ type: 'attribution-loaded', attribution });
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [client, flow, base, head]);
+
   /* ------------------------------------------------------------ live channel */
 
   useEffect(
@@ -129,6 +153,14 @@ export function App({ client }: AppProps) {
     [stepDiff, state.viewport],
   );
   const viewports = useMemo(() => (state.diff ? viewportsOf(state.diff) : []), [state.diff]);
+  const baseAttribution = useMemo(
+    () => attributionForRun(state, state.base),
+    [state.attribution, state.base],
+  );
+  const headAttribution = useMemo(
+    () => attributionForRun(state, state.head),
+    [state.attribution, state.head],
+  );
   const viewportCounts = useMemo(() => {
     const counts: Record<ViewportId, number> = {};
     for (const viewport of viewports) {
@@ -335,6 +367,15 @@ export function App({ client }: AppProps) {
               ))}
             </span>
           </div>
+
+          <PairBanner diff={state.diff} />
+
+          {state.step !== null ? (
+            <ScenarioNotes
+              base={baseAttribution[state.step]}
+              head={headAttribution[state.step]}
+            />
+          ) : null}
 
           {state.error ? (
             <p class="notice error">

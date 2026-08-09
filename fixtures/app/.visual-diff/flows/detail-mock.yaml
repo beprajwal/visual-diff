@@ -1,0 +1,37 @@
+# `detail.yaml`, captured with no recording behind it (mocking spec D13).
+#
+# Identical steps, identical waits — the only difference is `network.mode`. There is no `har:` key
+# here and there is no HAR file for this flow: `mock` is a first-class network mode, not a replay
+# that happens to be missing its recording. Every request the page makes is answered by a rule in
+# the scenario or aborted and reported as a miss, so running this flow *without* `--scenario` is a
+# configuration error rather than a run that quietly reaches the network.
+#
+#   vdiff run detail-mock --scenario mock-detail
+#
+# It is a separate flow rather than a `--network mock` override of `detail` on purpose: whether a
+# screen has a backend is a property of the flow, and D13 exists because the mode must be recorded
+# and badged rather than remembered.
+version: 1
+flow: detail-mock
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: mock
+
+steps:
+  - id: berlin
+    goto: /#/location/berlin
+    waitFor: "[data-place=berlin] [data-test=current-conditions]"
+    shoot: true
+    expect:
+      - selector: "[data-test=place-name]"
+        text: Berlin
+      - selector: "[data-test=temperature-chart]"
+        visible: true
+
+  - id: air-quality
+    scroll:
+      selector: "[data-test=air-quality]"
+    waitFor: "[data-test=aqi-badge]"
+    shoot: true

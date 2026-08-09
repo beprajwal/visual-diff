@@ -40,6 +40,7 @@ import { installBrowser } from './commands/install-browser.js';
 import { pin, prune } from './commands/pin.js';
 import { run } from './commands/run.js';
 import { runs } from './commands/runs.js';
+import { scenarioCheck, scenarioList, scenarioNew } from './commands/scenario.js';
 import { serve } from './commands/serve.js';
 
 export interface CliRuntime extends CommandContext {
@@ -61,10 +62,16 @@ async function dispatch(
       return flowNew(ctx, invocation.name);
     case 'flow-check':
       return flowCheck(ctx, invocation.name);
+    case 'scenario-new':
+      return scenarioNew(ctx, invocation.name);
+    case 'scenario-check':
+      return scenarioCheck(ctx, invocation.name);
+    case 'scenario-list':
+      return scenarioList(ctx);
     case 'run':
       return run(ctx, invocation);
     case 'runs':
-      return runs(ctx, invocation.flow);
+      return runs(ctx, invocation);
     case 'diff':
       return diff(ctx, invocation);
     case 'serve':

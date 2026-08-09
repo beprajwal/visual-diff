@@ -33,6 +33,7 @@ import type {
 } from '../types.js';
 import { diffDirFor, pairId, readCachedDiff, writeDiff } from './cache.js';
 import { consoleFindings, networkFindings, structuralFindings } from './findings.js';
+import { labelPair, pairScenarios } from './pairing.js';
 import { flowLevelChanges, isComparable, structuralFlowDiff } from '../flow/index.js';
 import { inflate } from './geometry.js';
 import { loadRunDir } from './loadRun.js';
@@ -197,6 +198,12 @@ export async function diffRuns(
     );
   }
 
+  // Where the two runs sit on the scenario axis (mocking spec §6). A cross-scenario or
+  // mock-vs-recorded pair is permitted and computed exactly like any other — the labelling is how
+  // the result refuses to let its findings be read as ordinary regressions.
+  const labelling = labelPair(base.meta, head.meta);
+  warnings.push(...labelling.flags.map((flag) => flag.message));
+
   // A base-URL, viewport-matrix or network-mode change alters what the two runs *mean* without
   // changing a single step, so it cannot surface as a flowDiff entry — it belongs in the warnings.
   warnings.push(...flowLevelChanges(base.flow, head.flow));
@@ -329,6 +336,7 @@ export async function diffRuns(
     computedAt: new Date().toISOString(),
     baseMeta: base.meta,
     headMeta: head.meta,
+    scenarios: labelling.scenarios,
     flowDiff,
     steps,
     summary: summarize(flowDiff, steps),
@@ -360,12 +368,14 @@ export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
 
   if (options.force !== true) {
     // The whole options object, not just `engineVersion`: the ignore list and the region knobs
-    // change the engine's output without changing its version (see `cache.ts`).
+    // change the engine's output without changing its version. The pair's scenario identity goes
+    // in for the same reason — it decides the labels and warnings the result carries (`cache.ts`).
     const cached = await readCachedDiff(
       outDir,
       baseLoad.run.meta.runId,
       headLoad.run.meta.runId,
       options,
+      pairScenarios(baseLoad.run.meta, headLoad.run.meta),
     );
     if (cached !== null) return cached;
   }

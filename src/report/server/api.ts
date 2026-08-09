@@ -1,11 +1,12 @@
 /**
  * Read-only API handlers (spec §9): `GET /api/flows`, `GET /api/runs/:flow`,
- * `GET /api/diff/:base..:head`.
+ * `GET /api/diff/:base..:head`, `GET /api/attribution/:flow/:runId`.
  *
  * Handlers return data; `routes.ts` owns the wire. Nothing here writes, spawns or shells out.
  */
 
 import type { DiffResponse, FlowsResponse, RunId, RunsResponse } from '../../types.js';
+import type { RunAttribution } from '../attribution.js';
 import type { ReportStore } from './deps.js';
 import type { DiffService } from './diff-service.js';
 import { HttpError } from './http.js';
@@ -50,6 +51,29 @@ export async function handleRuns(store: ReportStore, flowRaw: string): Promise<R
     throw new HttpError(404, 'unknown-flow', `No flow named "${flow}".`);
   }
   return { flow, runs: await store.listRuns(flow) };
+}
+
+/**
+ * `GET /api/attribution/:flow/:runId` (mocking spec §8).
+ *
+ * A separate route rather than a field on the diff because it is a property of *one run*, and the
+ * report needs it for both ends of a pair — including a cross-scenario pair, where the two sides
+ * were shaped by different rules and folding them into one payload would lose which was which.
+ */
+export async function handleAttribution(
+  store: ReportStore,
+  flowRaw: string,
+  runIdRaw: string,
+): Promise<RunAttribution> {
+  const flow = requireFlowName(flowRaw);
+  if (!isValidRunId(runIdRaw)) {
+    throw new HttpError(400, 'bad-run-id', `Run ids must be zero-padded numbers, got "${runIdRaw}".`);
+  }
+  const attribution = await store.readAttribution(flow, runIdRaw);
+  if (attribution === null) {
+    throw new HttpError(404, 'unknown-run', `No run ${runIdRaw} in flow "${flow}".`);
+  }
+  return attribution;
 }
 
 export async function handleDiff(

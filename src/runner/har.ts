@@ -156,6 +156,162 @@ export async function retargetHarFile(
   return outFile;
 }
 
+/* ---------------------------------------------------------- recorded responses (mocking §5, §8) */
+
+/**
+ * One recorded response, decoded far enough for a scenario `patch` to be applied to it.
+ *
+ * Playwright's `routeFromHAR` still serves every passthrough request, so this index is *not* a
+ * second replay engine: it is consulted only where a `patch`/`patchOps` rule matched and needs the
+ * body it is patching. Keeping the two apart is deliberate — replay fidelity stays Playwright's,
+ * and a rule that matched a request the recording does not contain fails the run naming the rule
+ * (mocking spec §8) rather than quietly inventing a response.
+ *
+ * The shape is identical to `mocking/response.ts`'s `RecordedResponse`, restated rather than
+ * imported so the dependency runs one way — runner → mocking — and the engine stays free of the
+ * runner. An index result is handed to the engine with no adapter.
+ */
+export interface RecordedResponse {
+  status: number;
+  /** Header names lower-cased, so a lookup never depends on the recorder's casing. */
+  headers: Record<string, string>;
+  /** Lower-cased media type with parameters stripped, e.g. `application/json`. */
+  mediaType: string;
+  /** Decoded body text, or `undefined` when the entry recorded no body at all. */
+  text: string | undefined;
+}
+
+export interface HarIndex {
+  /** The first recorded response for this request, or `undefined`. */
+  find(method: string, url: string): RecordedResponse | undefined;
+  /** Number of indexed entries, so a caller can tell "empty HAR" from "no match". */
+  readonly size: number;
+}
+
+function mediaTypeOf(value: string): string {
+  return (value.split(';')[0] ?? '').trim().toLowerCase();
+}
+
+/**
+ * A second lookup key that survives query-parameter reordering.
+ *
+ * `?b=2&a=1` and `?a=1&b=2` are the same request to every server and to Playwright's own HAR
+ * matcher, but they are different strings — and a `patch` rule silently failing to find its body
+ * because a fetch built its query in a different order would fail the run for no real reason.
+ */
+function normalizeUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  parsed.hash = '';
+  const params = [...parsed.searchParams.entries()].sort(([a, av], [b, bv]) =>
+    a === b ? av.localeCompare(bv) : a.localeCompare(b),
+  );
+  parsed.search = '';
+  for (const [name, value] of params) parsed.searchParams.append(name, value);
+  return parsed.toString();
+}
+
+function keyOf(method: string, url: string): string {
+  return `${method.toUpperCase()} ${url}`;
+}
+
+interface HarContent {
+  text?: unknown;
+  encoding?: unknown;
+  mimeType?: unknown;
+}
+
+function decodeContent(content: HarContent | undefined): string | undefined {
+  if (content === undefined || typeof content.text !== 'string') return undefined;
+  if (content.encoding === 'base64') {
+    try {
+      return Buffer.from(content.text, 'base64').toString('utf8');
+    } catch {
+      return undefined;
+    }
+  }
+  return content.text;
+}
+
+function headersOf(list: unknown): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (!Array.isArray(list)) return headers;
+  for (const item of list) {
+    const entry = item as NameValue | undefined;
+    if (entry === undefined || typeof entry.name !== 'string' || typeof entry.value !== 'string') continue;
+    headers[entry.name.toLowerCase()] = entry.value;
+  }
+  return headers;
+}
+
+/**
+ * Index a HAR's responses by `(method, url)`.
+ *
+ * First entry wins for a repeated request. Playwright's replay serves repeats positionally, but
+ * this index exists only to hand a patch rule the body it is rewriting, and a positional index
+ * would have to be per-viewport and stateful — which is precisely how two concurrent viewports
+ * would end up patching different bodies and breaking the determinism guarantee (mocking §10.1).
+ */
+export function indexHar(source: string): HarIndex {
+  const exact = new Map<string, RecordedResponse>();
+  const normalized = new Map<string, RecordedResponse>();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    return { find: () => undefined, size: 0 };
+  }
+  const entries = (parsed as { log?: { entries?: unknown } } | undefined)?.log?.entries;
+  if (!Array.isArray(entries)) return { find: () => undefined, size: 0 };
+
+  for (const item of entries) {
+    const entry = item as {
+      request?: { method?: unknown; url?: unknown };
+      response?: { status?: unknown; headers?: unknown; content?: unknown };
+    };
+    const method = entry.request?.method;
+    const url = entry.request?.url;
+    const response = entry.response;
+    if (typeof method !== 'string' || typeof url !== 'string' || response === undefined) continue;
+
+    const headers = headersOf(response.headers);
+    const content = response.content as HarContent | undefined;
+    const mimeType = typeof content?.mimeType === 'string' ? content.mimeType : (headers['content-type'] ?? '');
+    const recorded: RecordedResponse = {
+      status: typeof response.status === 'number' ? response.status : 200,
+      headers,
+      mediaType: mediaTypeOf(mimeType),
+      text: decodeContent(content),
+    };
+
+    const key = keyOf(method, url);
+    if (!exact.has(key)) exact.set(key, recorded);
+    const loose = keyOf(method, normalizeUrl(url));
+    if (!normalized.has(loose)) normalized.set(loose, recorded);
+  }
+
+  return {
+    size: exact.size,
+    find(method: string, url: string): RecordedResponse | undefined {
+      return exact.get(keyOf(method, url)) ?? normalized.get(keyOf(method, normalizeUrl(url)));
+    },
+  };
+}
+
+/** Index the responses in a HAR file. A file that cannot be read indexes as empty, never throws. */
+export async function indexHarFile(file: string): Promise<HarIndex> {
+  try {
+    return indexHar(await readFile(file, 'utf8'));
+  } catch {
+    return { find: () => undefined, size: 0 };
+  }
+}
+
 export function scrubHar(source: string, options: ScrubOptions = {}): ScrubResult {
   let parsed: unknown;
   try {

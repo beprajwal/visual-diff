@@ -1,7 +1,14 @@
 /**
  * Run-level warnings: HAR misses, unstable git state, truncated DOM snapshots, blocked steps
- * (spec §7, §10, §12). These are the signals that tell a reviewer a finding might be an artefact of
- * the capture rather than a real change, so they are shown, never swallowed.
+ * (spec §7, §10, §12), and the two scenario warnings (mocking spec §8). These are the signals that
+ * tell a reviewer a finding might be an artefact of the capture rather than a real change, so they
+ * are shown, never swallowed.
+ *
+ * `scenario-rule-unmatched` is high severity and lists its rule ids, which is the whole point of
+ * it: a reviewer looking at a screen they believe is the empty state, when a mistyped glob matched
+ * nothing and they are in fact seeing the recorded full response, has been actively misled by the
+ * tool (mocking spec §8). A warning that said only "a rule did not match" would leave them
+ * grepping the YAML.
  */
 
 import type { RunMeta, RunWarning, RunWarningKind } from '../../../types.js';
@@ -17,6 +24,8 @@ const HIGH: ReadonlySet<RunWarningKind> = new Set<RunWarningKind>([
   'har-miss',
   'unstable-git',
   'console-error',
+  'scenario-rule-unmatched',
+  'mock-miss',
 ]);
 
 function WarningRow({ side, warning }: { side: string; warning: RunWarning }) {
@@ -25,6 +34,12 @@ function WarningRow({ side, warning }: { side: string; warning: RunWarning }) {
       <span class="badge">{side}</span>
       <span>
         <strong>{warning.kind}</strong> {warning.message}
+        {warning.rules && warning.rules.length > 0 ? (
+          <>
+            {' '}
+            <code class="rules">{warning.rules.join(', ')}</code>
+          </>
+        ) : null}
         {warning.steps && warning.steps.length > 0 ? (
           <>
             {' '}

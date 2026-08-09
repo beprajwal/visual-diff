@@ -1,0 +1,45 @@
+# The location list, and the C/F toggle applied to it.
+#
+# Four cards, four independent forecast requests, four sparklines drawn from the recorded payloads.
+# The toggle steps re-render every temperature on the screen without touching layout structure,
+# which is the cleanest available test of `content` findings that are not `layout` findings.
+#
+# Step ids are stable (slice-1 D4): they name the run-store directories and they are what the diff
+# aligns on, so `units-fahrenheit` must keep its id even if the toggle is restyled or moved.
+version: 1
+flow: locations
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: replay
+  har: weather.har
+
+steps:
+  - id: list
+    goto: /#/
+    # Waiting on the sparkline rather than on the grid: the grid element exists while the cards are
+    # still skeletons, so waiting for it would race the four forecast responses and capture a
+    # different mixture of loaded and loading cards on every run.
+    waitFor: "[data-test=sparkline]"
+    shoot: true
+    expect:
+      - selector: "[data-test=location-grid] > li"
+        count: 4
+      - selector: "[data-test=location-berlin] [data-test=current-temp]"
+        visible: true
+      - selector: "[data-test=search-hint]"
+        visible: true
+
+  - id: units-fahrenheit
+    click: "[data-test=units-f]"
+    waitFor: "[data-test=app][data-units=f]"
+    shoot: true
+    expect:
+      - selector: "[data-test=units-f][aria-current=true]"
+        visible: true
+
+  - id: units-celsius
+    click: "[data-test=units-c]"
+    waitFor: "[data-test=app][data-units=c]"
+    shoot: true

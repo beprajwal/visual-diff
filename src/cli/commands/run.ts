@@ -13,7 +13,15 @@
  * to go and find.
  */
 
-import { EXIT, DEFAULTS, type CliError, type RunOptions, type RunResult, type RunWarning } from '../../types.js';
+import {
+  EXIT,
+  DEFAULTS,
+  SCENARIO_NONE,
+  type CliError,
+  type RunOptions,
+  type RunResult,
+  type RunWarning,
+} from '../../types.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import type { Invocation } from '../args.js';
 import { formatLogTail, readLogTail } from '../log.js';
@@ -21,11 +29,19 @@ import { table } from '../output.js';
 
 type RunInvocation = Extract<Invocation, { kind: 'run' }>;
 
+/**
+ * One warning as a single line. `rules` is rendered alongside `steps` and `urls` because the
+ * scenario warnings are *about* rules: `scenario-rule-unmatched` naming no rule would be the least
+ * useful line the tool could print, given the whole point is telling the user which glob missed
+ * (mocking spec §8).
+ */
 function describeWarning(warning: RunWarning): string {
   const urls = warning.urls === undefined || warning.urls.length === 0 ? '' : ` ${warning.urls.join(', ')}`;
   const steps =
     warning.steps === undefined || warning.steps.length === 0 ? '' : ` [${warning.steps.join(', ')}]`;
-  return `${warning.kind}: ${warning.message}${steps}${urls}`;
+  const rules =
+    warning.rules === undefined || warning.rules.length === 0 ? '' : ` rules: ${warning.rules.join(', ')}`;
+  return `${warning.kind}: ${warning.message}${rules}${steps}${urls}`;
 }
 
 export async function run(
@@ -42,13 +58,17 @@ export async function run(
   if (invocation.at !== undefined) options.at = invocation.at;
   if (invocation.viewports !== undefined) options.viewports = invocation.viewports;
   if (invocation.network !== undefined) options.network = invocation.network;
+  if (invocation.scenario !== undefined) options.scenario = invocation.scenario;
 
   const result = await ctx.ports.runFlow(options);
   const { meta, steps } = result;
 
   const revision = `${meta.revision.sha.slice(0, 7)}${meta.revision.dirty ? '+dirty' : ''}`;
+  // Scenario is the third axis of run identity (D12), so it belongs on the identifying line — but
+  // only when there is one, so a slice-1 run reads exactly as it always did.
+  const scenario = meta.scenario === SCENARIO_NONE ? '' : `  scenario ${meta.scenario}`;
   const human: string[] = [
-    `run ${meta.runId}  flow ${meta.flow}  ${revision}  ${meta.mode}  network ${meta.network}`,
+    `run ${meta.runId}  flow ${meta.flow}  ${revision}${scenario}  ${meta.mode}  network ${meta.network}`,
   ];
 
   human.push(
@@ -65,15 +85,31 @@ export async function run(
 
   const failed = steps.filter((step) => step.status === 'failed');
   const blocked = steps.filter((step) => step.status === 'blocked');
+  // A mock-only run has no recording, so "har 0 hit" would be a true sentence that reads as a
+  // failure. Report what the mode actually produces: rules served, requests missed (D13).
+  // `harHits` is necessarily 0 under `mock` — nothing consulted a recording, because there is no
+  // recording — so the count reported here is the one the mode actually produces: requests a rule
+  // answered (`meta.scenarioServed`). Absent on a meta written before the field existed, which
+  // reads back as 0 rather than as a crash.
+  const network =
+    meta.network === 'mock'
+      ? `  mock ${meta.scenarioServed ?? 0} served / ${meta.harMisses} miss`
+      : `  har ${meta.harHits} hit / ${meta.harMisses} miss`;
   human.push(
     `status ${meta.status}  ${steps.length} steps, ${failed.length} failed, ${blocked.length} blocked` +
-      `  har ${meta.harHits} hit / ${meta.harMisses} miss`,
+      network,
   );
   if (meta.unstable) {
     human.push('warning: git state moved during the run — re-run to get a trustworthy comparison');
   }
   human.push(`run directory: ${result.runDir}`);
-  human.push(`next: vdiff diff ${meta.flow}`);
+  // The next command has to carry the scenario, or it pairs this run against a differently-scoped
+  // one and reports the change of state as a regression (mocking spec §6).
+  human.push(
+    `next: vdiff diff ${meta.flow}${
+      meta.scenario === SCENARIO_NONE ? '' : ` --scenario ${meta.scenario}`
+    }`,
+  );
 
   const warnings = meta.warnings.map(describeWarning);
 

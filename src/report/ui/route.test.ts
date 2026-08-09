@@ -90,3 +90,26 @@ describe('isViewMode', () => {
     expect(isViewMode('onion')).toBe(false);
   });
 });
+
+describe('the scenario filter in the hash (mocking §7)', () => {
+  it('round-trips a filter', () => {
+    const route = parseHash('#flow=forecast&scenario=empty-forecast&pair=0002..0004');
+    expect(route.scenario).toBe('empty-forecast');
+    expect(formatHash(route)).toBe('#flow=forecast&scenario=empty-forecast&pair=0002..0004');
+  });
+
+  it('omits the all-scenarios default, so the common URL stays short', () => {
+    expect(formatHash({ flow: 'forecast', scenario: '*' })).toBe('#flow=forecast');
+  });
+
+  it('keeps the reserved `none` filter, which is a real selection', () => {
+    expect(formatHash({ flow: 'forecast', scenario: 'none' })).toBe(
+      '#flow=forecast&scenario=none',
+    );
+    expect(parseHash('#scenario=none').scenario).toBe('none');
+  });
+
+  it('leaves the filter unset when the hash does not name one', () => {
+    expect(parseHash('#flow=forecast').scenario).toBeUndefined();
+  });
+});

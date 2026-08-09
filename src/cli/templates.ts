@@ -1,5 +1,6 @@
 /**
- * cli — the files `vdiff init` and `vdiff flow new` scaffold (spec §6, §9).
+ * cli — the files `vdiff init`, `vdiff flow new` and `vdiff scenario new` scaffold (spec §6, §9;
+ * mocking spec §5, §7).
  *
  * Content only; no logic. Every value below is the one the spec names — the config keys and their
  * defaults come from §6 "Configuration", the flow spec from §6 "Flow spec, version 1", and the
@@ -10,14 +11,17 @@
 export const EXAMPLE_FLOW_NAME = 'example';
 
 /**
- * `.gitignore` block. `flows/` and `config.yaml` **must** be committed: replaying a historical
- * revision reads the flow file out of git history at that SHA (D4), so an uncommitted flow has
- * nothing to read. Everything else — runs, diffs, cache, feedback — is local.
+ * `.gitignore` block. `flows/`, `scenarios/` and `config.yaml` **must** be committed: replaying a
+ * historical revision reads them out of git history at that SHA (D4 for flows, mocking spec §5
+ * "Storage" for scenarios), so an uncommitted one has nothing to read — and the failure is a
+ * confusing "scenario absent at the target SHA" on a file that is plainly sitting on disk.
+ * Everything else — runs, diffs, cache, feedback — is local.
  */
-export const GITIGNORE_BLOCK = `# visual-diff — flows and config are committed; runs, diffs, cache and feedback are local.
+export const GITIGNORE_BLOCK = `# visual-diff — flows, scenarios and config are committed; runs, diffs, cache and feedback are local.
 .visual-diff/*
 !.visual-diff/config.yaml
 !.visual-diff/flows/
+!.visual-diff/scenarios/
 `;
 
 /** Presence of this line means the block has already been installed. */
@@ -82,5 +86,56 @@ steps:
     # mask: ["[data-test=order-date]"]   # clocks, ids and relative timestamps: paint them over,
     #                                    # or they produce a finding on every single run.
     shoot: true
+`;
+}
+
+/**
+ * A minimal, valid scenario spec (mocking spec §5). One rule, `overlay` mode, so it is a working
+ * file the moment it is written — the glob is the only thing the author has to change.
+ *
+ * The commentary carries the two facts that cost the most when they are learnt the hard way: the
+ * rule `id` is what the report names when it attributes a changed response, and a rule that matches
+ * nothing produces a run warning rather than a silently unpatched screen.
+ */
+export function scenarioYaml(name: string): string {
+  return `# .visual-diff/scenarios/${name}.yaml — a named overlay on recorded traffic.
+#
+# A scenario patches the responses a flow replays, so the same flow can be captured against the
+# empty state, the error state or the slow state, and each compared across revisions like any
+# other run: \`vdiff run <flow> --scenario ${name}\`.
+#
+# Rule ids are stable and load-bearing: the report attributes a changed response to the rule that
+# changed it by id, so renaming one severs that rule's history. Changing its \`match\` does not.
+#
+# Exactly one response verb per rule — patch, patchOps, respond or abort. \`delay\` is a modifier
+# and composes with any of them, including on its own. A rule that never matches during a run is
+# reported as a warning, because a mistyped glob otherwise leaves you looking at the recording and
+# believing it is the patched state.
+
+version: 1
+scenario: ${name}
+description: describe the state this scenario puts the UI in
+
+# overlay: patch the recording, pass unmatched requests through to it.
+# mock:    no recording at all; unmatched requests are aborted and reported as misses.
+#          patch and patchOps are rejected in mock mode — there is nothing to patch.
+mode: overlay
+
+rules:
+  - id: example-empty
+    match: { method: GET, url: "**/api/**" }
+    # JSON merge patch (RFC 7386): null deletes a key, an object merges, anything else replaces.
+    patch: { items: [] }
+
+  # - id: example-error
+  #   match: { url: "**/api/checkout**" }
+  #   respond:
+  #     status: 500
+  #     headers: { content-type: application/json }
+  #     body: { error: upstream_unavailable }
+
+  # - id: example-slow
+  #   match: { url: "**/api/search**" }
+  #   delay: 3000
 `;
 }

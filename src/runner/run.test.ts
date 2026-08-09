@@ -18,7 +18,7 @@ import {
 } from '../types.js';
 import { paths, type Store } from '../store/index.js';
 import { RunnerError } from './errors.js';
-import { mergeStep, planHar, readPlaywrightVersion, statusOf, worstUnsettled } from './run.js';
+import { mergeStep, planHar, planNetwork, readPlaywrightVersion, statusOf, worstUnsettled } from './run.js';
 import type { ShotBytes, StepOutcome } from './replay.js';
 
 function outcome(overrides: Partial<StepOutcome> & { id: string }): StepOutcome {
@@ -368,6 +368,166 @@ describe('planHar', () => {
               expect(typeof plan.path, label).toBe('string');
               expect(plan.path, label).not.toBe('');
               expect(plan.recording, label).toBe(plan.mode === 'record');
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+/* ------------------------------------------------- mock mode and scenarios (mocking §5, §8, D13) */
+
+describe('planHar with network mode mock', () => {
+  it('plans a mock run with no HAR at all — D13 requires no recording', async () => {
+    const root = await tempRoot();
+    await expect(planHar(storeAt(root), spec({ mode: 'mock' }), runOptions())).resolves.toEqual({
+      mode: 'mock',
+      recording: false,
+    });
+  });
+
+  it('needs no `network.har` in the spec, unlike record and replay', async () => {
+    const root = await tempRoot();
+    await expect(planHar(storeAt(root), spec({ mode: 'off' }), runOptions('mock'))).resolves.toEqual({
+      mode: 'mock',
+      recording: false,
+    });
+  });
+});
+
+describe('planNetwork', () => {
+  const overlay = { name: 'empty-forecast', mode: 'overlay' as const };
+  const mock = { name: 'no-backend', mode: 'mock' as const };
+
+  it('is planHar, untouched, when no scenario is in force', async () => {
+    const root = await tempRoot();
+    await writeFile(paths.harFile(root, 'checkout.har'), '{"log":{"entries":[]}}\n', 'utf8');
+    await expect(
+      planNetwork(storeAt(root), spec({ mode: 'replay', har: 'checkout.har' }), runOptions()),
+    ).resolves.toEqual({ mode: 'replay', path: paths.harFile(root, 'checkout.har'), recording: false });
+  });
+
+  it('replays the flow HAR under an overlay scenario', async () => {
+    const root = await tempRoot();
+    await writeFile(paths.harFile(root, 'checkout.har'), '{"log":{"entries":[]}}\n', 'utf8');
+    await expect(
+      planNetwork(storeAt(root), spec({ mode: 'replay', har: 'checkout.har' }), runOptions(), overlay),
+    ).resolves.toMatchObject({ mode: 'replay', recording: false });
+  });
+
+  it('runs a mock scenario in mock mode even when the flow declares a HAR', async () => {
+    const root = await tempRoot();
+    await writeFile(paths.harFile(root, 'checkout.har'), '{"log":{"entries":[]}}\n', 'utf8');
+    await expect(
+      planNetwork(storeAt(root), spec({ mode: 'replay', har: 'checkout.har' }), runOptions(), mock),
+    ).resolves.toEqual({ mode: 'mock', recording: false });
+  });
+
+  /*
+   * The case slice-1 would have handled by recording. Recording through a scenario is what §2
+   * forbids outright, so the missing recording is refused rather than quietly produced.
+   */
+  it('refuses an overlay scenario when the flow has never been recorded', async () => {
+    const root = await tempRoot();
+    let thrown: unknown;
+    try {
+      await planNetwork(storeAt(root), spec({ mode: 'replay', har: 'checkout.har' }), runOptions(), overlay);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(RunnerError.is(thrown)).toBe(true);
+    const error = thrown as RunnerError;
+    expect(error.code).toBe('scenario-har-missing');
+    expect(error.exitCode).toBe(EXIT.CONFIG_ERROR);
+    expect(error.kind).toBe('scenario-invalid');
+    expect(error.message).toBe(
+      'scenario "empty-forecast" overlays the recording for flow "checkout", but no HAR has been ' +
+        `recorded yet at ${paths.harFile(root, 'checkout.har')}`,
+    );
+    expect(error.hint).toBe(
+      'record it first with `vdiff run checkout --record`, then re-run with --scenario empty-forecast',
+    );
+  });
+
+  it('refuses an overlay scenario over a flow that declares no HAR at all', async () => {
+    const root = await tempRoot();
+    let thrown: unknown;
+    try {
+      await planNetwork(storeAt(root), spec({ mode: 'off' }), runOptions(), overlay);
+    } catch (error) {
+      thrown = error;
+    }
+    const error = thrown as RunnerError;
+    expect(error.code).toBe('scenario-har-missing');
+    expect(error.message).toContain('the flow spec declares no `network.har`');
+    expect(error.hint).toContain('.visual-diff/flows/checkout.yaml');
+    expect(error.hint).toContain('mode: mock');
+  });
+
+  /* Silently overriding the mode would produce a screenshot that looks plausible and means nothing. */
+  it.each<[string, 'overlay' | 'mock', NetworkMode, string]>([
+    ['an overlay scenario asked to run mock', 'overlay', 'mock', "needs network mode 'replay'"],
+    ['an overlay scenario asked to run with the network off', 'overlay', 'off', "asked for 'off'"],
+    ['a mock scenario asked to replay', 'mock', 'replay', "needs network mode 'mock'"],
+    ['a mock scenario asked to run with the network off', 'mock', 'off', "asked for 'off'"],
+  ])('refuses %s', async (_label, mode, override, fragment) => {
+    const root = await tempRoot();
+    await writeFile(paths.harFile(root, 'checkout.har'), '{"log":{"entries":[]}}\n', 'utf8');
+    let thrown: unknown;
+    try {
+      await planNetwork(
+        storeAt(root),
+        spec({ mode: 'replay', har: 'checkout.har' }),
+        runOptions(override),
+        { name: 's', mode },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(RunnerError.is(thrown)).toBe(true);
+    const error = thrown as RunnerError;
+    expect(error.code).toBe('scenario-mode-conflict');
+    expect(error.exitCode).toBe(EXIT.CONFIG_ERROR);
+    expect(error.message).toContain(fragment);
+    expect(error.hint).toContain('drop the network override');
+  });
+
+  /* Exhaustive: a scenario run either replays a recording, mocks, or refuses. There is no mode in
+   * which a scenario reaches the live network. */
+  it('never resolves a scenario run to record, off, or a mode with no interception', async () => {
+    const scenarios = [overlay, mock];
+    const specModes: NetworkMode[] = ['off', 'record', 'replay', 'mock'];
+    const overrides: Array<NetworkMode | undefined> = [undefined, 'record', 'replay', 'off', 'mock'];
+
+    for (const scenario of scenarios) {
+      for (const specMode of specModes) {
+        const harNames = specMode === 'record' || specMode === 'replay' ? ['checkout.har'] : [undefined, 'checkout.har'];
+        for (const harName of harNames) {
+          for (const present of [false, true]) {
+            for (const override of overrides) {
+              const root = await tempRoot();
+              if (harName !== undefined && present) {
+                await writeFile(paths.harFile(root, harName), '{"log":{"entries":[]}}\n', 'utf8');
+              }
+              const flowSpec = spec(harName === undefined ? { mode: specMode } : { mode: specMode, har: harName });
+
+              let plan: Awaited<ReturnType<typeof planNetwork>> | undefined;
+              let error: unknown;
+              try {
+                plan = await planNetwork(storeAt(root), flowSpec, runOptions(override), scenario);
+              } catch (thrown) {
+                error = thrown;
+              }
+
+              const label = `${scenario.mode} spec=${specMode} har=${String(harName)} present=${present} override=${String(override)}`;
+              if (plan === undefined) {
+                expect(RunnerError.is(error), label).toBe(true);
+                expect((error as RunnerError).exitCode, label).toBe(EXIT.CONFIG_ERROR);
+                continue;
+              }
+              expect(plan.mode, label).toBe(scenario.mode === 'mock' ? 'mock' : 'replay');
+              expect(plan.recording, label).toBe(false);
             }
           }
         }

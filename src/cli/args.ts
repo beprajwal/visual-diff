@@ -13,7 +13,15 @@
  * validated arguments and never re-reads argv.
  */
 
-import { EXIT, type CliError, type NetworkMode, type RunId, type ViewportId } from '../types.js';
+import {
+  EXIT,
+  SCENARIO_NONE,
+  type CliError,
+  type NetworkMode,
+  type RunId,
+  type ScenarioName,
+  type ViewportId,
+} from '../types.js';
 
 export type Invocation =
   | { kind: 'help'; topic?: string; json: boolean }
@@ -21,18 +29,31 @@ export type Invocation =
   | { kind: 'init'; json: boolean }
   | { kind: 'flow-new'; name: string; json: boolean }
   | { kind: 'flow-check'; name: string; json: boolean }
+  | { kind: 'scenario-new'; name: ScenarioName; json: boolean }
+  | { kind: 'scenario-check'; name: ScenarioName; json: boolean }
+  | { kind: 'scenario-list'; json: boolean }
   | {
       kind: 'run';
       flow: string;
       at?: string;
       viewports?: ViewportId[];
       network?: NetworkMode;
+      /** Capture under this scenario (mocking spec §7). Never `none`: that is the absence of one. */
+      scenario?: ScenarioName;
       continueOnError: boolean;
       noScrub: boolean;
       json: boolean;
     }
-  | { kind: 'runs'; flow: string; json: boolean }
-  | { kind: 'diff'; flow: string; base?: RunId; head?: RunId; json: boolean }
+  | { kind: 'runs'; flow: string; scenario?: ScenarioName; json: boolean }
+  | {
+      kind: 'diff';
+      flow: string;
+      base?: RunId;
+      head?: RunId;
+      /** Restrict run selection to this scenario; `none` selects runs captured without one. */
+      scenario?: ScenarioName;
+      json: boolean;
+    }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
   | { kind: 'feedback'; ack: boolean; json: boolean }
   | { kind: 'pin'; flow?: string; runId: RunId; json: boolean }
@@ -95,12 +116,22 @@ export const COMMANDS: Record<string, CommandSpec> = {
     minPositionals: 1,
     maxPositionals: 2,
   },
+  scenario: {
+    usage: 'vdiff scenario new|check <name> | vdiff scenario list',
+    summary: 'scaffold / validate / enumerate response scenarios',
+    flags: flags(),
+    // `list` takes no name, so the arity check moves into the case below and `scenario new` keeps
+    // its own `missing-argument` message.
+    minPositionals: 1,
+    maxPositionals: 2,
+  },
   run: {
     usage:
-      'vdiff run <flow> [--at <ref>] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub]',
+      'vdiff run <flow> [--at <ref>] [--scenario <name>] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub]',
     summary: 'replay a flow at the working tree or a historical revision',
     flags: flags({
       at: { type: 'string' },
+      scenario: { type: 'string' },
       viewport: { type: 'list' },
       record: { type: 'boolean' },
       'no-net': { type: 'boolean' },
@@ -111,16 +142,16 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 1,
   },
   runs: {
-    usage: 'vdiff runs <flow>',
-    summary: 'timeline: SHA, dirty, status, findings count',
-    flags: flags(),
+    usage: 'vdiff runs <flow> [--scenario <name>]',
+    summary: 'timeline: SHA, dirty, scenario, status, findings count',
+    flags: flags({ scenario: { type: 'string' } }),
     minPositionals: 1,
     maxPositionals: 1,
   },
   diff: {
-    usage: 'vdiff diff <flow> [base] [head]',
+    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>]',
     summary: 'compute and print summary (defaults: N-1 vs N)',
-    flags: flags(),
+    flags: flags({ scenario: { type: 'string' } }),
     minPositionals: 1,
     maxPositionals: 3,
   },
@@ -182,6 +213,12 @@ export function commandLabel(invocation: Invocation): string {
       return 'flow new';
     case 'flow-check':
       return 'flow check';
+    case 'scenario-new':
+      return 'scenario new';
+    case 'scenario-check':
+      return 'scenario check';
+    case 'scenario-list':
+      return 'scenario list';
     default:
       return invocation.kind;
   }
@@ -195,6 +232,48 @@ function fail(command: string, code: string, message: string, hint?: string): Pa
 
 const VIEWPORT_RE = /^[1-9]\d{0,4}x[1-9]\d{0,4}$/;
 const RUN_ID_RE = /^\d{1,8}$/;
+/** A scenario name becomes a filename under `.visual-diff/scenarios/`, so it is restricted here. */
+const SCENARIO_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
+const SCENARIO_NAME_HINT = 'use letters, digits, dot, dash or underscore, e.g. empty-forecast';
+
+/**
+ * How a scenario name is being used, which decides whether the reserved name `none` is legal.
+ *
+ * `none` is what `meta.json` records for a run captured *without* a scenario (mocking spec §6, §11).
+ * As a filename or a capture argument it is therefore meaningless and rejected; as a *filter* over
+ * stored runs it is the real recorded value, so `vdiff runs checkout --scenario none` selects
+ * exactly the runs that had no scenario. Silently accepting it in the first two roles would create
+ * a scenario nobody can tell apart from its own absence.
+ */
+type ScenarioNameRole = 'capture' | 'file' | 'filter';
+
+/** Returns a failure outcome when the name is unusable in this role, or null when it is fine. */
+function checkScenarioName(
+  command: string,
+  name: string,
+  role: ScenarioNameRole,
+): ParseOutcome | null {
+  if (name === SCENARIO_NONE) {
+    if (role === 'filter') return null;
+    return fail(
+      command,
+      'reserved-scenario-name',
+      `'${SCENARIO_NONE}' is the reserved scenario name for a run captured without one`,
+      role === 'capture'
+        ? `omit --scenario to capture without a scenario`
+        : `pick another name; '${SCENARIO_NONE}' can never be a scenario file`,
+    );
+  }
+  if (name.length === 0 || !SCENARIO_NAME_RE.test(name) || name.includes('..')) {
+    return fail(
+      command,
+      'invalid-scenario-name',
+      `invalid scenario name '${name}'`,
+      SCENARIO_NAME_HINT,
+    );
+  }
+  return null;
+}
 
 /**
  * `--json` is read straight off argv before parsing, so a *parse* failure can still be reported as
@@ -404,6 +483,47 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       };
     }
 
+    case 'scenario': {
+      const sub = positionals[0] as string;
+      if (sub === 'list') {
+        if (positionals.length > 1) {
+          return fail(
+            'scenario',
+            'unexpected-argument',
+            `'scenario list' enumerates every scenario and takes no name`,
+            spec.usage,
+          );
+        }
+        return { ok: true, value: { kind: 'scenario-list', json } };
+      }
+      if (sub !== 'new' && sub !== 'check') {
+        return fail(
+          'scenario',
+          'unknown-subcommand',
+          `unknown subcommand 'scenario ${sub}'`,
+          spec.usage,
+        );
+      }
+      const name = positionals[1];
+      if (name === undefined) {
+        return fail(
+          'scenario',
+          'missing-argument',
+          `'scenario ${sub}' requires a scenario name`,
+          spec.usage,
+        );
+      }
+      const invalid = checkScenarioName('scenario', name, 'file');
+      if (invalid !== null) return invalid;
+      return {
+        ok: true,
+        value:
+          sub === 'new'
+            ? { kind: 'scenario-new', name, json }
+            : { kind: 'scenario-check', name, json },
+      };
+    }
+
     case 'run': {
       const record = bool(values, 'record');
       const noNet = bool(values, 'no-net');
@@ -414,6 +534,21 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
           "'--record' and '--no-net' are mutually exclusive",
           spec.usage,
         );
+      }
+      const rawScenario = values['scenario'];
+      // Recording captures reality and a scenario alters it, so a HAR blending both is neither
+      // (mocking spec §2). This is a hard error rather than a precedence rule.
+      if (record && typeof rawScenario === 'string') {
+        return fail(
+          'run',
+          'conflicting-flags',
+          "'--record' and '--scenario' are mutually exclusive: recording captures reality, a scenario alters it",
+          'record the flow first, then replay it under a scenario',
+        );
+      }
+      if (typeof rawScenario === 'string') {
+        const invalid = checkScenarioName('run', rawScenario, 'capture');
+        if (invalid !== null) return invalid;
       }
       const rawViewports = values['viewport'];
       let viewports: ViewportId[] | undefined;
@@ -440,14 +575,27 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       };
       const at = values['at'];
       if (typeof at === 'string') invocation.at = at;
+      if (typeof rawScenario === 'string') invocation.scenario = rawScenario;
       if (viewports !== undefined) invocation.viewports = viewports;
       if (record) invocation.network = 'record';
       if (noNet) invocation.network = 'off';
       return { ok: true, value: invocation };
     }
 
-    case 'runs':
-      return { ok: true, value: { kind: 'runs', flow: positionals[0] as string, json } };
+    case 'runs': {
+      const invocation: Extract<Invocation, { kind: 'runs' }> = {
+        kind: 'runs',
+        flow: positionals[0] as string,
+        json,
+      };
+      const scenario = values['scenario'];
+      if (typeof scenario === 'string') {
+        const invalid = checkScenarioName('runs', scenario, 'filter');
+        if (invalid !== null) return invalid;
+        invocation.scenario = scenario;
+      }
+      return { ok: true, value: invocation };
+    }
 
     case 'diff': {
       const invocation: Extract<Invocation, { kind: 'diff' }> = {
@@ -459,6 +607,12 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const head = positionals[2];
       if (base !== undefined) invocation.base = base;
       if (head !== undefined) invocation.head = head;
+      const scenario = values['scenario'];
+      if (typeof scenario === 'string') {
+        const invalid = checkScenarioName('diff', scenario, 'filter');
+        if (invalid !== null) return invalid;
+        invocation.scenario = scenario;
+      }
       return { ok: true, value: invocation };
     }
 

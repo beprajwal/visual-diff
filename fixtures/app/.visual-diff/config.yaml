@@ -1,7 +1,9 @@
-# visual-diff project settings for the fixture storefront (spec §6).
+# visual-diff project settings for the weather fixture (slice-1 spec §6).
 #
-# `npm install` rather than `npm ci`: the fixture ships without a lockfile so the scripted history
-# never has to carry one, and the runner's dep cache falls back to hashing package.json.
+# `npm install` rather than `npm ci`: this app is a workspace of the visual-diff repository and
+# carries no lockfile of its own, so a historical replay that materialises it into a worktree has
+# only `package.json` to install from. The runner's dep cache falls back to hashing `package.json`
+# when there is no lockfile, which is exactly this case.
 app:
   install: npm install --no-audit --no-fund --loglevel error
   dev: npm run dev -- --port $PORT --strictPort
@@ -12,9 +14,14 @@ diff:
   minRegionArea: 64
   maxRegions: 40
   antialiasTolerance: 0.1
+  # Nothing is ignored. Every element on this page is derived from the recorded payload, so anything
+  # that moves between two runs of the same revision is a real determinism bug and must be visible
+  # rather than filtered away.
   ignore: []
 
 network:
+  # Open-Meteo needs no API key and the recorder sends no credentials, so there is nothing here
+  # beyond the unconditional Authorization / Cookie / Set-Cookie scrub the runner always applies.
   redact: []
 
 retention:

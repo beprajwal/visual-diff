@@ -16,6 +16,7 @@ import type {
   RunsResponse,
   ServerEvent,
 } from '../../types.js';
+import type { RunAttribution } from '../attribution.js';
 import { blobUrl } from './paths.js';
 
 const TOKEN_STORAGE_KEY = 'vdiff.token';
@@ -53,6 +54,8 @@ export interface ApiClient {
   flows(): Promise<FlowsResponse>;
   runs(flow: string): Promise<RunsResponse>;
   diff(flow: string, base: RunId, head: RunId): Promise<DiffResponse>;
+  /** What the scenario layer did to each step of one run (mocking spec §8). */
+  attribution(flow: string, runId: RunId): Promise<RunAttribution>;
   postFeedback(input: FeedbackInput): Promise<FeedbackEntry>;
   /** Absolute URL for a blob path relative to the `.visual-diff` directory. */
   blob(storePath: string): string;
@@ -119,6 +122,12 @@ export function createClient(options: ClientOptions = {}): ApiClient {
       // parameter because a pair id alone does not identify a flow.
       const pair = `${encodeURIComponent(base)}..${encodeURIComponent(head)}`;
       return getJson<DiffResponse>(`/diff/${pair}?flow=${encodeURIComponent(flow)}`);
+    },
+
+    attribution(flow, runId) {
+      return getJson<RunAttribution>(
+        `/attribution/${encodeURIComponent(flow)}/${encodeURIComponent(runId)}`,
+      );
     },
 
     async postFeedback(input) {

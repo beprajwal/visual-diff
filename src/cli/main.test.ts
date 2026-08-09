@@ -29,9 +29,11 @@ import {
   fakeDiffResult,
   fakeFeedbackEntry,
   fakeInstallDetail,
+  fakePairScenarios,
   fakeRunMeta,
   fakeRunResult,
   fakeRunSummary,
+  fakeScenarioSpec,
   fakeServeInfo,
 } from './testing.js';
 
@@ -874,6 +876,11 @@ describe('--json output purity (spec §11.6)', () => {
       { argv: ['flow', 'check', 'checkout', '--json'] },
       { argv: ['run', 'checkout', '--json'] },
       { argv: ['runs', 'checkout', '--json'] },
+      { argv: ['runs', 'checkout', '--scenario', 'empty-forecast', '--json'] },
+      { argv: ['scenario', 'new', 'empty-forecast', '--json'], runtime: { cwd } },
+      { argv: ['scenario', 'check', 'nope', '--json'], runtime: { cwd } },
+      { argv: ['scenario', 'list', '--json'] },
+      { argv: ['scenario', 'nope', 'x', '--json'] },
       { argv: ['diff', 'checkout', '0003', '0007', '--json'] },
       { argv: ['serve', '--json'] },
       { argv: ['feedback', '--json'] },
@@ -903,5 +910,472 @@ describe('--json output purity (spec §11.6)', () => {
     expect(config).toContain('keepRuns: 20');
     const gitignore = await readFile(join(cwd, '.gitignore'), 'utf8');
     expect(gitignore).toContain('!.visual-diff/flows/');
+  });
+});
+
+/* ------------------------------------------------------------------ scenarios (mocking §7) */
+
+/**
+ * The three `scenario` envelopes are pinned as whole objects, exactly like the rest of the surface:
+ * they are the agent-facing API across harnesses (mocking spec §7, §10.8), so a shape change has to
+ * show up here rather than in someone's broken adapter.
+ */
+describe('vdiff scenario — the --json envelopes', () => {
+  it('scenario new: emits the written path relative to .visual-diff', async () => {
+    const cwd = await tempProject();
+    const h = harness({ cwd });
+
+    expect(await runCli(['scenario', 'new', 'empty-forecast', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'scenario new',
+      version: '0.1.0',
+      data: {
+        scenario: 'empty-forecast',
+        path: 'scenarios/empty-forecast.yaml',
+        mode: 'overlay',
+      },
+    });
+
+    const written = await readFile(
+      join(cwd, '.visual-diff', 'scenarios', 'empty-forecast.yaml'),
+      'utf8',
+    );
+    expect(written).toContain('scenario: empty-forecast');
+  });
+
+  it('scenario check: emits the summary and the warnings a valid scenario still has', async () => {
+    const cwd = await tempProject();
+    await mkdir(join(cwd, '.visual-diff', 'scenarios'), { recursive: true });
+    await writeFile(join(cwd, '.visual-diff', 'scenarios', 'empty-forecast.yaml'), '', 'utf8');
+    const h = harness({ cwd });
+
+    expect(await runCli(['scenario', 'check', 'empty-forecast', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'scenario check',
+      version: '0.1.0',
+      data: {
+        scenario: {
+          name: 'empty-forecast',
+          mode: 'overlay',
+          description: 'No forecast data, for checking the empty state',
+          ruleCount: 2,
+          path: 'scenarios/empty-forecast.yaml',
+        },
+        warnings: [],
+      },
+    });
+  });
+
+  it('scenario check: exits 2 with file, line and offending key (mocking §8)', async () => {
+    const cwd = await tempProject();
+    await mkdir(join(cwd, '.visual-diff', 'scenarios'), { recursive: true });
+    await writeFile(join(cwd, '.visual-diff', 'scenarios', 'broken.yaml'), '', 'utf8');
+    const ports = createTestPorts({
+      parseScenarioFile: async (file) => ({
+        ok: false,
+        issues: [
+          {
+            code: 'patch-in-mock',
+            message: "rule 'forecast-empty' uses `patch` in mock mode, where there is nothing to patch",
+            at: { file, line: 8, column: 5, key: 'rules[0].patch' },
+          },
+        ],
+      }),
+    });
+    const h = harness({ cwd, ports });
+
+    expect(await runCli(['scenario', 'check', 'broken', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    expect(envelope(h)).toEqual({
+      ok: false,
+      command: 'scenario check',
+      version: '0.1.0',
+      error: {
+        code: 'scenario-invalid',
+        message: "scenario 'broken' is invalid: 1 issue",
+        exitCode: EXIT.CONFIG_ERROR,
+        issues: [
+          {
+            code: 'patch-in-mock',
+            message:
+              "rule 'forecast-empty' uses `patch` in mock mode, where there is nothing to patch",
+            at: {
+              file: join(cwd, '.visual-diff', 'scenarios', 'broken.yaml'),
+              line: 8,
+              column: 5,
+              key: 'rules[0].patch',
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('scenario list: emits every scenario with its mode and rule count', async () => {
+    const ports = createTestPorts({
+      listScenarios: async () => ['empty-forecast', 'offline'],
+      parseScenarioFile: async (file) =>
+        file.includes('offline')
+          ? {
+              ok: true,
+              value: fakeScenarioSpec({
+                scenario: 'offline',
+                description: 'Every request aborted',
+                mode: 'mock',
+                rules: [{ id: 'all', match: { url: '**' }, abort: true }],
+              }),
+              warnings: [],
+            }
+          : { ok: true, value: fakeScenarioSpec(), warnings: [] },
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['scenario', 'list', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'scenario list',
+      version: '0.1.0',
+      data: {
+        scenarios: [
+          {
+            name: 'empty-forecast',
+            mode: 'overlay',
+            description: 'No forecast data, for checking the empty state',
+            ruleCount: 2,
+            path: 'scenarios/empty-forecast.yaml',
+          },
+          {
+            name: 'offline',
+            mode: 'mock',
+            description: 'Every request aborted',
+            ruleCount: 1,
+            path: 'scenarios/offline.yaml',
+          },
+        ],
+      },
+    });
+  });
+
+  it('scenario list: reports an invalid file as a warning rather than dropping it', async () => {
+    const ports = createTestPorts({
+      listScenarios: async () => ['broken'],
+      parseScenarioFile: async (file) => ({
+        ok: false,
+        issues: [{ code: 'unknown-key', message: "unknown key 'patchOp'", at: { file, line: 6 } }],
+      }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['scenario', 'list', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'scenario list',
+      version: '0.1.0',
+      data: { scenarios: [] },
+      warnings: ["scenario 'broken' is invalid: 1 issue — vdiff scenario check broken"],
+    });
+  });
+});
+
+describe('vdiff run --scenario', () => {
+  it('hands the scenario to the runner and names it on the identifying line', async () => {
+    const seen: unknown[] = [];
+    const ports = createTestPorts({
+      runFlow: async (options) => {
+        seen.push(options);
+        return fakeRunResult({
+          meta: fakeRunMeta({ scenario: 'empty-forecast', flow: 'forecast' }),
+        });
+      },
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'forecast', '--scenario', 'empty-forecast'], h)).toBe(EXIT.OK);
+    expect(seen[0]).toEqual({
+      flow: 'forecast',
+      cwd: '/project',
+      scenario: 'empty-forecast',
+      continueOnError: false,
+      noScrub: false,
+      json: false,
+    });
+
+    const stdout = h.writer.stdout();
+    expect(stdout).toContain('scenario empty-forecast');
+    // The follow-up command has to carry the scenario, or it pairs across states (mocking §6).
+    expect(stdout).toContain('next: vdiff diff forecast --scenario empty-forecast');
+  });
+
+  it('leaves a scenario-less run reading exactly as it did before this slice', async () => {
+    const h = harness();
+    await runCli(['run', 'checkout'], h);
+    const stdout = h.writer.stdout();
+    expect(stdout).not.toContain('scenario');
+    expect(stdout).toContain('next: vdiff diff checkout');
+  });
+
+  it('reports a rule that never matched as a warning naming the rule ids (mocking §8)', async () => {
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({
+          meta: fakeRunMeta({
+            scenario: 'empty-forecast',
+            warnings: [
+              {
+                kind: 'scenario-rule-unmatched',
+                message: "1 rule of scenario 'empty-forecast' never matched a request",
+                rules: ['forecast-empty'],
+              },
+            ],
+          }),
+        }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'forecast', '--scenario', 'empty-forecast', '--json'], h)).toBe(
+      EXIT.OK,
+    );
+    expect(envelope(h).warnings).toEqual([
+      "scenario-rule-unmatched: 1 rule of scenario 'empty-forecast' never matched a request rules: forecast-empty",
+    ]);
+  });
+
+  /*
+   * `harHits` is 0 on every real mock run — nothing consulted a recording, because there is no
+   * recording, and a rule's `respond` is recorded as `bypassed` rather than as a HAR hit. So the
+   * served count comes from `scenarioServed`, and this fixture is shaped the way the runner
+   * actually writes one: 0 hits, 6 served.
+   */
+  it('reports mock-mode misses as served/miss rather than as a HAR that never hit', async () => {
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({
+          meta: fakeRunMeta({
+            scenario: 'offline',
+            network: 'mock',
+            harHits: 0,
+            scenarioServed: 6,
+            harMisses: 2,
+            warnings: [
+              {
+                kind: 'mock-miss',
+                message: '2 requests matched no rule and were aborted',
+                urls: ['/api/rates'],
+              },
+            ],
+          }),
+        }),
+    });
+    const h = harness({ ports });
+
+    await runCli(['run', 'forecast', '--scenario', 'offline'], h);
+    expect(h.writer.stdout()).toContain('mock 6 served / 2 miss');
+    expect(h.writer.stdout()).not.toContain('har 0 hit');
+    expect(h.writer.stderr()).toContain('mock-miss: 2 requests matched no rule');
+  });
+
+  /* A meta written before `scenarioServed` existed reads back as 0, never as `undefined`. */
+  it('reads a mock run captured before the served counter existed as 0 served', async () => {
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({
+          meta: fakeRunMeta({ scenario: 'offline', network: 'mock', harHits: 0, harMisses: 0 }),
+        }),
+    });
+    const h = harness({ ports });
+
+    await runCli(['run', 'forecast', '--scenario', 'offline'], h);
+    expect(h.writer.stdout()).toContain('mock 0 served / 0 miss');
+    expect(h.writer.stdout()).not.toContain('undefined');
+  });
+
+  it('refuses --record with --scenario before any run starts (mocking §2)', async () => {
+    let ran = false;
+    const ports = createTestPorts({
+      runFlow: async () => {
+        ran = true;
+        return fakeRunResult();
+      },
+    });
+    const h = harness({ ports });
+
+    expect(
+      await runCli(['run', 'forecast', '--record', '--scenario', 'empty-forecast', '--json'], h),
+    ).toBe(EXIT.CONFIG_ERROR);
+    expect(ran).toBe(false);
+    expect(envelope(h).error).toEqual({
+      code: 'conflicting-flags',
+      message:
+        "'--record' and '--scenario' are mutually exclusive: recording captures reality, a scenario alters it",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'record the flow first, then replay it under a scenario',
+    });
+  });
+});
+
+describe('vdiff runs --scenario', () => {
+  const timeline = [
+    fakeRunSummary({ runId: '0003' }),
+    fakeRunSummary({ runId: '0004', scenario: 'empty-forecast' }),
+    fakeRunSummary({ runId: '0005', scenario: 'empty-forecast' }),
+  ];
+
+  it('narrows the timeline through the store, keeping the run ids monotonic (mocking §6)', async () => {
+    const store = createTestStore({ runs: { forecast: timeline } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    expect(await runCli(['runs', 'forecast', '--scenario', 'empty-forecast', '--json'], h)).toBe(
+      EXIT.OK,
+    );
+    const result = envelope<{ scenario: string; runs: Array<{ runId: string }> }>(h);
+    expect(result.data?.scenario).toBe('empty-forecast');
+    expect(result.data?.runs.map((run) => run.runId)).toEqual(['0004', '0005']);
+  });
+
+  it('omits the scenario field entirely when no filter was given', async () => {
+    const store = createTestStore({ runs: { forecast: timeline } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'forecast', '--json'], h);
+    const result = envelope<{ scenario?: string }>(h);
+    expect(result.data && 'scenario' in result.data).toBe(false);
+  });
+
+  it('renders a SCENARIO column, showing `-` for a run captured without one', async () => {
+    const store = createTestStore({ runs: { forecast: timeline } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'forecast'], h);
+    const stdout = h.writer.stdout();
+    expect(stdout).toContain('SCENARIO');
+    expect(stdout).toContain('empty-forecast');
+    const rowFor0003 = stdout.split('\n').find((line) => line.startsWith('0003')) ?? '';
+    expect(rowFor0003).toContain(' - ');
+  });
+
+  it('tells the reader how to capture one when the filter matches nothing', async () => {
+    const store = createTestStore({ runs: { forecast: [fakeRunSummary({ runId: '0003' })] } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'forecast', '--scenario', 'empty-forecast'], h);
+    expect(h.writer.stdout()).toContain(
+      "no runs for flow 'forecast' under scenario 'empty-forecast' — `vdiff run forecast --scenario empty-forecast`",
+    );
+  });
+
+  it('says so plainly when the `none` filter matches nothing', async () => {
+    const store = createTestStore({
+      runs: { forecast: [fakeRunSummary({ runId: '0004', scenario: 'empty-forecast' })] },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'forecast', '--scenario', 'none'], h);
+    expect(h.writer.stdout()).toContain("no runs for flow 'forecast' captured without a scenario");
+  });
+});
+
+describe('vdiff diff --scenario and the pair labels (mocking §6)', () => {
+  it('narrows pair resolution to the scenario', async () => {
+    const store = createTestStore({
+      runs: {
+        forecast: [
+          fakeRunSummary({ runId: '0003' }),
+          fakeRunSummary({ runId: '0004', scenario: 'empty-forecast' }),
+          fakeRunSummary({ runId: '0005' }),
+          fakeRunSummary({ runId: '0006', scenario: 'empty-forecast' }),
+        ],
+      },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    expect(await runCli(['diff', 'forecast', '--scenario', 'empty-forecast', '--json'], h)).toBe(
+      EXIT.OK,
+    );
+    expect(envelope<{ pair: unknown }>(h).data?.pair).toEqual({
+      flow: 'forecast',
+      base: '0004',
+      head: '0006',
+    });
+  });
+
+  it('carries no labels for a same-scenario pair', async () => {
+    const result = fakeDiffResult({
+      scenarios: fakePairScenarios({ base: 'empty-forecast', head: 'empty-forecast' }),
+    });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    await runCli(['diff', 'forecast', '0004', '0006', '--json'], h);
+    const envelopeValue = envelope<{ labels: string[] }>(h);
+    expect(envelopeValue.data?.labels).toEqual([]);
+    expect(envelopeValue.warnings).toBeUndefined();
+  });
+
+  it('labels a cross-scenario pair without promoting it to a warning', async () => {
+    const result = fakeDiffResult({
+      scenarios: fakePairScenarios({
+        base: 'none',
+        head: 'empty-forecast',
+        crossScenario: true,
+      }),
+    });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    expect(await runCli(['diff', 'forecast', '0003', '0004', '--json'], h)).toBe(EXIT.OK);
+    const envelopeValue = envelope<{ labels: string[] }>(h);
+    expect(envelopeValue.data?.labels).toEqual(['cross-scenario']);
+    expect(envelopeValue.warnings).toBeUndefined();
+  });
+
+  it('prints the cross-scenario sentence above the step table', async () => {
+    const result = fakeDiffResult({
+      scenarios: fakePairScenarios({
+        base: 'none',
+        head: 'empty-forecast',
+        crossScenario: true,
+      }),
+    });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    await runCli(['diff', 'forecast', '0003', '0004'], h);
+    const stdout = h.writer.stdout();
+    expect(stdout).toContain('scenario no scenario..empty-forecast');
+    expect(stdout).toContain(
+      "! cross-scenario: base ran 'no scenario', head ran 'empty-forecast'" +
+        ' — this compares two states, not two revisions',
+    );
+  });
+
+  it('flags a mock-versus-recorded pair as a warning, because it compares a fiction to a measurement', async () => {
+    const result = fakeDiffResult({
+      scenarios: fakePairScenarios({
+        base: 'none',
+        head: 'offline',
+        crossScenario: true,
+        mockVsRecorded: true,
+      }),
+    });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    expect(await runCli(['diff', 'forecast', '0003', '0004', '--json'], h)).toBe(EXIT.OK);
+    const envelopeValue = envelope<{ labels: string[] }>(h);
+    // Severity order: the one that must not be missed comes first.
+    expect(envelopeValue.data?.labels).toEqual(['mock-vs-recorded', 'cross-scenario']);
+    expect(envelopeValue.warnings).toEqual([
+      'mock-vs-recorded: one side is a mock-only run with no recording behind it —' +
+        ' this compares a fiction to a measurement',
+    ]);
+  });
+
+  it('leaves a slice-1 diff with no scenarios block unlabelled', async () => {
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => fakeDiffResult() }) });
+
+    await runCli(['diff', 'checkout', '0003', '0007', '--json'], h);
+    expect(envelope<{ labels: string[] }>(h).data?.labels).toEqual([]);
+
+    const human = harness({ ports: createTestPorts({ computeDiff: async () => fakeDiffResult() }) });
+    await runCli(['diff', 'checkout', '0003', '0007'], human);
+    expect(human.writer.stdout()).not.toContain('scenario');
+    expect(human.writer.stdout()).toContain('checkout  0003..0007');
   });
 });

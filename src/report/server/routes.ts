@@ -5,6 +5,7 @@
  *   GET  /<asset>                 files of the prebuilt UI bundle
  *   GET  /api/flows               FlowsResponse
  *   GET  /api/runs/:flow          RunsResponse
+ *   GET  /api/attribution/:flow/:runId   RunAttribution (mocking spec §8)
  *   GET  /api/diff/:base..:head   DiffResponse (?flow=, or /api/diff/:flow/:base..:head)
  *   GET  /api/blob/<path>         stored artefacts under runs/ and diffs/
  *   GET  /api/events              SSE
@@ -19,7 +20,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { FeedbackAppendedEvent, HelloEvent, ServerEvent } from '../../types.js';
 import { assetPathFor, cspHeader, createNonce, readAsset, renderShell } from './assets.js';
-import { handleDiff, handleFlows, handleRuns } from './api.js';
+import { handleAttribution, handleDiff, handleFlows, handleRuns } from './api.js';
 import type { AuthConfig } from './auth.js';
 import { authenticate, sessionCookie } from './auth.js';
 import { serveBlob } from './blobs.js';
@@ -121,6 +122,26 @@ async function handleGet(ctx: ReportContext, url: URL, res: ServerResponse): Pro
   if (pathname.startsWith('/api/runs/')) {
     const flow = decodeSegment(pathname.slice('/api/runs/'.length));
     sendJson(res, 200, await handleRuns(ctx.store, flow));
+    return;
+  }
+
+  if (pathname.startsWith('/api/attribution/')) {
+    const segments = pathname
+      .slice('/api/attribution/'.length)
+      .split('/')
+      .filter((s) => s.length > 0);
+    if (segments.length !== 2) {
+      throw new HttpError(400, 'bad-path', 'Expected /api/attribution/<flow>/<runId>.');
+    }
+    sendJson(
+      res,
+      200,
+      await handleAttribution(
+        ctx.store,
+        decodeSegment(segments[0] as string),
+        decodeSegment(segments[1] as string),
+      ),
+    );
     return;
   }
 

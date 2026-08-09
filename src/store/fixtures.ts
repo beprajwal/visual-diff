@@ -8,7 +8,7 @@
  * Everything here is deterministic: fixed timestamps, fixed env, no randomness.
  */
 
-import { STYLE_PROPS } from '../types.js';
+import { SCENARIO_NONE, STYLE_PROPS } from '../types.js';
 import { beginRun, type RunMetaInput } from './run-store.js';
 import { sha256 } from './internal/hash.js';
 import type {
@@ -124,6 +124,8 @@ export function makeFlowSnapshot(flow: string, steps: Step[], viewports: Viewpor
 export function makeRunMeta(flow: string, overrides: Partial<RunMeta> = {}): RunMetaInput {
   const base: RunMetaInput = {
     flow,
+    /** Overridable, but a fixture with no scenario is the slice-1 case: the reserved `none` (§6). */
+    scenario: SCENARIO_NONE,
     flowHash: sha256(flow),
     revision: { sha: '9f8e7d6', ref: 'main', dirty: false },
     mode: 'attach',

@@ -4,9 +4,13 @@
  * exactly the thing they are talking about.
  *
  * Encoded as a query string inside the hash: `#flow=checkout&pair=0003..0007&step=pay-form`.
+ *
+ * The scenario filter travels too (mocking spec §7): a link to "the empty state at these two
+ * revisions" is exactly the kind of thing a reviewer pastes at an agent, and it would be a poor
+ * link if it landed on the unfiltered timeline.
  */
 
-import type { PairId, RunId, StepId, ViewportId } from '../../types.js';
+import type { PairId, RunId, ScenarioName, StepId, ViewportId } from '../../types.js';
 import { pairId, parsePairId } from './paths.js';
 
 export type ViewMode = 'side-by-side' | 'overlay' | 'swipe';
@@ -19,6 +23,8 @@ export function isViewMode(value: string): value is ViewMode {
 
 export interface RouteState {
   flow?: string;
+  /** Scenario filter; `*` (ALL_SCENARIOS) is the default and is never written to the hash. */
+  scenario?: ScenarioName;
   base?: RunId;
   head?: RunId;
   step?: StepId;
@@ -45,6 +51,9 @@ export function parseHash(hash: string): RouteState {
     }
   }
 
+  const scenario = params.get('scenario');
+  if (scenario) route.scenario = scenario;
+
   const step = params.get('step');
   if (step) route.step = step;
 
@@ -67,6 +76,7 @@ export function parseHash(hash: string): RouteState {
 export function formatHash(route: RouteState): string {
   const params = new URLSearchParams();
   if (route.flow) params.set('flow', route.flow);
+  if (route.scenario && route.scenario !== '*') params.set('scenario', route.scenario);
   if (route.base && route.head) params.set('pair', pairId(route.base, route.head));
   if (route.step) params.set('step', route.step);
   if (route.viewport) params.set('viewport', route.viewport);

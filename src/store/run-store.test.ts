@@ -15,11 +15,15 @@ import {
   listRunIds,
   listRunSummaries,
   readRunMeta,
+  readScenarioIndex,
   reapAbandonedRuns,
   resolvePair,
   runExists,
   updateRunMeta,
 } from './run-store.js';
+import type { RunMetaInput } from './run-store.js';
+import { SCENARIO_NONE } from '../types.js';
+import type { RunId } from '../types.js';
 
 let tmp: string;
 
@@ -258,5 +262,222 @@ describe('pair resolution', () => {
 
   it('rejects a flow with no runs at all', async () => {
     await expect(resolvePair(tmp, 'search')).rejects.toMatchObject({ code: 'no-runs' });
+  });
+});
+
+/*
+ * Scenario as the third axis of run identity (mocking spec §6, D12). The run path never learns
+ * about it: `runs/<flow>/<nnnn>/` is unchanged and run ids stay monotonic per flow, so `0007` names
+ * one run of the flow whichever scenario it was captured against.
+ */
+describe('scenario in run identity', () => {
+  async function seedScenario(scenario: string | undefined, flow = 'forecast'): Promise<RunId> {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow,
+      steps: [{ id: 'cart' }],
+      ...(scenario === undefined ? {} : { meta: { scenario } }),
+    });
+    return run.runId;
+  }
+
+  it('records the scenario in meta.json, never in the run path', async () => {
+    const runId = await seedScenario('empty-forecast');
+    expect((await readRunMeta(tmp, 'forecast', runId)).scenario).toBe('empty-forecast');
+    expect(paths.runDir(tmp, 'forecast', runId)).toBe(
+      path.join(tmp, '.visual-diff', 'runs', 'forecast', runId),
+    );
+    expect(await listDirNames(paths.flowRunsDir(tmp, 'forecast'))).toEqual([runId]);
+  });
+
+  it('keeps run ids monotonic per flow across scenarios, so 0002 is never ambiguous', async () => {
+    await seedScenario(undefined);
+    await seedScenario('empty-forecast');
+    await seedScenario('slow-forecast');
+    await seedScenario('empty-forecast');
+
+    expect(await listRunIds(tmp, 'forecast')).toEqual(['0000', '0001', '0002', '0003']);
+    expect([...(await readScenarioIndex(tmp, 'forecast'))]).toEqual([
+      ['0000', SCENARIO_NONE],
+      ['0001', 'empty-forecast'],
+      ['0002', 'slow-forecast'],
+      ['0003', 'empty-forecast'],
+    ]);
+  });
+
+  it('writes the reserved none for a run committed without one', async () => {
+    const draft = await beginRun(tmp, 'checkout');
+    await draft.writeFlowSnapshot('flow: checkout\nsteps: []\n');
+    const { scenario: _omitted, ...withoutScenario } = makeRunMeta('checkout');
+    // The cast is the point: `RunMetaInput` requires the field, and a caller written before it
+    // existed did not supply it. The store fills it rather than writing a meta.json without it.
+    const committed = await draft.commit(withoutScenario as RunMetaInput);
+
+    expect(committed.meta.scenario).toBe(SCENARIO_NONE);
+    const onDisk = JSON.parse(
+      await fsp.readFile(paths.runMetaFile(tmp, 'checkout', committed.runId), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(onDisk.scenario).toBe('none');
+  });
+
+  it('reads a slice-1 meta.json — no scenario key at all — as none', async () => {
+    const runId = await seedScenario(undefined, 'checkout');
+    const file = paths.runMetaFile(tmp, 'checkout', runId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.scenario;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    expect((await readRunMeta(tmp, 'checkout', runId)).scenario).toBe(SCENARIO_NONE);
+    expect((await listRunSummaries(tmp, 'checkout'))[0]?.scenario).toBe(SCENARIO_NONE);
+  });
+
+  it('never lets a meta patch move a run to another scenario', async () => {
+    const runId = await seedScenario('empty-forecast');
+    const patched = await updateRunMeta(tmp, 'forecast', runId, {
+      pinned: true,
+      scenario: 'slow-forecast',
+    });
+    expect(patched.scenario).toBe('empty-forecast');
+    expect(patched.pinned).toBe(true);
+  });
+});
+
+describe('the timeline under scenarios', () => {
+  beforeEach(async () => {
+    // none, empty, empty, none — interleaved on purpose.
+    for (const scenario of [undefined, 'empty-forecast', 'empty-forecast', undefined]) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        ...(scenario === undefined ? {} : { meta: { scenario } }),
+      });
+    }
+  });
+
+  it('carries a scenario column', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast');
+    expect(rows.map((row) => [row.runId, row.scenario])).toEqual([
+      ['0000', SCENARIO_NONE],
+      ['0001', 'empty-forecast'],
+      ['0002', 'empty-forecast'],
+      ['0003', SCENARIO_NONE],
+    ]);
+  });
+
+  it('counts findings against the previous run of the same scenario, not the previous run', async () => {
+    const asked: Array<[string, string]> = [];
+    await listRunSummaries(tmp, 'forecast', async (base, head) => {
+      asked.push([base, head]);
+      return null;
+    });
+    // 0001 has no earlier empty-forecast run; 0003's predecessor is 0000, not 0002.
+    expect(asked).toEqual([
+      ['0001', '0002'],
+      ['0000', '0003'],
+    ]);
+  });
+
+  it('filters to one scenario without changing what the surviving rows say', async () => {
+    const counted = async (base: string, head: string): Promise<number | null> =>
+      base === '0001' && head === '0002' ? 4 : null;
+
+    const all = await listRunSummaries(tmp, 'forecast', counted);
+    const filtered = await listRunSummaries(tmp, 'forecast', counted, {
+      scenario: 'empty-forecast',
+    });
+
+    expect(filtered.map((row) => row.runId)).toEqual(['0001', '0002']);
+    expect(filtered[1]?.findingsCount).toBe(4);
+    expect(filtered).toEqual(all.filter((row) => row.scenario === 'empty-forecast'));
+  });
+
+  it('filters the scenario-less runs under the name they record, "none"', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { scenario: 'none' });
+    expect(rows.map((row) => row.runId)).toEqual(['0000', '0003']);
+  });
+});
+
+describe('pair resolution across scenarios', () => {
+  beforeEach(async () => {
+    // 0000 none, 0001 empty, 0002 none, 0003 empty
+    for (const scenario of [undefined, 'empty-forecast', undefined, 'empty-forecast']) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        ...(scenario === undefined ? {} : { meta: { scenario } }),
+      });
+    }
+  });
+
+  it('defaults to the previous run of the head’s own scenario, skipping the ones between', async () => {
+    expect(await resolvePair(tmp, 'forecast')).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head: '0003',
+    });
+  });
+
+  it('pairs scenario-less runs with each other, which is slice-1 behaviour unchanged', async () => {
+    expect(await resolvePair(tmp, 'forecast', undefined, '0002')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0002',
+    });
+  });
+
+  it('restricts both ends to the named scenario', async () => {
+    expect(await resolvePair(tmp, 'forecast', undefined, undefined, { scenario: 'empty-forecast' }))
+      .toEqual({ flow: 'forecast', base: '0001', head: '0003' });
+    expect(await resolvePair(tmp, 'forecast', undefined, undefined, { scenario: 'none' })).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0002',
+    });
+  });
+
+  it('permits an explicitly named cross-scenario pair: it is labelled, not refused', async () => {
+    expect(await resolvePair(tmp, 'forecast', '0002', '0003')).toEqual({
+      flow: 'forecast',
+      base: '0002',
+      head: '0003',
+    });
+  });
+
+  it('says which scenario a run really ran when it is excluded by --scenario', async () => {
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, '0002', { scenario: 'empty-forecast' }),
+    ).rejects.toMatchObject({
+      code: 'scenario-mismatch',
+      message: 'head run 0002 ran scenario "none", not "empty-forecast"',
+      hint: 'Runs under "empty-forecast": 0001, 0003',
+    });
+  });
+
+  it('names the scenario when a head has nothing before it to compare against', async () => {
+    await expect(resolvePair(tmp, 'forecast', undefined, '0001')).rejects.toMatchObject({
+      code: 'no-base',
+      message: 'flow "forecast" has no run before 0001 under scenario "empty-forecast" to compare against',
+      hint: 'Run it again to create a second point: vdiff run forecast --scenario empty-forecast',
+    });
+  });
+
+  it('keeps the scenario out of the message when there was none — the slice-1 wording', async () => {
+    await expect(resolvePair(tmp, 'forecast', undefined, '0000')).rejects.toMatchObject({
+      code: 'no-base',
+      message: 'flow "forecast" has no run before 0000 to compare against',
+      hint: 'Run it again to create a second point: vdiff run forecast',
+    });
+  });
+
+  it('reports a scenario that has never been captured, with the command that would capture it', async () => {
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, undefined, { scenario: 'slow-forecast' }),
+    ).rejects.toMatchObject({
+      code: 'no-runs',
+      message: 'flow "forecast" has no runs under scenario "slow-forecast" yet',
+      hint: 'Capture one: vdiff run forecast --scenario slow-forecast',
+    });
   });
 });

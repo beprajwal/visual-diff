@@ -27,9 +27,17 @@ export {
   pairId,
   readCachedDiff,
   writeDiff,
+  SCENARIOLESS_PAIR,
   type CachedDiffResult,
   type DiffCacheOptions,
 } from './cache.js';
+
+/**
+ * Scenario is a dimension of *which* runs are compared, not of what a finding looks like: this is
+ * the whole of the diff engine's scenario awareness (mocking spec §6).
+ */
+export { isMockOnly, labelPair, pairLabels, pairScenarios, PAIR_LABEL_SEVERITY } from './pairing.js';
+export type { PairFlag, PairLabelling } from './pairing.js';
 
 /**
  * Stage 1 (the structural flow diff) is implemented in `flow/`, because spec §5 assigns "structural

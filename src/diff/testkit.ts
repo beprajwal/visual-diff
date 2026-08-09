@@ -9,7 +9,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { STYLE_PROPS } from '../types.js';
+import { SCENARIO_NONE, STYLE_PROPS } from '../types.js';
 import type {
   A11ySnapshot,
   ConsoleEntry,
@@ -107,6 +107,8 @@ function metaFor(run: FixtureRun, viewports: ViewportId[]): RunMeta {
   return {
     runId: run.runId,
     flow: run.flow ?? 'checkout',
+    // Overridable through `meta`; a fixture that says nothing is the slice-1 case (mocking §6).
+    scenario: SCENARIO_NONE,
     flowHash: 'sha256:fixture',
     revision: { sha: `sha-${run.runId}`, ref: 'main', dirty: false },
     mode: 'attach',

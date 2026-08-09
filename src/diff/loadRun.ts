@@ -14,6 +14,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { normalizeRunMeta } from '../store/internal/scenario.js';
 import type {
   A11ySnapshot,
   ConsoleEntry,
@@ -97,8 +98,11 @@ function synthesizeStepResult(id: StepId, index: number, at: string): StepResult
 
 export async function loadRunDir(runDir: string): Promise<LoadedRunResult> {
   const warnings: string[] = [];
-  const meta = await readJson<RunMeta>(path.join(runDir, 'meta.json'));
-  if (meta === null) throw new Error(`run directory has no readable meta.json: ${runDir}`);
+  const stored = await readJson<RunMeta>(path.join(runDir, 'meta.json'));
+  if (stored === null) throw new Error(`run directory has no readable meta.json: ${runDir}`);
+  // A slice-1 meta.json has no `scenario` key and must stay readable: in memory it is `none`,
+  // which is what makes the pair labelling below decidable for every run (mocking spec §6).
+  const meta = normalizeRunMeta(stored);
 
   let flow: FlowSnapshot | null = null;
   const snapshotPath = path.join(runDir, 'flow.snapshot.yaml');

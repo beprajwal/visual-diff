@@ -199,6 +199,9 @@ select {
 .badge.unstable { color: var(--sev-high); border-color: var(--sev-high); }
 .badge.pruned { color: var(--fg-faint); }
 .badge.pinned { color: var(--accent); border-color: var(--accent); }
+/* A mock-only run has no recording behind it, so it is badged as loudly as an unstable one. */
+.badge.mock { color: var(--sev-high); border-color: var(--sev-high); }
+.badge.scenario { color: var(--accent); border-color: var(--accent); }
 
 .live { display: flex; align-items: center; gap: 5px; color: var(--fg-dim); }
 .live .dot {
@@ -530,6 +533,42 @@ select {
 }
 .warn.high { border-color: var(--sev-high); }
 .warn code { color: var(--fg); word-break: break-all; }
+.warn code.rules { color: var(--accent); }
+
+/* ------------------------------------------------------------- scenarios (mocking §6, §8) */
+
+/*
+ * Banners sit above the images, not beside them: they change what every finding below them means,
+ * so a reader who never glances at the right rail must still have seen them.
+ */
+.pair-banners { display: grid; gap: 4px; margin: 10px 10px 0; }
+.pair-banner {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  border: 1px solid var(--line-strong);
+  border-left-width: 3px;
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+}
+.pair-banner.med { border-left-color: var(--sev-med); }
+.pair-banner.med .badge { color: var(--sev-med); border-color: var(--sev-med); }
+.pair-banner.high { border-left-color: var(--sev-high); }
+.pair-banner.high .badge { color: var(--sev-high); border-color: var(--sev-high); }
+
+/* Attribution is step-local, so it renders with the step rather than in the warnings rail. */
+.scenario-notes { display: grid; gap: 3px; margin: 8px 10px 0; }
+.scenario-note {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+  color: var(--fg-dim);
+}
+.scenario-note.high { border-left-color: var(--sev-high); }
+.scenario-note code { color: var(--fg); word-break: break-all; }
 
 .feedback {
   position: fixed;

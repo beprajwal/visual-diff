@@ -1,7 +1,14 @@
 node_modules/
 dist/
 
-# spec §6 git boundary: flows and config are committed, everything else the tool writes is not.
+# Slice-1 spec §6 git boundary: flows and config are committed, everything the tool writes is not.
+# The recorded HAR lives under `flows/`, so it is committed with the flow specs it belongs to —
+# which is the whole point of committing it (cross-machine determinism).
+#
+# `scenarios/` is committed for the same reason (api-mocking spec §5 "Storage"): a historical
+# replay reads the scenario out of git at the target SHA, so an ignored scenario file would be
+# reported as absent at every revision but the working tree.
 .visual-diff/*
 !.visual-diff/config.yaml
 !.visual-diff/flows/
+!.visual-diff/scenarios/

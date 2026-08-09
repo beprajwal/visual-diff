@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FlowDiffEntry, RunCompletedEvent, RunSummary } from '../../types.js';
+import { ALL_SCENARIOS } from './derive.js';
 import {
   type Action,
   type AppState,
+  attributionForRun,
   defaultPair,
   initialState,
   isAdjacentPair,
@@ -11,8 +13,17 @@ import {
   newestRunId,
   reduce,
   routeOf,
+  visibleRuns,
 } from './state.js';
-import { makeDiff, makeFinding, makeRun, makeStepDiff, makeViewportDiff } from './test-fixtures.js';
+import {
+  makeAttribution,
+  makeDiff,
+  makeFinding,
+  makeRun,
+  makeStepAttribution,
+  makeStepDiff,
+  makeViewportDiff,
+} from './test-fixtures.js';
 
 const RUNS: RunSummary[] = ['0001', '0002', '0003'].map((id) => makeRun(id));
 
@@ -535,5 +546,172 @@ describe('helpers', () => {
       view: 'side-by-side',
       findingsOnly: false,
     });
+  });
+});
+
+/* ------------------------------------------------------------------ scenarios (mocking §6, §7) */
+
+const MIXED: RunSummary[] = [
+  makeRun('0001'),
+  makeRun('0002', {}, { scenario: 'empty-forecast' }),
+  makeRun('0003'),
+  makeRun('0004', {}, { scenario: 'empty-forecast' }),
+];
+
+function mixed(): AppState {
+  return apply(
+    initialState(),
+    { type: 'flows-loaded', flows: [{ name: 'checkout', runs: 4, latest: '0004' }] },
+    { type: 'runs-loaded', flow: 'checkout', runs: MIXED },
+  );
+}
+
+describe('the scenario filter', () => {
+  it('starts off, so a reviewer who has never heard of scenarios sees every run', () => {
+    const state = mixed();
+    expect(state.scenario).toBe(ALL_SCENARIOS);
+    expect(visibleRuns(state).map((r) => r.runId)).toEqual(['0001', '0002', '0003', '0004']);
+    expect(state).toMatchObject({ base: '0003', head: '0004' });
+  });
+
+  it('re-defaults the pair to that scenario’s newest two runs', () => {
+    const state = apply(mixed(), { type: 'select-scenario', scenario: 'empty-forecast' });
+    expect(visibleRuns(state).map((r) => r.runId)).toEqual(['0002', '0004']);
+    expect(state).toMatchObject({ base: '0002', head: '0004', following: true, diffStale: true });
+  });
+
+  it('keeps a pair that survives the new filter rather than re-selecting one', () => {
+    const state = apply(
+      mixed(),
+      { type: 'select-pair', base: '0002', head: '0004' },
+      { type: 'select-scenario', scenario: 'empty-forecast' },
+    );
+    expect(state).toMatchObject({ base: '0002', head: '0004', following: true });
+  });
+
+  it('clears the pair when the filter leaves nothing to compare', () => {
+    const state = apply(mixed(), { type: 'select-scenario', scenario: 'nothing-here' });
+    expect(state).toMatchObject({ base: null, head: null, diff: null, diffStale: false });
+    expect(visibleRuns(state)).toEqual([]);
+  });
+
+  it('treats "following" as newest-within-the-filter, not newest overall', () => {
+    const state = apply(mixed(), { type: 'select-scenario', scenario: 'none' });
+    // 0003 is the newest scenario-less run even though 0004 is the newest run of the flow.
+    expect(state).toMatchObject({ base: '0001', head: '0003', following: true });
+  });
+
+  it('steps through the filtered history, not in and out of other scenarios', () => {
+    const state = apply(
+      mixed(),
+      { type: 'select-scenario', scenario: 'none' },
+      { type: 'run-older' },
+    );
+    expect(state).toMatchObject({ base: '0001', head: '0001' });
+  });
+
+  it('drops the filter when the flow changes, since it may not exist in the next one', () => {
+    const state = apply(
+      mixed(),
+      { type: 'select-scenario', scenario: 'empty-forecast' },
+      { type: 'select-flow', flow: 'settings' },
+    );
+    expect(state.scenario).toBe(ALL_SCENARIOS);
+    expect(state.attribution).toEqual({});
+  });
+
+  it('is a no-op when the same scenario is re-selected', () => {
+    const state = apply(mixed(), { type: 'select-scenario', scenario: 'empty-forecast' });
+    expect(apply(state, { type: 'select-scenario', scenario: 'empty-forecast' })).toBe(state);
+  });
+
+  it('round-trips through the route, omitting the default', () => {
+    expect(routeOf(mixed()).scenario).toBeUndefined();
+    const filtered = apply(mixed(), { type: 'select-scenario', scenario: 'empty-forecast' });
+    expect(routeOf(filtered).scenario).toBe('empty-forecast');
+    expect(initialState({ scenario: 'empty-forecast' }).scenario).toBe('empty-forecast');
+  });
+});
+
+describe('the live channel under a scenario filter (§9, mocking §7)', () => {
+  function runEventFor(runId: string, scenario: string): RunCompletedEvent {
+    return {
+      type: 'run',
+      ts: '2026-08-10T11:00:00Z',
+      flow: 'checkout',
+      run: makeRun(runId, {}, { scenario }),
+    };
+  }
+
+  it('advances to a new run of the scenario being followed', () => {
+    const state = apply(
+      mixed(),
+      { type: 'select-scenario', scenario: 'empty-forecast' },
+      { type: 'server-event', event: runEventFor('0005', 'empty-forecast') },
+    );
+    expect(state).toMatchObject({ base: '0004', head: '0005', following: true, diffStale: true });
+  });
+
+  it('adds a run of another scenario to the timeline without moving or badging', () => {
+    const before = apply(mixed(), { type: 'select-scenario', scenario: 'empty-forecast' });
+    const after = apply(before, { type: 'server-event', event: runEventFor('0005', 'none') });
+
+    expect(after.runs.map((r) => r.runId)).toEqual(['0001', '0002', '0003', '0004', '0005']);
+    expect(after).toMatchObject({ base: '0002', head: '0004', pendingRun: null });
+    // The filtered pickers never offered it, so an "available" badge would point at nothing.
+    expect(visibleRuns(after).map((r) => r.runId)).toEqual(['0002', '0004']);
+  });
+
+  it('still badges rather than yanks a reviewer pinned inside the filter', () => {
+    const pinned = apply(
+      mixed(),
+      { type: 'select-scenario', scenario: 'empty-forecast' },
+      { type: 'select-pair', base: '0002', head: '0002' },
+    );
+    expect(pinned.following).toBe(false);
+
+    const after = apply(pinned, { type: 'server-event', event: runEventFor('0005', 'empty-forecast') });
+    expect(after).toMatchObject({ base: '0002', head: '0002' });
+    expect(after.pendingRun?.runId).toBe('0005');
+  });
+});
+
+describe('attribution (mocking §8)', () => {
+  it('indexes a run’s attribution by step id', () => {
+    const attribution = makeAttribution('0004', {
+      scenario: 'empty-forecast',
+      steps: [
+        makeStepAttribution('forecast', {
+          rules: [
+            {
+              scenario: 'empty-forecast',
+              ruleId: 'forecast-empty',
+              action: 'patch',
+              requests: 1,
+              bodyChanged: 1,
+              urls: ['https://api/v1/forecast'],
+            },
+          ],
+        }),
+      ],
+    });
+    const state = apply(mixed(), { type: 'attribution-loaded', attribution });
+
+    expect(attributionForRun(state, '0004')['forecast']?.rules[0]?.ruleId).toBe('forecast-empty');
+    expect(attributionForRun(state, '0004')['home']).toBeUndefined();
+  });
+
+  it('is an empty map for a run whose attribution has not been fetched', () => {
+    expect(attributionForRun(mixed(), '0002')).toEqual({});
+    expect(attributionForRun(mixed(), null)).toEqual({});
+  });
+
+  it('keeps both ends of a pair, so a cross-scenario pair does not lose a side', () => {
+    const state = apply(
+      mixed(),
+      { type: 'attribution-loaded', attribution: makeAttribution('0002', { scenario: 'a' }) },
+      { type: 'attribution-loaded', attribution: makeAttribution('0004', { scenario: 'b' }) },
+    );
+    expect(Object.keys(state.attribution).sort()).toEqual(['0002', '0004']);
   });
 });

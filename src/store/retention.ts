@@ -14,6 +14,11 @@
  *   report offer the exact backfill command instead of erroring (spec §10);
  * - `pinned` and diff-referenced runs are skipped with a reason, including when a prune is asked
  *   for explicitly — "never pruned" means never, not "unless you insist".
+ *
+ * The mocking spec narrows the first clause: the last 20 runs **per `(flow, scenario)`**, not per
+ * flow (§6). Counting per flow would let a scenario run every hour evict the whole history of one
+ * run monthly, which is backwards — the rarely-run scenario is precisely the one whose history
+ * cannot be reconstructed from memory.
  */
 
 import { promises as fsp } from 'node:fs';
@@ -22,9 +27,11 @@ import * as path from 'node:path';
 import { StoreError } from './errors.js';
 import { runsReferencedByDiffs } from './diff-store.js';
 import { dirSize, listDirEntries } from './internal/fs.js';
+import { sortRunIds } from './internal/id.js';
 import * as paths from './paths.js';
-import { listRunIds, readRunMeta, updateRunMeta } from './run-store.js';
-import type { RunId, RunMeta } from '../types.js';
+import { listRunIds, readRunMeta, readScenarioIndex, updateRunMeta } from './run-store.js';
+import { SCENARIO_NONE } from '../types.js';
+import type { RunId, RunMeta, ScenarioName } from '../types.js';
 
 /** Survives pruning forever (spec §6). */
 export const PRESERVED_FILES: readonly string[] = [
@@ -99,8 +106,38 @@ export async function pruneRun(root: string, flow: string, runId: RunId): Promis
 }
 
 export interface PruneFlowOptions {
-  /** Runs kept intact, newest first. Defaults to the config value (20 in the spec). */
+  /**
+   * Runs kept intact per `(flow, scenario)`, newest first. Defaults to the config value (20 in the
+   * spec); the per-scenario reading is the mocking spec's (§6).
+   */
   keepRuns: number;
+}
+
+/**
+ * The runs of one flow that fall outside the retention window, in run-id order.
+ *
+ * Grouped by scenario first: each scenario keeps its own newest `keepRuns`, so the eviction
+ * pressure of a busy scenario never reaches a quiet one's history (mocking spec §6).
+ */
+export async function retentionCandidates(
+  root: string,
+  flow: string,
+  keepRuns: number,
+): Promise<RunId[]> {
+  const ids = await listRunIds(root, flow);
+  const index = await readScenarioIndex(root, flow, ids);
+  const byScenario = new Map<ScenarioName, RunId[]>();
+  for (const runId of ids) {
+    const scenario = index.get(runId) ?? SCENARIO_NONE;
+    const group = byScenario.get(scenario);
+    if (group === undefined) byScenario.set(scenario, [runId]);
+    else group.push(runId);
+  }
+  const candidates: RunId[] = [];
+  for (const group of byScenario.values()) {
+    candidates.push(...group.slice(0, Math.max(0, group.length - keepRuns)));
+  }
+  return sortRunIds(candidates);
 }
 
 /** Apply the retention policy to one flow. */
@@ -113,8 +150,7 @@ export async function pruneFlow(
   if (!Number.isInteger(keepRuns) || keepRuns < 1) {
     throw new StoreError('invalid-retention', `retention.keepRuns must be >= 1, got ${keepRuns}`);
   }
-  const ids = await listRunIds(root, flow);
-  const candidates = ids.slice(0, Math.max(0, ids.length - keepRuns));
+  const candidates = await retentionCandidates(root, flow, keepRuns);
   if (candidates.length === 0) return { flow, pruned: [], skipped: [], freedBytes: 0 };
 
   const referenced = await runsReferencedByDiffs(root, flow);

@@ -19,7 +19,11 @@ import { parseFlowSnapshot, serializeFlowSnapshot } from './snapshot.js';
 import type { AckResult, ReadFeedbackFilter } from './feedback-store.js';
 import type { AcquireLockOptions, LockHandle } from './lock.js';
 import type { PruneResult } from './retention.js';
-import type { RunDraft } from './run-store.js';
+import type {
+  ListRunSummariesOptions,
+  ResolvePairOptions,
+  RunDraft,
+} from './run-store.js';
 import type {
   Config,
   DiffResult,
@@ -31,6 +35,7 @@ import type {
   RunId,
   RunMeta,
   RunSummary,
+  ScenarioName,
 } from '../types.js';
 
 export interface Store {
@@ -45,12 +50,21 @@ export interface Store {
   listRunIds(flow: string): Promise<RunId[]>;
   latestRunId(flow: string): Promise<RunId | null>;
   readMeta(flow: string, runId: RunId): Promise<RunMeta>;
-  listRuns(flow: string): Promise<RunSummary[]>;
+  /** The timeline, optionally narrowed to one scenario (mocking spec §7). */
+  listRuns(flow: string, options?: ListRunSummariesOptions): Promise<RunSummary[]>;
+  /** The scenario each run of the flow was captured under (mocking spec §6). */
+  listRunScenarios(flow: string): Promise<Map<RunId, ScenarioName>>;
   loadRun(flow: string, runId: RunId, options?: runLoad.LoadRunOptions): Promise<LoadedRun>;
   runDir(flow: string, runId: RunId): string;
   beginRun(flow: string): Promise<RunDraft>;
   reapAbandonedRuns(flow: string): Promise<string[]>;
-  resolvePair(flow: string, base?: string, head?: string): Promise<PairRef>;
+  /** Same-scenario by default; `options.scenario` restricts both ends (mocking spec §6, §7). */
+  resolvePair(
+    flow: string,
+    base?: string,
+    head?: string,
+    options?: ResolvePairOptions,
+  ): Promise<PairRef>;
 
   /* diffs */
   readDiff(pair: PairRef, engineVersion?: string): Promise<DiffResult | null>;
@@ -91,13 +105,20 @@ export function openStore(config: Config): Store {
     listRunIds: (flow) => runStore.listRunIds(root, flow),
     latestRunId: (flow) => runStore.latestRunId(root, flow),
     readMeta: (flow, runId) => runStore.readRunMeta(root, flow, runId),
-    listRuns: (flow) =>
-      runStore.listRunSummaries(root, flow, (base, head) => findingsCountFor(base, head, flow)),
+    listRuns: (flow, options) =>
+      runStore.listRunSummaries(
+        root,
+        flow,
+        (base, head) => findingsCountFor(base, head, flow),
+        options,
+      ),
+    listRunScenarios: (flow) => runStore.readScenarioIndex(root, flow),
     loadRun: (flow, runId, options) => runLoad.loadRun(root, flow, runId, options),
     runDir: (flow, runId) => paths.runDir(root, flow, runId),
     beginRun: (flow) => runStore.beginRun(root, flow),
     reapAbandonedRuns: (flow) => runStore.reapAbandonedRuns(root, flow),
-    resolvePair: (flow, base, head) => runStore.resolvePair(root, flow, base, head),
+    resolvePair: (flow, base, head, options) =>
+      runStore.resolvePair(root, flow, base, head, options),
 
     readDiff: (pair, engineVersion) =>
       diffStore.readDiff(root, pair.flow, pair.base, pair.head, engineVersion),
@@ -146,13 +167,27 @@ export {
   readFlowSnapshotSource,
   readRunMeta,
   readRunMetaOrNull,
+  readScenarioIndex,
   readStepResult,
   reapAbandonedRuns,
   resolvePair,
   runExists,
   updateRunMeta,
 } from './run-store.js';
-export type { CommittedRun, RunDraft, RunMetaInput, ShotInput } from './run-store.js';
+export type {
+  CommittedRun,
+  ListRunSummariesOptions,
+  ResolvePairOptions,
+  RunDraft,
+  RunMetaInput,
+  ShotInput,
+} from './run-store.js';
+export {
+  normalizeRunMeta,
+  normalizeScenarioName,
+  sameScenario,
+  scenarioOf,
+} from './internal/scenario.js';
 export { loadRun, loadRunDir } from './run-load.js';
 export type { LoadRunOptions } from './run-load.js';
 export {
@@ -185,6 +220,7 @@ export {
   pruneAllFlows,
   pruneFlow,
   pruneRun,
+  retentionCandidates,
 } from './retention.js';
 export type { PruneFlowOptions, PruneResult, PruneSkip, PruneSkipReason } from './retention.js';
 export {

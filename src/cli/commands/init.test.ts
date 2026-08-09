@@ -64,6 +64,9 @@ describe('vdiff init (spec §6, §9)', () => {
     expect(gitignore).toContain('.visual-diff/*');
     expect(gitignore).toContain('!.visual-diff/config.yaml');
     expect(gitignore).toContain('!.visual-diff/flows/');
+    // Scenarios are read out of git at the target SHA exactly as flows are (mocking spec §5
+    // "Storage"), so an ignored scenario reads as absent at every revision but the working tree.
+    expect(gitignore).toContain('!.visual-diff/scenarios/');
   });
 
   it('scaffolds an example flow that parses as a v1 spec with a stable step id', async () => {

@@ -73,6 +73,31 @@ describe('validateFlowSpec', () => {
     expect(offWithHar.warnings.map((w) => w.code)).toEqual(['har-ignored']);
   });
 
+  /*
+   * `mock` is the mode with no recording behind it (mocking spec D13), so unlike `record` and
+   * `replay` it needs no `har` — and a `har` written next to it is worth a warning rather than
+   * silence, because it suggests the author believes the recording is still being consulted.
+   */
+  it('needs no har for mock, and warns about one written anyway', () => {
+    const mock = validateFlowSpec(spec({ network: { mode: 'mock' } }), locate);
+    expect(mock.issues).toEqual([]);
+    expect(mock.warnings).toEqual([]);
+
+    const withHar = validateFlowSpec(spec({ network: { mode: 'mock', har: 'weather.har' } }), locate);
+    expect(withHar.issues).toEqual([]);
+    expect(withHar.warnings.map((w) => w.code)).toEqual(['har-ignored']);
+    expect(withHar.warnings[0]?.message).toBe(
+      "network.har 'weather.har' is ignored because network.mode is 'mock'",
+    );
+  });
+
+  it('names the mode it is ignoring the har for', () => {
+    const off = validateFlowSpec(spec({ network: { mode: 'off', har: 'c.har' } }), locate);
+    expect(off.warnings[0]?.message).toBe(
+      "network.har 'c.har' is ignored because network.mode is 'off'",
+    );
+  });
+
   it('treats a blank har as missing', () => {
     const { issues } = validateFlowSpec(spec({ network: { mode: 'replay', har: '   ' } }), locate);
     expect(issues.map((issue) => issue.code)).toEqual(['har-required']);

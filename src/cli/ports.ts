@@ -30,6 +30,8 @@ import type {
   RunOptions,
   RunResult,
   RunSummary,
+  ScenarioName,
+  ScenarioSpec,
   ServeInfo,
   ServeOptions,
   ValidationResult,
@@ -54,10 +56,23 @@ export interface StorePort {
   flowFile(flow: string): string;
   /** Flow names that have a spec or at least one run. */
   listFlows(): Promise<string[]>;
-  /** Timeline rows, oldest first. */
-  listRuns(flow: string): Promise<RunSummary[]>;
-  /** Defaults to N-1 vs N when base/head are omitted (spec §9). */
-  resolvePair(flow: string, base?: RunId, head?: RunId): Promise<PairRef>;
+  /**
+   * Timeline rows, oldest first, optionally narrowed to one scenario (mocking spec §7). The filter
+   * belongs to the store rather than the CLI because `findingsCount` is measured against the
+   * previous run *of the same scenario*, which a caller filtering the returned array cannot undo.
+   */
+  listRuns(flow: string, scenario?: ScenarioName): Promise<RunSummary[]>;
+  /**
+   * Defaults to N-1 vs N when base/head are omitted (spec §9). `scenario` narrows that default to
+   * runs captured under it, because "did the empty state break between these revisions?" needs
+   * like-for-like pairs (mocking spec §6, D12); `SCENARIO_NONE` narrows it to runs that had none.
+   */
+  resolvePair(
+    flow: string,
+    base?: RunId,
+    head?: RunId,
+    scenario?: ScenarioName,
+  ): Promise<PairRef>;
   /** Absolute path of `runs/<flow>/<runId>`. */
   runDir(flow: string, runId: RunId): string;
   /** Absolute path of `diffs/<flow>/<base>..<head>/findings.json`. */
@@ -84,6 +99,26 @@ export interface Ports {
   loadConfig(cwd: string): Promise<Config>;
   /** `flow/index.ts` — parse + validate a spec file without running it. */
   parseFlowFile(file: string): Promise<ValidationResult<FlowSpec>>;
+
+  /*
+   * The scenario edge (`mocking/index.ts`). Scenario *file layout* lives there rather than in the
+   * store because `.visual-diff/scenarios/<name>.yaml` is defined by the mocking spec (§5
+   * "Storage") and read from git history at the target SHA by the same module that parses it. The
+   * CLI still constructs no path itself.
+   */
+
+  /** Absolute path of `.visual-diff/scenarios`. Async only because the edge is loaded on first use. */
+  scenariosDir(config: Config): Promise<string>;
+  /** Absolute path of `.visual-diff/scenarios/<name>.yaml`. */
+  scenarioFile(config: Config, name: ScenarioName): Promise<string>;
+  /** Scenario names with a spec file on disk, sorted. */
+  listScenarios(config: Config): Promise<ScenarioName[]>;
+  /**
+   * Parse + validate a scenario file without running it (mocking spec §7, §8). Same contract as
+   * {@link parseFlowFile}: issues carry file, line and offending key, and the messages are the
+   * feature's user interface, so the CLI prints them verbatim.
+   */
+  parseScenarioFile(file: string): Promise<ValidationResult<ScenarioSpec>>;
   /** `store/index.ts#openStore`. */
   openStore(config: Config): Promise<StorePort>;
   /** `runner/index.ts#runFlow`. */

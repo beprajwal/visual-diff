@@ -27,6 +27,7 @@ import type {
   RunOptions,
   RunResult,
   RunSummary,
+  ScenarioSpec,
   ServeOptions,
   ValidationResult,
 } from '../types.js';
@@ -41,6 +42,8 @@ export const MODULE_SPECIFIERS = {
   /** Config loading lives in `store/`: the config *is* where the store's root comes from. */
   config: '../store/index.js',
   flow: '../flow/index.js',
+  /** Scenario parsing and validation (mocking spec §5, §8) — the flow module's sibling. */
+  scenario: '../mocking/index.js',
   store: '../store/index.js',
   runner: '../runner/index.js',
   diff: '../diff/index.js',
@@ -113,8 +116,10 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
     flowsDir: () => module.paths.flowsDir(root),
     flowFile: (flow) => module.paths.flowFile(root, flow),
     listFlows: () => store.listFlows(),
-    listRuns: (flow) => store.listRuns(flow),
-    resolvePair: (flow, base, head) => store.resolvePair(flow, base, head),
+    listRuns: (flow, scenario) =>
+      store.listRuns(flow, scenario === undefined ? undefined : { scenario }),
+    resolvePair: (flow, base, head, scenario) =>
+      store.resolvePair(flow, base, head, scenario === undefined ? undefined : { scenario }),
     runDir: (flow, runId) => store.runDir(flow, runId),
     diffFile: (pair) => module.paths.diffFindingsFile(root, pair.flow, pair.base, pair.head),
     readDiff: (pair) => store.readDiff(pair),
@@ -151,6 +156,40 @@ export function createPorts(): Ports {
         (file: string) => Promise<ValidationResult<FlowSpec>> | ValidationResult<FlowSpec>
       >(MODULE_SPECIFIERS.flow, 'parseFlowFile');
       return await fn(file);
+    },
+
+    async parseScenarioFile(file: string): Promise<ValidationResult<ScenarioSpec>> {
+      const fn = await loadExport<
+        (file: string) => Promise<ValidationResult<ScenarioSpec>> | ValidationResult<ScenarioSpec>
+      >(MODULE_SPECIFIERS.scenario, 'parseScenarioFile');
+      return await fn(file);
+    },
+
+    // The three below are synchronous in the scenario module but asynchronous here, because the
+    // module edge is loaded on first use (see the header). `scenariosDir` and `scenarioFile` are
+    // therefore the only ports in this file that are `async` purely for the import.
+    async scenariosDir(config: Config): Promise<string> {
+      const fn = await loadExport<(root: string) => string>(
+        MODULE_SPECIFIERS.scenario,
+        'scenariosDir',
+      );
+      return fn(config.root);
+    },
+
+    async scenarioFile(config: Config, name: string): Promise<string> {
+      const fn = await loadExport<(root: string, name: string) => string>(
+        MODULE_SPECIFIERS.scenario,
+        'scenarioFile',
+      );
+      return fn(config.root, name);
+    },
+
+    async listScenarios(config: Config): Promise<string[]> {
+      const fn = await loadExport<(root: string) => Promise<string[]>>(
+        MODULE_SPECIFIERS.scenario,
+        'listScenarios',
+      );
+      return await fn(config.root);
     },
 
     async openStore(config: Config): Promise<StorePort> {

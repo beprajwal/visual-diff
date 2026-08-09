@@ -1,0 +1,53 @@
+# The detail screen, anchored on what a scenario cannot take away.
+#
+# `forecast.yaml` is the flow that proves the chart is right: it waits on `chart-line` and counts
+# the 48 precipitation bars. That is exactly why it cannot be captured under `empty-forecast` —
+# a scenario that empties the hourly series removes the very elements that flow waits for, and the
+# run fails on the wait rather than screenshotting the empty state.
+#
+# So this flow exists to be captured *both ways*. Every wait and every expectation here holds
+# whether the hourly series is present or empty:
+#
+#   - `current-conditions` is built from the recorded `current` block, which no scenario in the
+#     fixture touches, and it renders only once the forecast request has landed.
+#   - `temperature-chart` is the chart *card*, which wraps either the SVG or the "No hourly
+#     readings" empty state — the one element whose presence means "the chart has decided".
+#   - `air-quality` is the second request's card, waited on so the two runs cannot differ merely by
+#     one of them having screenshotted while it was still a skeleton.
+#
+# The pair to capture:
+#
+#   vdiff run detail
+#   vdiff run detail --scenario empty-forecast
+#   vdiff diff detail 0000 0001
+#
+# which is a `cross-scenario` pair: it compares two *states*, not two revisions, and the tool says
+# so rather than letting the answer be read as a regression.
+version: 1
+flow: detail
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: replay
+  har: weather.har
+
+steps:
+  - id: berlin
+    # A direct navigation rather than a click through the list, so the screen is reached cold with
+    # both requests in flight — the state a scenario's `delay` acts on.
+    goto: /#/location/berlin
+    waitFor: "[data-place=berlin] [data-test=current-conditions]"
+    shoot: true
+    expect:
+      - selector: "[data-test=place-name]"
+        text: Berlin
+      # Present in both renderings: the card that holds either the chart or its empty state.
+      - selector: "[data-test=temperature-chart]"
+        visible: true
+
+  - id: air-quality
+    scroll:
+      selector: "[data-test=air-quality]"
+    waitFor: "[data-test=aqi-badge]"
+    shoot: true

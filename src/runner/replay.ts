@@ -25,6 +25,7 @@ import {
   type NetworkEntry,
   type NetworkMode,
   type Rect,
+  type ScenarioAttribution,
   type Step,
   type StepFailure,
   type StepId,
@@ -36,6 +37,8 @@ import {
 import { newContext, settle } from './browser.js';
 import { captureA11ySnapshot, collectArgs, collectDom, toDomSnapshot } from './capture.js';
 import { RunnerError, errorMessage, errorStack } from './errors.js';
+import type { ScenarioError } from '../mocking/index.js';
+import type { ScenarioRuntime } from './scenario.js';
 
 export interface ShotBytes {
   screenshot: Uint8Array;
@@ -70,7 +73,13 @@ export interface ViewportReplay {
   steps: StepOutcome[];
   harHits: number;
   harMisses: number;
+  /** Requests a rule answered outright (`respond`/`abort`) — see {@link scenarioAnswered}. */
+  scenarioServed: number;
   missedUrls: string[];
+  /** Ids of the scenario rules that matched at least one request here (mocking spec §8). */
+  matchedRuleIds: string[];
+  /** Rules that could not be applied. Any one of these fails the run (mocking spec §8). */
+  ruleFailures: ScenarioError[];
 }
 
 export interface ReplayOptions {
@@ -85,6 +94,72 @@ export interface ReplayOptions {
   maxDomNodes?: number;
   /** Per-action timeout. */
   timeoutMs?: number;
+  /**
+   * This viewport's scenario state (mocking spec §5). One runtime per viewport, never shared:
+   * `nth` counts occurrences of a request, and viewports replay concurrently.
+   */
+  scenario?: ScenarioRuntime;
+}
+
+/**
+ * The HAR verdict for one request, given what the scenario layer did with it.
+ *
+ * Without a scenario this is the slice-1 rule, unchanged. With one, the scenario's action decides:
+ * a rule-aborted or rule-answered request never consulted the recording, so calling it a `hit`
+ * would inflate the HAR coverage a `replay` run reports, and calling it a `miss` would raise the
+ * warning that says the diff may be misleading — when in fact the scenario is doing exactly what it
+ * was asked. Only `mock`-mode misses and unmatched replay requests are real misses.
+ */
+export function harMatchFor(
+  network: NetworkMode,
+  attribution: ScenarioAttribution | undefined,
+  failed: boolean,
+  servedByDevServer = false,
+): HarMatch {
+  switch (attribution?.action) {
+    case 'miss':
+      return 'miss';
+    case 'abort':
+    case 'respond':
+      return 'bypassed';
+    case 'patch':
+    case 'patchOps':
+      // The body came out of the recording and was then rewritten: still served by the HAR.
+      return 'hit';
+    default:
+      // No scenario, or one that passed the request through — the network mode decides.
+      break;
+  }
+  // A request the recording could not answer and the app-origin backstop passed to the dev server
+  // (`browser.ts#routeAppOriginOnly`). It never consulted the HAR, so it is neither a hit — which
+  // would report a replay's HAR coverage as higher than it is — nor a miss, which would raise the
+  // warning saying the diff may be misleading about the dev server doing its job. This is observed,
+  // not inferred from the URL: a slice-1 recording *does* contain the app's own document, and when
+  // the HAR answers it that is a real hit.
+  if (servedByDevServer) return 'bypassed';
+
+  switch (network) {
+    case 'record':
+      return 'recorded';
+    case 'replay':
+      return failed ? 'miss' : 'hit';
+    case 'mock':
+      // An unmatched mock request is aborted and attributed `miss` above, so anything arriving here
+      // went to the app's own origin: never the recording, and never a miss.
+      return 'bypassed';
+    case 'off':
+    default:
+      return 'bypassed';
+  }
+}
+
+/**
+ * Whether a scenario rule answered this request outright, rather than letting the recording (or the
+ * dev server) answer it. `patch`/`patchOps` are not counted: those *are* the recording, rewritten,
+ * and they already appear as HAR hits — counting them here too would double-count one request.
+ */
+export function scenarioAnswered(attribution: ScenarioAttribution | undefined): boolean {
+  return attribution?.action === 'respond' || attribution?.action === 'abort';
 }
 
 /** PNG dimensions straight from the IHDR chunk — no image decoder needed to size a shot. */
@@ -284,11 +359,21 @@ export function nextAnchor(steps: readonly Step[], from: number): number {
 export async function replayViewport(options: ReplayOptions): Promise<ViewportReplay> {
   const { flow, viewport } = options;
   const timeoutMs = options.timeoutMs ?? 15_000;
+  /**
+   * URLs the app-origin backstop handed to the dev server because the recording had no entry for
+   * them (`browser.ts#routeAppOriginOnly`). Playwright reports those as ordinary finished requests,
+   * indistinguishable after the fact from ones the HAR answered, so the only place the difference
+   * is visible is the route handler itself.
+   */
+  const servedByDevServer = new Set<string>();
+
   const contextOpts = {
     viewport,
     network: options.network,
     baseUrl: options.baseUrl,
+    onAppOriginServed: (url: string) => servedByDevServer.add(url),
     ...(options.har === undefined ? {} : { har: options.har }),
+    ...(options.scenario === undefined ? {} : { scenario: options.scenario }),
     ...(options.deviceScaleFactor === undefined ? {} : { deviceScaleFactor: options.deviceScaleFactor }),
   };
 
@@ -311,6 +396,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     harMatch: HarMatch,
     durationMs: number | null,
     failure?: string,
+    attribution?: ScenarioAttribution,
   ): void => {
     const entry: NetworkEntry = {
       step: currentStep,
@@ -323,6 +409,9 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
       durationMs,
     };
     if (failure !== undefined) entry.failure = failure;
+    // Written for every request of a scenario or mock run, and never otherwise, so an absent value
+    // reads as "no scenario was in force" rather than "unknown" (mocking spec §8).
+    if (attribution !== undefined) entry.attribution = attribution;
     networkEntries.push(entry);
   };
 
@@ -355,21 +444,28 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     startedAtByRequest.set(request, Date.now());
   });
 
+  /** What the scenario layer did with this request, if anything did (mocking spec §8). */
+  const attributionOf = (request: object, method: string, url: string): ScenarioAttribution | undefined =>
+    options.scenario?.attributionFor(request, method, url);
+
   page.on('requestfinished', (request) => {
     inFlight = Math.max(0, inFlight - 1);
     const started = startedAtByRequest.get(request);
     void request
       .response()
-      .then((response) =>
+      .then((response) => {
+        const attribution = attributionOf(request, request.method(), request.url());
         recordNetwork(
           request.url(),
           request.method(),
           request.resourceType(),
           response === null ? null : response.status(),
-          options.network === 'record' ? 'recorded' : options.network === 'replay' ? 'hit' : 'bypassed',
+          harMatchFor(options.network, attribution, false, servedByDevServer.has(request.url())),
           started === undefined ? null : Date.now() - started,
-        ),
-      )
+          undefined,
+          attribution,
+        );
+      })
       .catch(() => {
         /* the context may be closing; a lost timing is not a run failure */
       });
@@ -379,16 +475,25 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     inFlight = Math.max(0, inFlight - 1);
     const started = startedAtByRequest.get(request);
     const failure = request.failure()?.errorText ?? 'request failed';
-    const miss = options.network === 'replay';
-    if (miss) missedUrls.push(request.url());
+    const attribution = attributionOf(request, request.method(), request.url());
+    const harMatch = harMatchFor(
+      options.network,
+      attribution,
+      true,
+      servedByDevServer.has(request.url()),
+    );
+    // A request a rule deliberately aborted is not a miss: only requests the recording (or, in
+    // mock mode, the scenario) could not answer raise the warning that says the diff may mislead.
+    if (harMatch === 'miss') missedUrls.push(request.url());
     recordNetwork(
       request.url(),
       request.method(),
       request.resourceType(),
       null,
-      miss ? 'miss' : options.network === 'record' ? 'recorded' : 'bypassed',
+      harMatch,
       started === undefined ? null : Date.now() - started,
       failure,
+      attribution,
     );
   });
 
@@ -494,7 +599,16 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
 
   const harMisses = networkEntries.filter((entry) => entry.harMatch === 'miss').length;
   const harHits = networkEntries.filter((entry) => entry.harMatch === 'hit').length;
-  return { viewport: viewport.id, steps: outcomes, harHits, harMisses, missedUrls };
+  return {
+    viewport: viewport.id,
+    steps: outcomes,
+    harHits,
+    harMisses,
+    scenarioServed: networkEntries.filter((entry) => scenarioAnswered(entry.attribution)).length,
+    missedUrls,
+    matchedRuleIds: [...(options.scenario?.matchedRuleIds() ?? [])],
+    ruleFailures: [...(options.scenario?.ruleFailures() ?? [])],
+  };
 }
 
 /** Rects a viewport reported as masked; used by the run-level warning surface. */

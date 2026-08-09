@@ -10,7 +10,9 @@
  *    any earlier point leaves nothing for the store or the report to see (spec §10).
  *
  * Run ids are allocated at commit time from the ids already on disk, which keeps them monotonic
- * per flow even when a run crashes, is pruned, or is deleted by hand.
+ * per flow even when a run crashes, is pruned, or is deleted by hand. That stays true under
+ * scenarios: the scenario is a field of `meta.json`, never a level of the path, so `0007` names one
+ * run of the flow whatever it was captured against (mocking spec §6, D12).
  */
 
 import { promises as fsp } from 'node:fs';
@@ -28,8 +30,14 @@ import {
 } from './internal/fs.js';
 import { isRunId, nextRunId, normalizeRunId, sortRunIds } from './internal/id.js';
 import { stableStringify } from './internal/json.js';
+import {
+  normalizeRunMeta,
+  normalizeScenarioName,
+  scenarioOf,
+} from './internal/scenario.js';
 import * as paths from './paths.js';
 import { serializeFlowSnapshot } from './snapshot.js';
+import { SCENARIO_NONE } from '../types.js';
 import type {
   A11ySnapshot,
   ConsoleEntry,
@@ -40,6 +48,7 @@ import type {
   RunId,
   RunMeta,
   RunSummary,
+  ScenarioName,
   ShotResult,
   StepId,
   StepResult,
@@ -183,7 +192,9 @@ function makeDraft(root: string, flow: string, dir: string): RunDraft {
       } else if (await pathExists(target)) {
         throw new StoreError('run-exists', `run ${runId} already exists for flow "${flow}"`);
       }
-      const finalMeta: RunMeta = { ...meta, runId, flow };
+      // `scenario` is written explicitly even when the caller omitted it: a run captured without a
+      // scenario says so on disk (`none`) rather than leaving a reader to infer it (mocking §6).
+      const finalMeta: RunMeta = { ...meta, runId, flow, scenario: scenarioOf(meta) };
       await fsp.writeFile(
         path.join(dir, paths.META_FILENAME),
         `${stableStringify(finalMeta)}\n`,
@@ -247,7 +258,9 @@ export async function readRunMeta(root: string, flow: string, runId: RunId): Pro
   if (meta === null) {
     throw new StoreError('unknown-run', `run ${runId} does not exist for flow "${flow}"`);
   }
-  return meta;
+  // Normalised on the way out, so a slice-1 meta.json — written before `scenario` existed — is
+  // readable and reads as the reserved `none` (mocking spec §6).
+  return normalizeRunMeta(meta);
 }
 
 export async function readRunMetaOrNull(
@@ -255,7 +268,28 @@ export async function readRunMetaOrNull(
   flow: string,
   runId: RunId,
 ): Promise<RunMeta | null> {
-  return readJsonOrNull<RunMeta>(paths.runMetaFile(root, flow, runId));
+  const meta = await readJsonOrNull<RunMeta>(paths.runMetaFile(root, flow, runId));
+  return meta === null ? null : normalizeRunMeta(meta);
+}
+
+/**
+ * The scenario each committed run of one flow was captured under, in run-id order (mocking §6).
+ *
+ * This is the index every scenario-aware operation is built on — the timeline column, the retention
+ * grouping and pair resolution — because the scenario is a field of `meta.json` and not something a
+ * directory listing can answer.
+ */
+export async function readScenarioIndex(
+  root: string,
+  flow: string,
+  ids?: readonly RunId[],
+): Promise<Map<RunId, ScenarioName>> {
+  const runIds = ids ?? (await listRunIds(root, flow));
+  const index = new Map<RunId, ScenarioName>();
+  for (const runId of runIds) {
+    index.set(runId, scenarioOf(await readRunMetaOrNull(root, flow, runId)));
+  }
+  return index;
 }
 
 /**
@@ -269,7 +303,14 @@ export async function updateRunMeta(
   patch: Partial<RunMeta>,
 ): Promise<RunMeta> {
   const current = await readRunMeta(root, flow, runId);
-  const next: RunMeta = { ...current, ...patch, runId: current.runId, flow: current.flow };
+  // Run identity — id, flow and scenario — is fixed at commit and never patched afterwards.
+  const next: RunMeta = {
+    ...current,
+    ...patch,
+    runId: current.runId,
+    flow: current.flow,
+    scenario: current.scenario,
+  };
   await writeJsonAtomic(paths.runMetaFile(root, flow, runId), next);
   return next;
 }
@@ -301,27 +342,47 @@ export async function readStepResult(
 
 /* ------------------------------------------------------------------ timeline */
 
+export interface ListRunSummariesOptions {
+  /** Restrict the timeline to runs captured under this scenario — `vdiff runs --scenario` (§7). */
+  scenario?: ScenarioName;
+}
+
 /**
- * One row per run, oldest first — the `vdiff runs <flow>` timeline (spec §9). `findingsCount` is
- * taken from the stored diff against the immediately preceding run, and is null when no diff has
- * been computed for that pair.
+ * One row per run, oldest first — the `vdiff runs <flow>` timeline (spec §9), with the scenario
+ * column the mocking spec adds (§7).
+ *
+ * `findingsCount` is taken from the stored diff against the previous run **of the same scenario**,
+ * and is null when no diff has been computed for that pair. Same-scenario is the pairing the diff
+ * command defaults to (mocking spec §6), so anything else in this column would be a count for a
+ * pair the tool would never have chosen — and, for a flow captured under several scenarios, a
+ * number that quietly compares two states rather than two revisions.
+ *
+ * Filtering changes which rows are returned, never how they are counted: the row for run 7 carries
+ * the same figure whether or not the caller asked for one scenario.
  */
 export async function listRunSummaries(
   root: string,
   flow: string,
   findingsCountFor: (base: RunId, head: RunId) => Promise<number | null> = async () => null,
+  options: ListRunSummariesOptions = {},
 ): Promise<RunSummary[]> {
   const ids = await listRunIds(root, flow);
+  const wanted = options.scenario === undefined ? null : normalizeScenarioName(options.scenario);
+  const previousOfScenario = new Map<ScenarioName, RunId>();
   const out: RunSummary[] = [];
-  for (let i = 0; i < ids.length; i += 1) {
-    const runId = ids[i] as RunId;
+
+  for (const runId of ids) {
     const meta = await readRunMetaOrNull(root, flow, runId);
     if (meta === null) continue;
-    const previous = i > 0 ? (ids[i - 1] as RunId) : null;
-    const findingsCount = previous === null ? null : await findingsCountFor(previous, runId);
+    const scenario = scenarioOf(meta);
+    const previous = previousOfScenario.get(scenario) ?? null;
+    previousOfScenario.set(scenario, meta.runId);
+    if (wanted !== null && scenario !== wanted) continue;
+    const findingsCount = previous === null ? null : await findingsCountFor(previous, meta.runId);
     out.push({
       runId: meta.runId,
       flow: meta.flow,
+      scenario,
       revision: meta.revision,
       mode: meta.mode,
       status: meta.status,
@@ -340,21 +401,46 @@ export async function listRunSummaries(
 
 /* ------------------------------------------------------------------ pair resolution */
 
+export interface ResolvePairOptions {
+  /** Restrict both ends to runs captured under this scenario — `vdiff diff --scenario` (§7). */
+  scenario?: ScenarioName;
+}
+
 /**
- * Resolve a pair for `vdiff diff <flow> [base] [head]`. Defaults are **N-1 vs N** (spec §9):
- * head is the newest run, base is the one immediately before it. Ids may be given loosely (`7`)
- * and are normalised to the padded form.
+ * Resolve a pair for `vdiff diff <flow> [base] [head]`. Defaults are **N-1 vs N** (spec §9) *on the
+ * scenario axis*: head is the newest run, base is the newest earlier run that ran the **same
+ * scenario** (mocking spec §6, D12).
+ *
+ * Same-scenario is the default because the regression question is "did the empty state break
+ * between these revisions?", and that needs like-for-like ends. A flow captured only without
+ * scenarios is the `none`-vs-`none` case of exactly that rule, so slice-1 behaviour is unchanged.
+ *
+ * Naming both ends explicitly overrides the default — a cross-scenario pair is a legitimate
+ * question and is permitted, then labelled rather than refused (mocking spec §6). Ids may be given
+ * loosely (`7`) and are normalised to the padded form.
  */
 export async function resolvePair(
   root: string,
   flow: string,
   base?: string,
   head?: string,
+  options: ResolvePairOptions = {},
 ): Promise<PairRef> {
   const ids = await listRunIds(root, flow);
   if (ids.length === 0) {
     throw new StoreError('no-runs', `flow "${flow}" has no runs yet`, {
       hint: `Run it first: vdiff run ${flow}`,
+    });
+  }
+
+  const wanted = options.scenario === undefined ? null : normalizeScenarioName(options.scenario);
+  const index = await readScenarioIndex(root, flow, ids);
+  const scenarioFor = (runId: RunId): ScenarioName => index.get(runId) ?? SCENARIO_NONE;
+  const candidates = wanted === null ? ids : ids.filter((id) => scenarioFor(id) === wanted);
+
+  if (wanted !== null && candidates.length === 0) {
+    throw new StoreError('no-runs', `flow "${flow}" has no runs under scenario "${wanted}" yet`, {
+      hint: `Capture one: vdiff run ${flow} --scenario ${wanted}`,
     });
   }
 
@@ -365,10 +451,18 @@ export async function resolvePair(
         hint: `Known runs: ${ids.join(', ')}`,
       });
     }
+    if (wanted !== null && scenarioFor(normalized) !== wanted) {
+      throw new StoreError(
+        'scenario-mismatch',
+        `${label} run ${normalized} ran scenario "${scenarioFor(normalized)}", not "${wanted}"`,
+        { hint: `Runs under "${wanted}": ${candidates.join(', ')}` },
+      );
+    }
     return normalized;
   };
 
-  const headId = head === undefined ? (ids[ids.length - 1] as RunId) : resolveOne(head, 'head');
+  const headId =
+    head === undefined ? (candidates[candidates.length - 1] as RunId) : resolveOne(head, 'head');
   if (base !== undefined) {
     const baseId = resolveOne(base, 'base');
     if (baseId === headId) {
@@ -377,13 +471,23 @@ export async function resolvePair(
     return { flow, base: baseId, head: headId };
   }
 
-  const headIndex = ids.indexOf(headId);
-  if (headIndex <= 0) {
-    throw new StoreError(
-      'no-base',
-      `flow "${flow}" has no run before ${headId} to compare against`,
-      { hint: `Run it again to create a second point: vdiff run ${flow}` },
-    );
+  const headScenario = scenarioFor(headId);
+  const headIndex = candidates.indexOf(headId);
+  for (let i = headIndex - 1; i >= 0; i -= 1) {
+    const candidate = candidates[i] as RunId;
+    if (scenarioFor(candidate) === headScenario) {
+      return { flow, base: candidate, head: headId };
+    }
   }
-  return { flow, base: ids[headIndex - 1] as RunId, head: headId };
+
+  // Naming the scenario matters here: without it, "no run before 0007" reads as "this flow has one
+  // run", when the flow may have twenty under other scenarios and none to compare this one against.
+  const underScenario = headScenario === SCENARIO_NONE ? '' : ` under scenario "${headScenario}"`;
+  const runAgain =
+    headScenario === SCENARIO_NONE ? `vdiff run ${flow}` : `vdiff run ${flow} --scenario ${headScenario}`;
+  throw new StoreError(
+    'no-base',
+    `flow "${flow}" has no run before ${headId}${underScenario} to compare against`,
+    { hint: `Run it again to create a second point: ${runAgain}` },
+  );
 }

@@ -1,0 +1,64 @@
+# The forecast detail screen: the SVG chart, the week strip, and air quality.
+#
+# This is the flow the api-mocking spec's example scenarios are aimed at. All three endpoints are
+# exercised — the forecast on arrival, air quality alongside it, and geocoding is left to
+# `search.yaml` — so `empty-forecast`, `slow-air-quality` and a `patchOps` removal of the first day
+# all have somewhere to land.
+#
+# Note the deliberate mixture: `open-berlin` arrives by *clicking*, `direct-reykjavik` arrives by
+# *navigating*. Clicking reaches the screen with the forecast already fetched by the list; a direct
+# `goto` reaches it cold, with both requests in flight. A scenario that adds a `delay` only produces
+# a loading state on the second of those, so the fixture has to contain both.
+version: 1
+flow: forecast
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: replay
+  har: weather.har
+
+steps:
+  - id: list
+    goto: /#/
+    waitFor: "[data-test=location-grid]"
+    shoot: false
+
+  - id: open-berlin
+    click: "[data-test=open-berlin]"
+    # Scoped by `data-place`, not just by `chart-line`. Navigating between two detail screens is a
+    # hash change, so the previous location's chart is still in the DOM for a frame — an unscoped
+    # wait would resolve against Berlin's chart while Reykjavík's data is still in flight.
+    waitFor: "[data-place=berlin] [data-test=chart-line]"
+    shoot: true
+    expect:
+      - selector: "[data-test=place-name]"
+        text: Berlin
+      # `visible: false` because the assertion is about how many bars were *drawn*, not about any
+      # one of them being on screen. A bar for an hour with zero precipitation is a `rect` of
+      # height 0, which is legitimately not visible — and the first hour of the recorded Berlin
+      # payload is exactly that, so waiting for visibility here can never succeed.
+      - selector: "[data-test=chart-precipitation] rect"
+        count: 48
+        visible: false
+      - selector: "[data-test=daily-strip] li"
+        count: 7
+
+  - id: air-quality
+    scroll:
+      selector: "[data-test=air-quality]"
+    waitFor: "[data-test=aqi-badge]"
+    shoot: true
+
+  - id: fahrenheit
+    click: "[data-test=units-f]"
+    waitFor: "[data-test=app][data-units=f]"
+    shoot: true
+
+  - id: direct-reykjavik
+    goto: /#/location/reykjavik
+    waitFor: "[data-place=reykjavik] [data-test=chart-line]"
+    shoot: true
+    expect:
+      - selector: "[data-test=place-name]"
+        text: Reykjavík

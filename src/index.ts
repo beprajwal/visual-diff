@@ -32,6 +32,37 @@ export {
   type FlowDiffInput,
 } from './flow/index.js';
 
+/*
+ * The API-mocking edge (`mocking/index.ts`), which re-exports the scenario language from
+ * `scenario/index.ts`. Curated rather than `export *` for the reason in the header, and because
+ * the module also carries deliberately generic internals — a glob compiler, a `verbOf` — that
+ * would read as package-level API if they appeared here.
+ */
+export {
+  ScenarioEngine,
+  ScenarioError,
+  ScenarioSpecError,
+  applyJsonPatch,
+  applyMergePatch,
+  isScenarioSpecError,
+  listScenarios,
+  loadScenarioFile,
+  loadScenarioSource,
+  parseScenarioFile,
+  parseScenarioSource,
+  resolveDecision,
+  scaffoldScenarioSource,
+  scenarioFile,
+  scenarioSummary,
+  scenariosDir,
+  serializeScenario,
+  structuralScenarioDiff,
+  validateScenarioSpec,
+  type MockAction,
+  type ScenarioDecision,
+  type ScenarioDiffEntry,
+} from './mocking/index.js';
+
 export {
   loadConfig,
   loadConfigOrThrow,

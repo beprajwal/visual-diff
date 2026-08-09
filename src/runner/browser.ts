@@ -29,6 +29,7 @@ import {
   buildInitScript,
 } from './determinism.js';
 import { RunnerError } from './errors.js';
+import { isAppOriginUrl, type ScenarioRuntime } from './scenario.js';
 
 export interface PlaywrightModule {
   chromium: {
@@ -90,6 +91,18 @@ export interface ContextOptions {
   /** Absolute HAR path. **Required** for 'record' and 'replay'; absent is a hard error. */
   har?: string;
   baseUrl?: string;
+  /**
+   * This viewport's scenario state (mocking spec §5, §8). **Required** for 'mock', which has no
+   * recording behind it: without a runtime, `mock` would install no interception at all and become
+   * the live-network mode wearing a mock label.
+   */
+  scenario?: ScenarioRuntime;
+  /**
+   * Called with the URL of every request the **dev server** answered rather than the recording
+   * (see {@link routeAppOriginOnly}). The caller uses it to keep `network.json`'s HAR verdicts
+   * honest: a module the dev server served is `bypassed`, not a HAR `hit`.
+   */
+  onAppOriginServed?: (url: string) => void;
 }
 
 /**
@@ -160,14 +173,50 @@ function trackInFlight(context: BrowserContext): void {
 }
 
 /**
+ * The scenario runtime a `mock` context cannot run without (mocking spec D13).
+ *
+ * `mock` is the one mode with neither a HAR nor a blanket block behind it: all of its interception
+ * is the scenario route. A mock context opened without a runtime installs nothing, so every request
+ * would reach the live network while `meta.json` claims `mock` — the same lie `requireHarPath`
+ * exists to prevent, so it is refused the same way.
+ */
+export function requireScenarioRuntime(options: ContextOptions): ScenarioRuntime {
+  const runtime = options.scenario;
+  if (runtime !== undefined) return runtime;
+  throw new RunnerError({
+    code: 'scenario-runtime-missing',
+    message: "network mode 'mock' needs a scenario runtime, but none was built",
+    exitCode: EXIT.CONFIG_ERROR,
+    kind: 'scenario-invalid',
+    hint: 'this is a wiring bug: mock mode installs no other interception, so it may never open a context without one',
+  });
+}
+
+/**
  * Settle what this context will do about the network *before* it is opened, so a mode that cannot
  * be honoured never produces a live context at all — not even briefly.
  */
 function assertNetworkPlan(options: ContextOptions): void {
+  if (options.network === 'record' && options.scenario !== undefined) {
+    // Also refused by the CLI at exit 2 (mocking spec §2). Repeated here because this is the last
+    // point before a context exists: a recording made through a scenario would be committed and
+    // replayed forever with nothing in it to say which parts were real.
+    throw new RunnerError({
+      code: 'record-with-scenario',
+      message: "network mode 'record' cannot be combined with a scenario",
+      exitCode: EXIT.CONFIG_ERROR,
+      kind: 'scenario-invalid',
+    });
+  }
   switch (options.network) {
     case 'record':
+      requireHarPath(options);
+      return;
     case 'replay':
       requireHarPath(options);
+      return;
+    case 'mock':
+      requireScenarioRuntime(options);
       return;
     case 'off':
       return;
@@ -185,6 +234,30 @@ function assertNetworkPlan(options: ContextOptions): void {
   }
 }
 
+/**
+ * The one line the runner draws around the machine: the app's own origin reaches the dev server,
+ * everything else is refused. `network: off` is nothing but this handler, and `replay` installs it
+ * underneath the recording as the floor `notFound: 'fallback'` lands on.
+ *
+ * `onAppOriginServed` is how the caller learns that a request was answered by the dev server rather
+ * than by the recording. Without it a replay cannot tell the two apart after the fact — Playwright
+ * reports both as an ordinary finished request — and would report every module the dev server
+ * served as a HAR hit.
+ */
+async function routeAppOriginOnly(
+  context: BrowserContext,
+  onAppOriginServed?: (url: string) => void,
+): Promise<void> {
+  await context.route('**/*', (route) => {
+    const url = route.request().url();
+    if (isAppOriginUrl(url)) {
+      onAppOriginServed?.(url);
+      return route.continue();
+    }
+    return route.abort('blockedbyclient');
+  });
+}
+
 export async function newContext(browser: Browser, options: ContextOptions): Promise<BrowserContext> {
   assertNetworkPlan(options);
 
@@ -194,19 +267,43 @@ export async function newContext(browser: Browser, options: ContextOptions): Pro
     await context.addInitScript({ content: buildInitScript() });
 
     if (options.network === 'replay') {
-      // `notFound: 'abort'` is the whole point: silent fallthrough to the live network is the
-      // failure mode that quietly destroys determinism (spec §7), so it is never allowed.
-      await context.routeFromHAR(requireHarPath(options), { notFound: 'abort', update: false });
+      // Two handlers, and the order of the two is the whole design.
+      //
+      // The backstop goes on **first**, so Playwright — which consults handlers in reverse
+      // registration order — reaches it **last**. Then the recording goes on top with
+      // `notFound: 'fallback'`, which hands a request the HAR cannot answer *down the handler
+      // chain* rather than out to the network.
+      //
+      // Slice-1 recorded everything the page asked for, the dev server's own document included, so
+      // a replay of a slice-1 recording answers every request from the HAR and the backstop never
+      // fires — the guarantee that zero requests reach the dev server is unchanged. A recording
+      // made *against* an API (mocking spec §9) cannot contain the dev server: its port is
+      // ephemeral, so the URLs would differ on every run. Those requests fall to the backstop and
+      // are served by the dev server, which is where the code under test actually lives.
+      //
+      // What must never happen is a request leaving the machine, and it cannot: the backstop is
+      // registered unconditionally and aborts everything that is not app-origin, so `fallback`
+      // always has somewhere to land. Bare `notFound: 'fallback'` with no handler beneath it would
+      // be the live-network fallthrough D13 names.
+      await routeAppOriginOnly(context, options.onAppOriginServed);
+      await context.routeFromHAR(requireHarPath(options), { notFound: 'fallback', update: false });
     } else if (options.network === 'off') {
-      await context.route('**/*', (route) => {
-        const url = route.request().url();
-        if (url.startsWith('data:') || url.startsWith('blob:')) return route.continue();
-        const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
-        return isLocal ? route.continue() : route.abort('blockedbyclient');
-      });
+      await routeAppOriginOnly(context);
     }
     // 'record' falls through to the live network on purpose — and only because `contextOptions`
     // already attached the `recordHar` that captures every byte of it.
+    //
+    // 'mock' installs nothing here: the scenario route below is its whole interception, which is
+    // why `assertNetworkPlan` refuses a mock context without a runtime.
+
+    if (options.scenario !== undefined) {
+      // Registered **after** `routeFromHAR` so Playwright consults it **first** — handlers run in
+      // reverse registration order. That ordering is what lets an overlay rule patch or replace a
+      // response while `route.fallback()` hands every unclaimed request down to the recording,
+      // untouched (mocking spec §5, "The two modes").
+      const runtime = options.scenario;
+      await context.route('**/*', (route) => runtime.handle(route));
+    }
   } catch (error) {
     // A context whose interception failed to install is a context onto the live network. Close it.
     await context.close().catch(() => undefined);

@@ -8,7 +8,7 @@ import { writeDiff } from './diff-store.js';
 import { makeRunMeta, writeFixtureRun } from './fixtures.js';
 import { listDirNames } from './internal/fs.js';
 import * as paths from './paths.js';
-import { PRESERVED_FILES, pinRun, pruneFlow, pruneRun } from './retention.js';
+import { PRESERVED_FILES, pinRun, pruneFlow, pruneRun, retentionCandidates } from './retention.js';
 import { listRunIds, readRunMeta } from './run-store.js';
 import type { DiffResult, RunId, RunMeta } from '../types.js';
 
@@ -178,5 +178,78 @@ describe('the retention policy', () => {
 
   it('reports an unknown run when pinning', async () => {
     await expect(pinRun(tmp, 'checkout', '0099')).rejects.toThrow(/does not exist/);
+  });
+});
+
+/*
+ * Retention is per `(flow, scenario)`, not per flow (mocking spec §6). The failure it prevents: a
+ * scenario captured on every commit evicting the entire history of one captured once a month —
+ * backwards, because the rarely-run scenario is the one whose history cannot be re-derived.
+ */
+describe('the retention policy under scenarios', () => {
+  async function seedScenario(scenario: string, count: number, flow = 'forecast'): Promise<RunId[]> {
+    const ids: RunId[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const run = await writeFixtureRun({
+        root: tmp,
+        flow,
+        steps: [{ id: 'cart' }],
+        meta: { scenario },
+      });
+      ids.push(run.runId);
+    }
+    return ids;
+  }
+
+  it('keeps the newest keepRuns of every scenario, counted separately', async () => {
+    const none = await seedScenario('none', 3);
+    const empty = await seedScenario('empty-forecast', 3);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 2 });
+
+    expect(result.pruned).toEqual([none[0], empty[0]]);
+    for (const runId of [none[1], none[2], empty[1], empty[2]] as RunId[]) {
+      expect((await readRunMeta(tmp, 'forecast', runId)).pruned).toBe(false);
+    }
+  });
+
+  it('does not let a busy scenario evict a quiet one’s only history', async () => {
+    const quiet = await seedScenario('empty-forecast', 1);
+    await seedScenario('none', 25);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20 });
+
+    // Per-flow retention would have pruned the empty-forecast run: it is the oldest of the 26.
+    expect(result.pruned).not.toContain(quiet[0]);
+    expect((await readRunMeta(tmp, 'forecast', quiet[0] as RunId)).pruned).toBe(false);
+    expect(result.pruned).toHaveLength(5);
+  });
+
+  it('lists candidates in run-id order, whatever scenario they belong to', async () => {
+    await seedScenario('none', 2);
+    await seedScenario('empty-forecast', 2);
+    await seedScenario('none', 1);
+
+    expect(await retentionCandidates(tmp, 'forecast', 1)).toEqual(['0000', '0001', '0002']);
+  });
+
+  it('still refuses to prune a pinned run of a scenario over its limit', async () => {
+    const empty = await seedScenario('empty-forecast', 3);
+    await pinRun(tmp, 'forecast', empty[0] as RunId);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 1 });
+
+    expect(result.skipped).toContainEqual({ runId: empty[0], reason: 'pinned' });
+    expect(result.pruned).toEqual([empty[1]]);
+  });
+
+  it('reads a slice-1 run with no scenario key as part of the none group', async () => {
+    const ids = await seedScenario('none', 2);
+    const file = paths.runMetaFile(tmp, 'forecast', ids[0] as RunId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.scenario;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    expect(await retentionCandidates(tmp, 'forecast', 1)).toEqual([ids[0]]);
   });
 });

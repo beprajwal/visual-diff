@@ -75,6 +75,55 @@ describe('openStore', () => {
     expect((await store.readMeta('checkout', '0003')).pruned).toBe(false);
   });
 
+  it('carries the scenario axis through the same bound root (mocking spec §6)', async () => {
+    const store = openStore(config);
+    for (const scenario of [undefined, 'empty-forecast', undefined, 'empty-forecast']) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        ...(scenario === undefined ? {} : { meta: { scenario } }),
+      });
+    }
+
+    expect([...(await store.listRunScenarios('forecast')).values()]).toEqual([
+      'none',
+      'empty-forecast',
+      'none',
+      'empty-forecast',
+    ]);
+    expect((await store.listRuns('forecast', { scenario: 'empty-forecast' })).map((r) => r.runId))
+      .toEqual(['0001', '0003']);
+    // Same-scenario by default: 0002 sits between the two, and is not the base.
+    expect(await store.resolvePair('forecast')).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head: '0003',
+    });
+    expect(await store.resolvePair('forecast', undefined, undefined, { scenario: 'none' })).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0002',
+    });
+  });
+
+  it('applies retention per (flow, scenario), so one scenario cannot evict another', async () => {
+    const store = openStore(config); // keepRuns: 2
+    for (const scenario of ['none', 'none', 'none', 'empty-forecast']) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: { scenario },
+      });
+    }
+
+    const result = await store.applyRetention('forecast');
+
+    expect(result.pruned).toEqual(['0000']);
+    expect((await store.readMeta('forecast', '0003')).pruned).toBe(false);
+  });
+
   it('round-trips feedback', async () => {
     const store = openStore(config);
     const entry = await store.appendFeedback({

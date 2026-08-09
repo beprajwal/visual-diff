@@ -1,12 +1,18 @@
 /**
- * Header: flow selector, base/head run pickers showing SHA, ref, dirty badge and timestamp, plus
- * the live indicator and the "run NNNN available" badge that appears instead of yanking a pinned
- * reviewer to a newer run (spec §9).
+ * Header: flow selector, scenario selector, base/head run pickers showing SHA, ref, dirty badge and
+ * timestamp, plus the live indicator and the "run NNNN available" badge that appears instead of
+ * yanking a pinned reviewer to a newer run (spec §9).
+ *
+ * The scenario selector sits between the flow and the run pickers because that is the order in
+ * which the three narrow: a flow, then which state of it, then which two captures of that state
+ * (mocking spec §7). It only appears once a flow has more than one scenario in its timeline —
+ * a control with a single option is furniture.
  */
 
-import type { RunSummary } from '../../../types.js';
-import { runLabel } from '../derive.js';
+import { SCENARIO_NONE, type RunMeta, type RunSummary } from '../../../types.js';
+import { ALL_SCENARIOS, runLabel, scenarioLabel, scenariosOf } from '../derive.js';
 import type { Action, AppState } from '../state.js';
+import { visibleRuns } from '../state.js';
 
 export interface HeaderProps {
   state: AppState;
@@ -26,9 +32,14 @@ function RunPicker(props: {
   label: string;
   value: string | null;
   runs: RunSummary[];
+  /** Meta for the selected run, when a diff has been loaded. Carries the network mode. */
+  meta?: RunMeta | null;
+  /** True when the scenario filter is off, so the run's own scenario is worth naming. */
+  showScenario: boolean;
   onChange: (runId: string) => void;
 }) {
   const run = props.runs.find((r) => r.runId === props.value) ?? null;
+  const mockOnly = props.meta?.network === 'mock';
   return (
     <div class="run-pick">
       <label for={`pick-${props.label}`}>{props.label}</label>
@@ -57,6 +68,19 @@ function RunPicker(props: {
           {run.revision.ref ? ` ${run.revision.ref}` : ''} · {formatTimestamp(run.startedAt)}
         </span>
       ) : null}
+      {mockOnly ? (
+        <span
+          class="badge mock"
+          title="mock-only run: no recording behind it, so fidelity is only as good as the scenario"
+        >
+          mock
+        </span>
+      ) : null}
+      {props.showScenario && run && run.scenario !== SCENARIO_NONE ? (
+        <span class="badge scenario" title={`captured under scenario ${run.scenario}`}>
+          {run.scenario}
+        </span>
+      ) : null}
       {run?.revision.dirty ? (
         <span class="badge dirty" title="replayed against an uncommitted working tree">
           dirty
@@ -83,6 +107,16 @@ function RunPicker(props: {
 
 export function Header({ state, dispatch }: HeaderProps) {
   const { pendingRun } = state;
+  const scenarios = scenariosOf(state.runs);
+  const runs = visibleRuns(state);
+  const filtered = state.scenario !== ALL_SCENARIOS;
+
+  // `network` lives on RunMeta, not on the timeline row, so the mock badge can only be shown for
+  // the pair whose diff is loaded — and only while the pickers still name that pair. A stale badge
+  // is worse than none: "mock" against a recorded run is the exact confusion D13 exists to avoid.
+  const diff = state.diff;
+  const baseMeta = diff && diff.pair.base === state.base ? diff.baseMeta : null;
+  const headMeta = diff && diff.pair.head === state.head ? diff.headMeta : null;
 
   return (
     <header class="header">
@@ -107,16 +141,42 @@ export function Header({ state, dispatch }: HeaderProps) {
         </select>
       </div>
 
+      {scenarios.length > 1 ? (
+        <div class="field">
+          <label for="scenario-select">scenario</label>
+          <select
+            id="scenario-select"
+            value={state.scenario}
+            title="narrow the run pickers to one captured state (mocking spec §7)"
+            onChange={(event: Event) => {
+              const scenario = (event.currentTarget as HTMLSelectElement).value;
+              dispatch({ type: 'select-scenario', scenario });
+            }}
+          >
+            <option value={ALL_SCENARIOS}>all scenarios</option>
+            {scenarios.map((name) => (
+              <option key={name} value={name}>
+                {scenarioLabel(name)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
       <RunPicker
         label="base"
         value={state.base}
-        runs={state.runs}
+        runs={runs}
+        meta={baseMeta}
+        showScenario={!filtered}
         onChange={(base) => dispatch({ type: 'select-base', base })}
       />
       <RunPicker
         label="head"
         value={state.head}
-        runs={state.runs}
+        runs={runs}
+        meta={headMeta}
+        showScenario={!filtered}
         onChange={(head) => dispatch({ type: 'select-head', head })}
       />
 

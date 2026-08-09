@@ -21,6 +21,7 @@ import type {
   RunMeta,
   RunSummary,
 } from '../../types.js';
+import type { RunAttribution } from '../attribution.js';
 
 /** The diff engine's edge: two run directories in, one DiffResult out. No network, no browser. */
 export type ComputeDiffFn = (
@@ -59,6 +60,11 @@ export interface ReportStore {
   readRunSummary(flow: string, runId: RunId): Promise<RunSummary | null>;
   /** Absolute path of a run directory. Does not assert existence. */
   runDir(flow: string, runId: RunId): string;
+  /**
+   * What the scenario layer did to each step of a run, folded from the `network.json` files
+   * (mocking spec §8). Null when the run is unknown; empty rows when it had no scenario.
+   */
+  readAttribution(flow: string, runId: RunId): Promise<RunAttribution | null>;
   /** A previously stored `findings.json`, or null when nothing is cached. */
   readCachedDiff(flow: string, base: RunId, head: RunId): Promise<DiffResult | null>;
   /**

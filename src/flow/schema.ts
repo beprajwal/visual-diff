@@ -69,7 +69,12 @@ const zStep = z
 
 const zNetwork = z
   .object({
-    mode: z.enum(['record', 'replay', 'off']),
+    // `mock` is a first-class mode alongside the other three (mocking spec D13), and needs no
+    // `har` — there is no recording at all, only the scenario's rules. It is spelled out here
+    // rather than derived from `NETWORK_MODES` because zod's `enum` wants a literal tuple and
+    // because this list is a *spec* surface: a mode the flow file may name is a compatibility
+    // promise, not merely whatever the runner happens to understand.
+    mode: z.enum(['record', 'replay', 'off', 'mock']),
     har: z.string().min(1).optional(),
   })
   .strict();

@@ -13,14 +13,17 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import type {
-  Config,
-  DiffResult,
-  FeedbackEntry,
-  RunId,
-  RunMeta,
-  RunSummary,
+import {
+  SCENARIO_NONE,
+  type Config,
+  type DiffResult,
+  type FeedbackEntry,
+  type NetworkEntry,
+  type RunId,
+  type RunMeta,
+  type RunSummary,
 } from '../../types.js';
+import { summarizeStep, type RunAttribution, type StepAttribution } from '../attribution.js';
 import type { FeedbackDraft, FlowInfo, ReportStore } from './deps.js';
 
 /** Flow names are directory names in the store; keep them boring so paths stay safe. */
@@ -45,11 +48,18 @@ export function pairDirName(base: RunId, head: RunId): string {
   return `${base}..${head}`;
 }
 
-/** Project a stored RunMeta onto the timeline row the report renders. */
+/**
+ * Project a stored RunMeta onto the timeline row the report renders.
+ *
+ * `scenario` is defaulted rather than required, because a slice-1 `meta.json` on disk predates the
+ * field (mocking spec §6). Reading it as `none` here is what keeps those runs in the timeline
+ * instead of silently dropping every run recorded before this slice.
+ */
 export function toRunSummary(meta: RunMeta, findingsCount: number | null): RunSummary {
   return {
     runId: meta.runId,
     flow: meta.flow,
+    scenario: meta.scenario ?? SCENARIO_NONE,
     revision: meta.revision,
     mode: meta.mode,
     status: meta.status,
@@ -235,6 +245,36 @@ export class FsReportStore implements ReportStore {
       count: diff.summary.totalFindings,
     });
     return diff.summary.totalFindings;
+  }
+
+  /** Step directories of a run, which are named by step id and never by ordinal (spec §6). */
+  async listStepIds(flow: string, runId: RunId): Promise<string[]> {
+    if (!isValidFlowName(flow) || !isValidRunId(runId)) return [];
+    const names = await readSubdirNames(path.join(this.runDir(flow, runId), 'steps'));
+    return names.sort();
+  }
+
+  /**
+   * What the scenario layer did to each step of a run (mocking spec §8).
+   *
+   * Returns null only when the run itself is unknown. A run captured without a scenario returns a
+   * populated object whose rows are empty, so the page can tell "nothing to attribute" from
+   * "no such run" — the second is an error, the first is the ordinary case.
+   */
+  async readAttribution(flow: string, runId: RunId): Promise<RunAttribution | null> {
+    const meta = await this.readMeta(flow, runId);
+    if (!meta) return null;
+
+    const steps: StepAttribution[] = [];
+    for (const step of await this.listStepIds(flow, runId)) {
+      const entries = await readJsonFile<NetworkEntry[]>(
+        path.join(this.runDir(flow, runId), 'steps', step, 'network.json'),
+      );
+      if (!Array.isArray(entries)) continue;
+      steps.push(summarizeStep(step, entries));
+    }
+
+    return { flow, runId, scenario: meta.scenario ?? SCENARIO_NONE, steps };
   }
 
   async readCachedDiff(flow: string, base: RunId, head: RunId): Promise<DiffResult | null> {

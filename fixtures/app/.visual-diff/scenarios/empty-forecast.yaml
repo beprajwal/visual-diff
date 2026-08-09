@@ -1,0 +1,23 @@
+# The forecast comes back with no hourly series, so the chart renders its empty state.
+#
+# This is the api-mocking spec's own worked example (§5), pointed at the fixture's real recording.
+# The recorded Open-Meteo payload carries `hourly.temperature_2m` as a 168-long array of numbers;
+# the merge patch replaces it with an empty one, `toForecastView` reports `hasHours: false`, and
+# `TemperatureChart` renders "No hourly readings" instead of the 48-hour SVG.
+#
+# Why a `patch` and not a `respond`: everything else on the screen — the current conditions, the
+# 7-day strip, the elevation, the air-quality card — keeps coming out of the recording, unchanged
+# and real. The screenshot is a genuine rendering of the real payload with one field emptied,
+# which is the whole of D10. A hand-written `respond` body would have to restate the entire
+# payload, and would go stale the day Open-Meteo adds a field.
+version: 1
+scenario: empty-forecast
+description: No hourly series in the forecast, for checking the chart's empty state
+mode: overlay
+
+rules:
+  # The glob has to end in `**`: the URL matched is the full one including the query string, and
+  # every forecast request carries `?latitude=…&longitude=…&hourly=…`.
+  - id: forecast-empty
+    match: { method: GET, url: "**/v1/forecast**" }
+    patch: { hourly: { temperature_2m: [] } }

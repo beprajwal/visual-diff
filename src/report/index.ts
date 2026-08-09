@@ -28,6 +28,9 @@ export type { ReportServer, ReportServerOptions } from './server/server.js';
 export { createFsStore, FsReportStore, toRunSummary, isValidFlowName, isValidRunId } from './server/store-reader.js';
 export type { ComputeDiffFn, FeedbackDraft, FlowInfo, ReportStore } from './server/deps.js';
 
+export { describeRuleHit, hasAttribution, modifiedRules, summarizeStep } from './attribution.js';
+export type { RuleHit, RunAttribution, StepAttribution } from './attribution.js';
+
 export { createDiffService, isBackfillRequired } from './server/diff-service.js';
 export type { DiffService, DiffServiceOptions } from './server/diff-service.js';
 

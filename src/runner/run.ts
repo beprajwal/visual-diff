@@ -25,6 +25,7 @@ import { dirname, join } from 'node:path';
 import {
   DEFAULTS,
   EXIT,
+  SCENARIO_NONE,
   type ConsoleEntry,
   type FlowSpec,
   type NetworkEntry,
@@ -53,9 +54,20 @@ import { describeSettle, launchChromium, loadPlaywright } from './browser.js';
 import { ensureDeps, linkNodeModules } from './deps.js';
 import { startDevServer, portOfUrl, probe, substitutePort, type DevServerHandle } from './devserver.js';
 import { RunnerError, errorMessage } from './errors.js';
-import { retargetHarFile, scrubHarFile } from './har.js';
+import { indexHarFile, retargetHarFile, scrubHarFile, type HarIndex } from './har.js';
 import { readGitStateSafe, repoRoot, resolveRef, sameGitState, showFileAtRev, toRevision } from './git.js';
 import { replayViewport, selectorOf, type StepOutcome, type ViewportReplay } from './replay.js';
+import {
+  assertRecordScenarioExclusive,
+  buildScenarioRuntime,
+  mockMissMessage,
+  resolveScenario,
+  toRunnerError,
+  unmatchedRuleIds,
+  unmatchedRulesMessage,
+  type ScenarioPlan,
+  type ScenarioRuntime,
+} from './scenario.js';
 import { normalizeViewports, runPool } from './viewport.js';
 import { addWorktree, reapWorktrees, type Worktree } from './worktree.js';
 import { toolVersion } from '../version.js';
@@ -248,6 +260,10 @@ interface ResolvedTarget {
   flowSource: string;
   flowFile: string;
   worktree?: Worktree;
+  /** Repository root, so the scenario can be read out of history too (D4). */
+  gitRoot: string;
+  /** Set on the slow path only: the SHA whose committed specs this run uses. */
+  sha?: string;
 }
 
 async function resolveFlowSource(
@@ -277,6 +293,7 @@ async function resolveFlowSource(
       revision: toRevision(state),
       flowSource: source,
       flowFile: file,
+      gitRoot,
     };
   }
 
@@ -308,6 +325,8 @@ async function resolveFlowSource(
     flowSource: source,
     flowFile: `${repoPath}@${sha.slice(0, 7)}`,
     worktree,
+    gitRoot,
+    sha,
   };
 }
 
@@ -370,7 +389,9 @@ async function bindServer(
 export type HarPlan =
   | { mode: 'off'; path?: undefined; recording: false }
   | { mode: 'record'; path: string; recording: true }
-  | { mode: 'replay'; path: string; recording: false };
+  | { mode: 'replay'; path: string; recording: false }
+  /** `mock` involves no recording at all: its whole interception is the scenario route (D13). */
+  | { mode: 'mock'; path?: undefined; recording: false };
 
 /**
  * Choose the network plan for this run (spec §7, D9).
@@ -383,6 +404,9 @@ export type HarPlan =
 export async function planHar(store: Store, spec: FlowSpec, options: RunOptions): Promise<HarPlan> {
   const requested: NetworkMode = options.network ?? spec.network.mode;
   if (requested === 'off') return { mode: 'off', recording: false };
+  // `mock` needs no HAR by construction (D13); what it needs instead — a scenario runtime — is
+  // enforced where the context is opened, so there is still no path to the live network.
+  if (requested === 'mock') return { mode: 'mock', recording: false };
 
   const declared = spec.network.har;
   if (declared === undefined || declared.trim() === '') {
@@ -407,7 +431,76 @@ export async function planHar(store: Store, spec: FlowSpec, options: RunOptions)
   return { mode: 'replay', path: file, recording: false };
 }
 
+/**
+ * Reconcile the scenario's declared mode with the flow's network plan (mocking spec §5, §8).
+ *
+ * The scenario decides which network mode the run *needs*: `overlay` patches a recording and cannot
+ * work without one, `mock` involves no recording at all. So this function never silently overrides
+ * a mode — every disagreement between what the scenario needs and what the run was asked for is an
+ * exit-2 error naming both, because "your scenario quietly ran in a mode it was not written for"
+ * produces a screenshot that looks plausible and means nothing.
+ */
+export async function planNetwork(
+  store: Store,
+  spec: FlowSpec,
+  options: RunOptions,
+  scenario?: { name: string; mode: 'overlay' | 'mock' },
+): Promise<HarPlan> {
+  if (scenario === undefined) return await planHar(store, spec, options);
+
+  const requiredMode: NetworkMode = scenario.mode === 'mock' ? 'mock' : 'replay';
+  const override = options.network;
+  if (override !== undefined && override !== requiredMode) {
+    throw new RunnerError({
+      code: 'scenario-mode-conflict',
+      message:
+        `scenario "${scenario.name}" is a ${scenario.mode} scenario and needs network mode ` +
+        `'${requiredMode}', but this run was asked for '${override}'`,
+      exitCode: EXIT.CONFIG_ERROR,
+      kind: 'scenario-invalid',
+      hint:
+        scenario.mode === 'mock'
+          ? 'drop the network override: a mock scenario supplies every response itself'
+          : 'drop the network override: an overlay scenario patches the recording the flow replays',
+    });
+  }
+
+  if (scenario.mode === 'mock') return { mode: 'mock', recording: false };
+
+  // An overlay scenario with nothing to overlay is exit 2 — the slice-1 rule for a HAR mode with no
+  // HAR, extended to the case slice-1 handled by recording. Recording through a scenario is what §2
+  // forbids outright, so a missing recording is refused here rather than quietly produced.
+  const missing = (detail: string, hint: string): RunnerError =>
+    new RunnerError({
+      code: 'scenario-har-missing',
+      message: `scenario "${scenario.name}" overlays the recording for flow "${options.flow}", but ${detail}`,
+      exitCode: EXIT.CONFIG_ERROR,
+      kind: 'scenario-invalid',
+      hint,
+    });
+
+  const declared = spec.network.har;
+  if (declared === undefined || declared.trim() === '') {
+    throw missing(
+      'the flow spec declares no `network.har`',
+      `add \`network: { mode: replay, har: ${options.flow}.har }\` to ${paths.flowFileRepoPath(options.flow)}, ` +
+        `or declare \`mode: mock\` in the scenario so it supplies every response itself`,
+    );
+  }
+
+  const plan = await planHar(store, spec, { ...options, network: 'replay' });
+  if (plan.mode === 'replay') return plan;
+  throw missing(
+    `no HAR has been recorded yet at ${paths.harFile(store.root, declared)}`,
+    `record it first with \`vdiff run ${options.flow} --record\`, then re-run with --scenario ${scenario.name}`,
+  );
+}
+
 export async function runFlow(options: RunOptions, context: RunContext = {}): Promise<RunResult> {
+  // Before the lock, the store, or anything else: a run that cannot legally exist should cost
+  // nothing and leave nothing behind (mocking spec §2).
+  assertRecordScenarioExclusive(options);
+
   const cwd = context.cwd ?? options.cwd ?? process.cwd();
   const store = context.store ?? openStore(await loadConfigOrThrow({ cwd }));
   const root = store.root;
@@ -427,7 +520,26 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
     const viewports: Viewport[] = normalizeViewports(
       options.viewports ?? (spec.viewports.length > 0 ? spec.viewports : DEFAULTS.viewports),
     );
-    const har = await planHar(store, spec, options);
+
+    // The scenario is resolved before the network is planned, because it is the scenario that says
+    // whether this run needs a recording at all (D13). On the slow path it is read out of git
+    // history at the target SHA, exactly as the flow spec was (D4).
+    let scenario: ScenarioPlan | undefined;
+    if (options.scenario !== undefined) {
+      scenario = await resolveScenario({
+        name: options.scenario,
+        root,
+        gitRoot: target.gitRoot,
+        ...(target.sha === undefined ? {} : { sha: target.sha }),
+      });
+    }
+
+    const har = await planNetwork(
+      store,
+      spec,
+      options,
+      scenario === undefined ? undefined : { name: scenario.name, mode: scenario.mode },
+    );
     const warnings: RunWarning[] = [];
 
     draft = await store.beginRun(options.flow);
@@ -444,12 +556,14 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
       }
       const meta: Omit<RunMeta, 'runId'> = {
         flow: options.flow,
+        scenario: scenario?.name ?? SCENARIO_NONE,
         flowHash,
         revision: (target as ResolvedTarget).revision,
         mode: (target as ResolvedTarget).mode,
         network: har.mode,
         harHits: 0,
         harMisses: 0,
+        scenarioServed: 0,
         viewports: viewports.map((viewport) => viewport.id),
         status: 'failed',
         failedSteps: [],
@@ -514,7 +628,7 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
       // silently returns `undefined` would hand the context no `recordHar` — a live-network run
       // labelled `record`. So the lookup is total (spec §7: never a silent fallthrough).
       const harPathFor = (viewport: Viewport): string | undefined => {
-        if (har.mode === 'off') return undefined;
+        if (har.mode === 'off' || har.mode === 'mock') return undefined;
         if (!har.recording) return replayHar;
         const target = harTargets.get(viewport.id);
         if (target === undefined) {
@@ -527,8 +641,30 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
         return target;
       };
 
+      // `patch` rewrites a recorded body, so it reads from the same retargeted copy the replay
+      // serves — indexing the committed file instead would look up URLs on last run's port and
+      // report every patch rule as matching a request the recording does not contain.
+      const recorded: HarIndex | undefined =
+        scenario !== undefined && replayHar !== undefined ? await indexHarFile(replayHar) : undefined;
+
+      // One runtime per viewport (see `ScenarioRuntime`): `nth` counts per request, and viewports
+      // replay concurrently, so a shared counter would make the result depend on scheduling.
+      const runtimes = new Map<ViewportId, ScenarioRuntime>();
+      if (scenario !== undefined || har.mode === 'mock') {
+        for (const viewport of viewports) {
+          runtimes.set(
+            viewport.id,
+            buildScenarioRuntime({
+              ...(scenario === undefined ? {} : { plan: scenario }),
+              ...(recorded === undefined ? {} : { har: recorded }),
+            }),
+          );
+        }
+      }
+
       const outcomes = await runPool(viewports, DEFAULTS.viewportConcurrency, (viewport) => {
         const harPath = harPathFor(viewport);
+        const runtime = runtimes.get(viewport.id);
         return replayViewport({
           browser,
           viewport,
@@ -536,6 +672,7 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
           baseUrl: (server as ServerBinding).baseUrl,
           network: har.mode,
           ...(harPath === undefined ? {} : { har: harPath }),
+          ...(runtime === undefined ? {} : { scenario: runtime }),
           ...(options.continueOnError === undefined ? {} : { continueOnError: options.continueOnError }),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
         });
@@ -560,6 +697,14 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
           message: `a viewport replay could not complete: ${errorMessage(failure.error)}`,
         });
       }
+
+      // A rule that could not be applied fails the run, naming it (mocking spec §8): a screenshot
+      // captured after a `patch` silently did nothing is a picture of the recorded state presented
+      // as the patched one, which is the failure this whole subsystem exists to make impossible.
+      // Each viewport hits the same rule, so the first failure is the one worth reporting: the rest
+      // are the same sentence with a different viewport behind it.
+      const ruleFailure = replays.flatMap((replay) => replay.ruleFailures)[0];
+      if (ruleFailure !== undefined) throw toRunnerError(ruleFailure);
 
       if (har.recording) {
         const destination = har.path;
@@ -669,13 +814,42 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
 
     const harHits = replays.reduce((sum, replay) => sum + replay.harHits, 0);
     const harMisses = replays.reduce((sum, replay) => sum + replay.harMisses, 0);
+    const scenarioServed = replays.reduce((sum, replay) => sum + replay.scenarioServed, 0);
     const missedUrls = [...new Set(replays.flatMap((replay) => replay.missedUrls))];
     if (harMisses > 0) {
-      warnings.push({
-        kind: 'har-miss',
-        message: `${harMisses} request(s) had no HAR entry and were aborted; the diff may be misleading`,
-        urls: missedUrls.slice(0, 20),
-      });
+      // Same machinery, two truths: in `replay` the recording was incomplete, in `mock` there was
+      // never a recording and the scenario simply did not cover the request (D13). Reporting the
+      // second as a HAR miss would send the user looking for a HAR that does not exist.
+      warnings.push(
+        har.mode === 'mock'
+          ? {
+              kind: 'mock-miss',
+              message: mockMissMessage(scenario?.name ?? SCENARIO_NONE, harMisses),
+              urls: missedUrls.slice(0, 20),
+            }
+          : {
+              kind: 'har-miss',
+              message: `${harMisses} request(s) had no HAR entry and were aborted; the diff may be misleading`,
+              urls: missedUrls.slice(0, 20),
+            },
+      );
+    }
+
+    // The most important warning in this slice (mocking spec §8). A mistyped glob matches nothing,
+    // every response comes through as recorded, and the screenshot the user believes is the empty
+    // state is the full one — nothing else on the page would ever tell them.
+    if (scenario !== undefined) {
+      const unmatched = unmatchedRuleIds(
+        scenario.spec,
+        replays.map((replay) => replay.matchedRuleIds),
+      );
+      if (unmatched.length > 0) {
+        warnings.push({
+          kind: 'scenario-rule-unmatched',
+          message: unmatchedRulesMessage(scenario.name, scenario.mode, unmatched),
+          rules: unmatched,
+        });
+      }
     }
 
     // A screenshot taken with requests outstanding is a non-deterministic capture, which is exactly
@@ -734,12 +908,16 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
     const failedSteps = steps.filter((step) => step.status === 'failed').map((step) => step.id);
     const meta: Omit<RunMeta, 'runId'> = {
       flow: options.flow,
+      // The third axis of run identity (D12), and the label the report badges a mock run with:
+      // fidelity under `mock` is only as good as the scenario, so neither is left to memory (D13).
+      scenario: scenario?.name ?? SCENARIO_NONE,
       flowHash,
       revision: target.revision,
       mode: server.mode,
       network: har.mode,
       harHits,
       harMisses,
+      scenarioServed,
       viewports: viewports.map((viewport) => viewport.id),
       status: statusOf(steps),
       failedSteps,

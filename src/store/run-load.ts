@@ -14,6 +14,7 @@ import * as path from 'node:path';
 
 import { StoreError } from './errors.js';
 import { pathExists, readJsonOrNull, readTextOrNull } from './internal/fs.js';
+import { normalizeRunMeta } from './internal/scenario.js';
 import * as paths from './paths.js';
 import { parseFlowSnapshot } from './snapshot.js';
 import type {
@@ -52,10 +53,12 @@ export async function loadRunDir(
 ): Promise<LoadedRun> {
   const withShots = options.shots ?? true;
 
-  const meta = await readJsonOrNull<RunMeta>(path.join(runDirectory, paths.META_FILENAME));
-  if (meta === null) {
+  const stored = await readJsonOrNull<RunMeta>(path.join(runDirectory, paths.META_FILENAME));
+  if (stored === null) {
     throw new StoreError('unknown-run', `${runDirectory} has no ${paths.META_FILENAME}`);
   }
+  // A slice-1 run has no `scenario` key; in memory it is the reserved `none` (mocking spec §6).
+  const meta = normalizeRunMeta(stored);
   const snapshotText = await readTextOrNull(
     path.join(runDirectory, paths.FLOW_SNAPSHOT_FILENAME),
   );

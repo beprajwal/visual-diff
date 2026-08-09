@@ -37,6 +37,9 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "fixtures/app"
+  ],
   "scripts": {
     "build": "npm run clean && npm run build:ts && npm run build:ui && npm run build:skills && npm run build:bin",
     "clean": "node scripts/clean.mjs",

@@ -12,16 +12,20 @@
 import {
   DEFAULTS,
   DIFF_ENGINE_VERSION,
+  SCENARIO_NONE,
   type Config,
   type DiffResult,
   type DiffSummary,
   type FeedbackEntry,
   type FlowSpec,
   type PairRef,
+  type PairScenarios,
   type RunId,
   type RunMeta,
   type RunResult,
   type RunSummary,
+  type ScenarioName,
+  type ScenarioSpec,
   type ServeInfo,
 } from '../types.js';
 
@@ -92,10 +96,39 @@ export function fakeFlowSpec(overrides: Partial<FlowSpec> = {}): FlowSpec {
   };
 }
 
+export function fakeScenarioSpec(overrides: Partial<ScenarioSpec> = {}): ScenarioSpec {
+  return {
+    version: 1,
+    scenario: 'empty-forecast',
+    description: 'No forecast data, for checking the empty state',
+    mode: 'overlay',
+    rules: [
+      {
+        id: 'forecast-empty',
+        match: { method: 'GET', url: '**/v1/forecast**' },
+        patch: { hourly: { temperature_2m: [] } },
+      },
+      { id: 'no-analytics', match: { url: '**/analytics/**' }, abort: true },
+    ],
+    ...overrides,
+  };
+}
+
+export function fakePairScenarios(overrides: Partial<PairScenarios> = {}): PairScenarios {
+  return {
+    base: SCENARIO_NONE,
+    head: SCENARIO_NONE,
+    crossScenario: false,
+    mockVsRecorded: false,
+    ...overrides,
+  };
+}
+
 export function fakeRunMeta(overrides: Partial<RunMeta> = {}): RunMeta {
   return {
     runId: '0007',
     flow: 'checkout',
+    scenario: SCENARIO_NONE,
     flowHash: 'sha256:0000',
     revision: { sha: '9f8e7d6c5b4a', ref: 'feat/pay', dirty: true, dirtyHash: 'sha256:1111' },
     mode: 'attach',
@@ -128,6 +161,7 @@ export function fakeRunSummary(overrides: Partial<RunSummary> = {}): RunSummary 
   return {
     runId: meta.runId,
     flow: meta.flow,
+    scenario: meta.scenario,
     revision: meta.revision,
     mode: meta.mode,
     status: meta.status,
@@ -280,9 +314,16 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
     flowsDir: () => `${dir}/flows`,
     flowFile: (flow: string) => `${dir}/flows/${flow}.yaml`,
     listFlows: async () => Object.keys(store.runs),
-    listRuns: async (flow: string) => store.runs[flow] ?? [],
-    resolvePair: async (flow: string, base?: RunId, head?: RunId) => {
-      const list = store.runs[flow] ?? [];
+    listRuns: async (flow: string, scenario?: ScenarioName) => {
+      const all = store.runs[flow] ?? [];
+      return scenario === undefined ? all : all.filter((run) => run.scenario === scenario);
+    },
+    // Mirrors the real store: the scenario narrows *which* runs the N-1/N default is taken over,
+    // and an explicitly named run is honoured whatever it was captured under.
+    resolvePair: async (flow: string, base?: RunId, head?: RunId, scenario?: ScenarioName) => {
+      const all = store.runs[flow] ?? [];
+      const list =
+        scenario === undefined ? all : all.filter((summary) => summary.scenario === scenario);
       const last = list[list.length - 1];
       const previous = list[list.length - 2];
       return {
@@ -326,11 +367,22 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
   };
 }
 
+/**
+ * Scenario names the default {@link createTestPorts} reports from `listScenarios`. Overridden per
+ * test; kept here so the default is a real (empty) answer rather than a throwing stub.
+ */
+export const TEST_SCENARIOS: ScenarioName[] = [];
+
 export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
   const store = createTestStore();
   return {
     loadConfig: async (cwd: string) => fakeConfig(cwd),
     parseFlowFile: async () => ({ ok: true, value: fakeFlowSpec(), warnings: [] }),
+    parseScenarioFile: async () => ({ ok: true, value: fakeScenarioSpec(), warnings: [] }),
+    scenariosDir: async (config: Config) => `${config.dir}/scenarios`,
+    scenarioFile: async (config: Config, name: ScenarioName) =>
+      `${config.dir}/scenarios/${name}.yaml`,
+    listScenarios: async () => [...TEST_SCENARIOS].sort(),
     openStore: async () => store,
     runFlow: async () => fakeRunResult(),
     computeDiff: async () => fakeDiffResult(),

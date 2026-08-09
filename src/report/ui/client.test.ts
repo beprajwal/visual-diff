@@ -210,3 +210,39 @@ describe('subscribe', () => {
     }
   });
 });
+
+describe('createClient — attribution (mocking §8)', () => {
+  it('requests /api/attribution/<flow>/<runId> with the session token', async () => {
+    const { calls, fetchImpl } = recorder({
+      flow: 'forecast',
+      runId: '0007',
+      scenario: 'empty-forecast',
+      steps: [],
+    });
+    const client = createClient({ token: 'tok', fetchImpl });
+
+    const attribution = await client.attribution('forecast', '0007');
+
+    expect(calls[0]?.url).toBe('/api/attribution/forecast/0007?token=tok');
+    expect(attribution.scenario).toBe('empty-forecast');
+  });
+
+  it('encodes a flow name that needs it', async () => {
+    const { calls, fetchImpl } = recorder({ flow: 'a b', runId: '0007', scenario: 'none', steps: [] });
+    await createClient({ token: null, fetchImpl }).attribution('a b', '0007');
+    expect(calls[0]?.url).toBe('/api/attribution/a%20b/0007');
+  });
+
+  it('surfaces a 404 as an ApiError carrying the server message', async () => {
+    const { fetchImpl } = recorder(
+      { error: 'unknown-run', message: 'No run 0099 in flow "forecast".' },
+      { status: 404, statusText: 'Not Found' },
+    );
+    const client = createClient({ token: 'tok', fetchImpl });
+
+    await expect(client.attribution('forecast', '0099')).rejects.toBeInstanceOf(ApiError);
+    await expect(client.attribution('forecast', '0099')).rejects.toThrow(
+      'No run 0099 in flow "forecast".',
+    );
+  });
+});

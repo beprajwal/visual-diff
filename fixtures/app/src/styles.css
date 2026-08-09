@@ -1,163 +1,891 @@
-/*
- * Fixture storefront styles.
+/**
+ * Meridian — the visual-diff weather fixture.
  *
- * Every rule that a scripted commit changes is called out with a comment, so it is obvious which
- * declaration produces which finding when you read a diff.
+ * Three constraints, all of them about being diffable rather than about taste:
+ *
+ *   1. **System fonts only.** A web font is a network request that would sit in the HAR beside the
+ *      API calls the fixture exists to isolate, and a font that swaps in after the settle gate has
+ *      passed reflows the page under the screenshot.
+ *   2. **One theme, stated explicitly.** No `prefers-color-scheme` block. The colour scheme of the
+ *      machine running the browser is not something a committed baseline should depend on.
+ *   3. **Tabular numerals everywhere a number can change.** Proportional digits make "8" narrower
+ *      than "0", so a temperature ticking from 18° to 20° reflows its whole row and every element
+ *      after it reports a layout finding for a two-pixel change in one number.
  */
 
 :root {
-  --page-bg: #f6f6f4;
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --ink-faint: #94a3b8;
+  --line: #e2e8f0;
+  --line-soft: #eef2f7;
   --surface: #ffffff;
-  --ink: #1b1b1a;
-  --muted: #6b6b66;
-  --line: #e2e2dd;
-  --accent: #2f5d50;
-  --accent-ink: #ffffff;
+  --canvas: #f5f7fb;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --warm: #f97316;
+  --cool: #38bdf8;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+
+  --aqi-good: #16a34a;
+  --aqi-fair: #84cc16;
+  --aqi-moderate: #eab308;
+  --aqi-poor: #f97316;
+  --aqi-very-poor: #dc2626;
+  --aqi-extreme: #7e22ce;
+  --aqi-unknown: #cbd5e1;
+
+  --radius: 14px;
+  --shadow: 0 1px 2px rgb(15 23 42 / 6%), 0 8px 24px -12px rgb(15 23 42 / 18%);
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-*,
-*::before,
-*::after {
+* {
   box-sizing: border-box;
+}
+
+html {
+  /* The scrollbar gutter is reserved unconditionally: a page that grows past the viewport between
+     two revisions must not shift every element 15px left as a side effect. */
+  scrollbar-gutter: stable;
 }
 
 body {
   margin: 0;
-  background: var(--page-bg);
+  background: var(--canvas);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.45;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-.page {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 32px 24px;
-}
-
-.page-head {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 20px;
-}
-
-.page-title {
+h1,
+h2,
+p,
+dl,
+dd,
+dt,
+ol,
+ul,
+figure {
   margin: 0;
-  font-size: 28px;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
 }
 
-.meta {
-  margin: 4px 0 0;
-  color: var(--muted);
+ol,
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 24px 56px;
+}
+
+.site-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.brand-mark {
+  color: var(--accent);
+  align-self: center;
+  display: flex;
+}
+
+.brand-name {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.brand-tag {
+  font-size: 13px;
+  color: var(--ink-faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.units-toggle {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--line-soft);
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
+.units-option {
+  min-width: 46px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.units-option.is-active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 12%);
+}
+
+.main {
+  padding-top: 26px;
+}
+
+.site-foot {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
   font-size: 13px;
 }
 
-.cart-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+.site-foot a {
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.cart-item {
+.site-foot-note {
+  margin-top: 3px;
+}
+
+/* ------------------------------------------------------------------- card */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.card + .card,
+.detail > * + * {
+  margin-top: 18px;
+}
+
+.card-head {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
-  gap: 16px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.cart-item:last-child {
-  border-bottom: none;
-}
-
-.cart-item-name {
+.card-title {
   font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
-.cart-item-price {
+.card-note {
+  font-size: 13px;
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
-  color: var(--muted);
 }
 
-/* Commit 03 (layout shift) changes this margin. */
-.summary {
-  margin-top: 16px;
-  padding: 12px 16px;
+/* ------------------------------------------------------------- list screen */
+
+.list-head {
+  margin-bottom: 16px;
+}
+
+.list-title {
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.list-note {
+  color: var(--ink-faint);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.location-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.location-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
-.summary-row {
+.location-link {
+  display: block;
+  padding: 18px;
+}
+
+.location-head {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  font-size: 14px;
-  padding: 3px 0;
+  gap: 10px;
+  min-height: 44px;
 }
 
-.summary-total {
-  margin-top: 6px;
-  padding-top: 9px;
-  border-top: 1px solid var(--line);
+.location-name {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.012em;
 }
 
-.btn {
-  display: inline-block;
-  margin-top: 20px;
-  padding: 10px 20px;
+.location-region {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.location-glyph {
+  color: var(--warm);
+  flex: none;
+}
+
+.location-body {
+  margin-top: 10px;
+}
+
+.location-temp {
+  font-size: 34px;
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.location-condition {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.location-range {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+}
+
+.sparkline {
+  display: block;
+  margin-top: 10px;
+  overflow: visible;
+}
+
+.sparkline-line {
+  fill: none;
+  stroke: var(--warm);
+  stroke-width: 2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.sparkline-area {
+  fill: color-mix(in srgb, var(--warm) 12%, transparent);
+  stroke: none;
+}
+
+.location-skeleton {
+  margin-top: 12px;
+}
+
+/* ----------------------------------------------------------------- search */
+
+.search-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.search-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.icon-search {
+  position: absolute;
+  left: 12px;
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
   font: inherit;
-  font-size: 15px;
+  color: inherit;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  appearance: none;
+}
+
+.search-input::placeholder {
+  color: var(--ink-faint);
+}
+
+.search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  background: var(--surface);
+}
+
+.button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 18px;
+  border-radius: 10px;
   border: 1px solid transparent;
   cursor: pointer;
 }
 
-/* Commit 02 (restyle) changes background, border-radius and border-color here. */
-.btn-primary {
+.button-primary {
   background: var(--accent);
-  border-color: var(--accent);
-  border-radius: 6px;
-  color: var(--accent-ink);
+  color: #fff;
 }
 
-.card-form {
-  display: grid;
-  gap: 14px;
+.button-quiet {
+  display: inline-block;
+  margin-top: 12px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 16px;
+  border-color: var(--line);
+  color: var(--ink-soft);
 }
 
-.field {
-  display: grid;
-  gap: 5px;
-}
-
-.field-label {
+.search-hint {
+  color: var(--ink-faint);
   font-size: 13px;
-  color: var(--muted);
+  padding: 10px 0 4px;
 }
 
-.input {
-  font: inherit;
-  font-size: 15px;
-  padding: 9px 11px;
-  border: 1px solid var(--line);
+.search-results {
+  display: grid;
+  gap: 2px;
+}
+
+.search-result-link {
+  display: grid;
+  /* The population column is a fixed width, not `auto`. Each row is its own grid, so an `auto`
+     third column makes every row's second column start at a different x — the list looks ragged,
+     and a population that changes on re-record silently reflows two columns instead of one. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 132px;
+  gap: 12px;
+  align-items: baseline;
+  padding: 11px 12px;
+  border-radius: 10px;
+}
+
+.search-result-link:hover {
+  background: var(--line-soft);
+}
+
+.search-result-name {
+  font-weight: 600;
+}
+
+.search-result-place {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.search-result-meta {
+  color: var(--ink-faint);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* --------------------------------------------------------- detail screen */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 14px;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.detail-title {
+  font-size: 28px;
+  font-weight: 680;
+  letter-spacing: -0.028em;
+}
+
+.detail-region {
+  color: var(--ink-faint);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-glyph {
+  color: var(--warm);
+}
+
+.current-main {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.current-temp {
+  font-size: 56px;
+  font-weight: 660;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.current-condition {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.current-observed {
+  font-size: 13px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.current-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 14px;
+  padding-top: 16px;
+}
+
+.reading dt,
+.air-reading dt {
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reading dd,
+.air-reading dd {
+  font-size: 17px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.chart {
+  display: block;
+  width: 100%;
+  /* Height follows the viewBox aspect ratio, so the chart scales uniformly and its labels stay
+     legible at 390px. See the note in TemperatureChart.jsx. */
+  height: auto;
+  overflow: visible;
+}
+
+.chart-grid line {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-bars rect {
+  fill: color-mix(in srgb, var(--cool) 38%, transparent);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--warm);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-x-axis line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-marker circle {
+  fill: var(--surface);
+  stroke: var(--warm);
+  stroke-width: 2.4;
+}
+
+.chart-marker text {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-marker-coldest circle {
+  stroke: var(--cool);
+}
+
+.chart-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.swatch-line {
+  background: var(--warm);
+}
+
+.swatch-bar {
+  background: color-mix(in srgb, var(--cool) 38%, transparent);
+}
+
+/* ------------------------------------------------------------------ daily */
+
+.daily-list {
+  display: grid;
+  gap: 2px;
+}
+
+.daily-row {
+  display: grid;
+  grid-template-columns: 84px 26px 38px minmax(80px, 1fr) 38px 66px 104px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-row:nth-child(odd) {
+  background: var(--line-soft);
+}
+
+.daily-day {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.daily-icon {
+  color: var(--ink-soft);
+}
+
+.daily-low,
+.daily-high {
+  font-size: 14px;
+  text-align: right;
+}
+
+.daily-low {
+  color: var(--ink-faint);
+}
+
+.daily-high {
+  font-weight: 620;
+}
+
+.daily-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  display: block;
+}
+
+.daily-bar {
+  position: absolute;
+  top: 0;
+  height: 6px;
+  border-radius: 999px;
+  /* Interpolated in oklab: a plain sRGB ramp from this blue to this orange passes through a muddy
+     grey in the middle of every bar. */
+  background: linear-gradient(90deg in oklab, var(--cool), var(--warm));
+}
+
+.daily-precip,
+.daily-sun {
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+/* ------------------------------------------------------------ air quality */
+
+.air-body {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.aqi-badge {
+  border-radius: 12px;
+  padding: 14px;
+  color: #fff;
+  display: grid;
+  gap: 1px;
+}
+
+.aqi-value {
+  font-size: 34px;
+  font-weight: 680;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.aqi-label {
+  font-weight: 620;
+  font-size: 14px;
+}
+
+.aqi-scale {
+  font-size: 11px;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.aqi-good {
+  background: var(--aqi-good);
+}
+.aqi-fair {
+  background: var(--aqi-fair);
+}
+.aqi-moderate {
+  background: var(--aqi-moderate);
+}
+.aqi-poor {
+  background: var(--aqi-poor);
+}
+.aqi-very-poor {
+  background: var(--aqi-very-poor);
+}
+.aqi-extreme {
+  background: var(--aqi-extreme);
+}
+.aqi-unknown {
+  background: var(--aqi-unknown);
+  color: var(--ink-soft);
+}
+
+.air-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 12px;
+}
+
+.air-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.aqi-track {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 54px;
+  padding-top: 4px;
+}
+
+.aqi-tick {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  min-height: 4px;
+}
+
+/* ----------------------------------------------------------------- states */
+
+.skeleton {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.skeleton-line {
+  height: 13px;
   border-radius: 6px;
-  background: var(--page-bg);
-  color: var(--ink);
+  background: linear-gradient(90deg, var(--line-soft), var(--line), var(--line-soft));
 }
 
-.receipt-line {
-  margin: 0;
-  font-size: 15px;
+.skeleton-chart {
+  min-height: 168px;
+}
+
+.skeleton-chart-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 152px;
+}
+
+.skeleton-bar {
+  flex: 1;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--line-soft);
+}
+
+.state {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 28px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.state-mark {
+  color: var(--ink-faint);
+  margin-bottom: 2px;
+}
+
+.state-title {
+  font-weight: 640;
+}
+
+.state-detail {
+  color: var(--ink-soft);
+  font-size: 13px;
+  max-width: 42ch;
+}
+
+.state-status {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.state-error {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+  background: var(--danger-soft);
+}
+
+.state-error .state-mark,
+.state-error .state-title {
+  color: var(--danger);
+}
+
+.state-error .state-detail {
+  color: color-mix(in srgb, var(--danger) 75%, var(--ink));
+}
+
+/* ------------------------------------------------------------- narrow view */
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 20px 16px 40px;
+  }
+
+  .location-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .search-form {
+    flex-wrap: wrap;
+  }
+
+  .search-result-link {
+    grid-template-columns: minmax(0, 1fr) 112px;
+  }
+
+  .search-result-place {
+    grid-column: 1 / -1;
+  }
+
+  .daily-row {
+    /* 88px, not 74: "Wed 12 Aug" wraps to two lines at 74 and the whole strip goes ragged. */
+    grid-template-columns: 88px 22px 32px minmax(36px, 1fr) 32px 54px;
+    gap: 8px;
+  }
+
+  .daily-sun {
+    display: none;
+  }
+
+  .air-body {
+    grid-template-columns: 1fr;
+  }
+
+  .current-temp {
+    font-size: 46px;
+  }
+
+  .detail-title {
+    font-size: 23px;
+  }
 }

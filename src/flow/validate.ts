@@ -88,10 +88,13 @@ export function validateFlowSpec(
       at: locate(['network', 'har']),
     });
   }
-  if (mode === 'off' && har !== undefined) {
+  // `mock` has no recording behind it (mocking spec D13), so a `har` here is not merely redundant
+  // the way it is under `off` — it suggests the author believes the recording is being consulted,
+  // which is exactly the misunderstanding that makes a mock run read as a measurement.
+  if ((mode === 'off' || mode === 'mock') && har !== undefined) {
     warnings.push({
       code: 'har-ignored',
-      message: `network.har '${har}' is ignored because network.mode is 'off'`,
+      message: `network.har '${har}' is ignored because network.mode is '${mode}'`,
       at: locate(['network', 'har']),
     });
   }

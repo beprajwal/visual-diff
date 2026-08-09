@@ -12,14 +12,17 @@ import type {
   Finding,
   FlowDiffEntry,
   FlowDiffStatus,
+  PairLabel,
   RunSummary,
+  ScenarioName,
   Severity,
   StepDiff,
   StepId,
   ViewportDiff,
   ViewportId,
 } from '../../types.js';
-import { SEVERITIES, SEVERITY_ORDER } from '../../types.js';
+import { SCENARIO_NONE, SEVERITIES, SEVERITY_ORDER } from '../../types.js';
+import { describeRuleHit, type StepAttribution } from '../attribution.js';
 
 /** Visual treatment of one filmstrip cell (spec §9). */
 export type CellVariant =
@@ -257,6 +260,145 @@ export function runLabel(run: RunSummary): string {
   const ref = run.revision.ref ? ` ${run.revision.ref}` : '';
   const dirty = run.revision.dirty ? ' *' : '';
   return `${run.runId}  ${sha}${ref}${dirty}`;
+}
+
+/* ------------------------------------------------------------------ scenarios (mocking §6, §7) */
+
+/** The value the scenario selector uses for "every scenario", distinct from the reserved `none`. */
+export const ALL_SCENARIOS = '*';
+
+/** How a scenario name reads in the interface: the reserved `none` is an absence, not a name. */
+export function scenarioLabel(scenario: ScenarioName): string {
+  return scenario === SCENARIO_NONE ? 'no scenario' : scenario;
+}
+
+/**
+ * Every scenario present in a run list, `none` first and the rest alphabetical.
+ *
+ * `none` leads because it is the ordinary case and, for a project that has never written a
+ * scenario, the only one — putting it wherever the alphabet happens to place a scenario named
+ * "a-something" would make the default selection jump around as scenarios are added.
+ */
+export function scenariosOf(runs: readonly RunSummary[]): ScenarioName[] {
+  const seen = new Set<ScenarioName>();
+  for (const run of runs) seen.add(run.scenario);
+  const rest = [...seen].filter((name) => name !== SCENARIO_NONE).sort();
+  return seen.has(SCENARIO_NONE) ? [SCENARIO_NONE, ...rest] : rest;
+}
+
+/** Runs captured under `scenario`; every run for {@link ALL_SCENARIOS} or a null filter. */
+export function runsForScenario(
+  runs: readonly RunSummary[],
+  scenario: ScenarioName | null,
+): RunSummary[] {
+  if (scenario === null || scenario === ALL_SCENARIOS) return runs.slice();
+  return runs.filter((run) => run.scenario === scenario);
+}
+
+/**
+ * The banners a pair carries (mocking spec §6), most severe first. Empty for a same-scenario pair,
+ * and empty for a diff stored before this slice, which was same-scenario by construction.
+ */
+export function pairLabels(diff: DiffResult | null): PairLabel[] {
+  const scenarios = diff?.scenarios;
+  if (!scenarios) return [];
+  const labels: PairLabel[] = [];
+  if (scenarios.mockVsRecorded) labels.push('mock-vs-recorded');
+  if (scenarios.crossScenario) labels.push('cross-scenario');
+  return labels;
+}
+
+/** True when this run was captured with no recording behind it at all (D13). */
+export function isMockOnly(meta: { network: string } | null | undefined): boolean {
+  return meta?.network === 'mock';
+}
+
+/** One banner above the images, describing a pairing that is not an ordinary regression check. */
+export interface PairBannerRow {
+  label: PairLabel;
+  /**
+   * `cross-scenario` is a legitimate question — two states, not two revisions — so it is stated.
+   * `mock-vs-recorded` compares a fiction to a measurement and is flagged high (mocking spec §6).
+   */
+  severity: 'high' | 'med';
+  message: string;
+}
+
+const PAIR_SEVERITY: Record<PairLabel, 'high' | 'med'> = {
+  'mock-vs-recorded': 'high',
+  'cross-scenario': 'med',
+};
+
+/**
+ * The banners a pair carries, most severe first (mocking spec §6).
+ *
+ * Lives here rather than in the component because it is the sentence a reviewer acts on, and the
+ * report's rule is that everything carrying real meaning is a pure function with a test.
+ */
+export function pairBanners(diff: DiffResult | null): PairBannerRow[] {
+  const scenarios = diff?.scenarios;
+  if (!scenarios) return [];
+  const base = scenarioLabel(scenarios.base);
+  const head = scenarioLabel(scenarios.head);
+
+  return pairLabels(diff).map((label) => ({
+    label,
+    severity: PAIR_SEVERITY[label],
+    message:
+      label === 'cross-scenario'
+        ? `base ran ${base}, head ran ${head}. This compares two states, not two revisions —` +
+          ' findings below describe the difference between the scenarios as much as the code.'
+        : 'One side is a mock-only run: no recording stands behind it, so its responses are only' +
+          ' as faithful as the scenario that invented them. This compares a fiction to a' +
+          ' measurement.',
+  }));
+}
+
+/** One annotation line under the toolbar, attached to the selected step (mocking spec §8). */
+export interface ScenarioNoteRow {
+  /** Stable across renders: rule id plus action, or the synthetic miss row. */
+  key: string;
+  side: 'base' | 'head';
+  text: string;
+  urls: string[];
+  /** A mock-mode miss denied the page a response entirely, so it reads as a warning. */
+  severity: 'high' | 'note';
+}
+
+/**
+ * The annotation lines for one side of the pair at one step.
+ *
+ * Empty when that run had no scenario, or when its rules left this step alone — which is why the
+ * component can render it unconditionally and still disappear on an ordinary run.
+ */
+export function scenarioNoteRows(
+  side: 'base' | 'head',
+  attribution: StepAttribution | undefined,
+): ScenarioNoteRow[] {
+  if (attribution === undefined) return [];
+
+  const rows: ScenarioNoteRow[] = attribution.rules.map((hit) => ({
+    key: `${side}-${hit.ruleId}-${hit.action}`,
+    side,
+    text: hit.requests > 1 ? `${describeRuleHit(hit)} ×${hit.requests}` : describeRuleHit(hit),
+    urls: hit.urls,
+    severity: 'note' as const,
+  }));
+
+  if (attribution.misses > 0) {
+    const one = attribution.misses === 1;
+    rows.push({
+      key: `${side}-miss`,
+      side,
+      text:
+        `${attribution.misses} ${one ? 'request' : 'requests'} matched no rule and ` +
+        `${one ? 'was' : 'were'} aborted — this step rendered without ${one ? 'it' : 'them'}`,
+      urls: [],
+      severity: 'high',
+    });
+  }
+
+  return rows;
 }
 
 /** Index of a run id within an ascending run list, or -1. */

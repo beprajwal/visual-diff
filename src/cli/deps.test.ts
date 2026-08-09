@@ -38,6 +38,7 @@ describe('module edges', () => {
     expect(Object.values(MODULE_SPECIFIERS)).toEqual([
       '../store/index.js',
       '../flow/index.js',
+      '../mocking/index.js',
       '../store/index.js',
       '../runner/index.js',
       '../diff/index.js',
@@ -89,12 +90,38 @@ describe('module edges', () => {
       'computeDiff',
       'installAdapter',
       'listAdapters',
+      'listScenarios',
       'loadConfig',
       'openStore',
       'parseFlowFile',
+      'parseScenarioFile',
       'runFlow',
+      'scenarioFile',
+      'scenariosDir',
       'serveReport',
     ]);
+  });
+
+  /**
+   * The scenario edge is checked by dynamic import rather than a static one so that a module that
+   * does not exist yet fails *this* assertion — naming the missing export — instead of taking the
+   * whole file's collection down with a resolution error.
+   */
+  it('exports the four scenario functions the CLI binds (mocking spec §5, §7)', async () => {
+    const mocking = (await import('../mocking/index.js')) as Record<string, unknown>;
+    for (const name of ['parseScenarioFile', 'scenariosDir', 'scenarioFile', 'listScenarios']) {
+      expect(typeof mocking[name], `mocking/index.ts must export ${name}`).toBe('function');
+    }
+
+    const parseScenarioFile: Ports['parseScenarioFile'] =
+      mocking['parseScenarioFile'] as Ports['parseScenarioFile'];
+    const scenariosDir = mocking['scenariosDir'] as (root: string) => string;
+    const scenarioFile = mocking['scenarioFile'] as (root: string, name: string) => string;
+    expect(typeof parseScenarioFile).toBe('function');
+    expect(scenariosDir('/project')).toBe('/project/.visual-diff/scenarios');
+    expect(scenarioFile('/project', 'empty-forecast')).toBe(
+      '/project/.visual-diff/scenarios/empty-forecast.yaml',
+    );
   });
 
   it('listAdapters reports the real registry, so `vdiff install` cannot list a fiction', async () => {

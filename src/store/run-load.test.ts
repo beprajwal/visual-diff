@@ -141,4 +141,26 @@ describe('loadRun', () => {
   it('rejects a directory that is not a run', async () => {
     await expect(loadRun(tmp, 'checkout', '0009')).rejects.toThrow(/meta\.json/);
   });
+
+  it('carries the scenario a run was captured under', async () => {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: { scenario: 'empty-forecast', network: 'replay' },
+    });
+    expect((await loadRun(tmp, 'forecast', run.runId)).meta.scenario).toBe('empty-forecast');
+  });
+
+  it('loads a slice-1 run, whose meta.json has no scenario key, as the reserved none', async () => {
+    const run = await writeFixtureRun({ root: tmp, flow: 'checkout', steps: [{ id: 'cart' }] });
+    const file = paths.runMetaFile(tmp, 'checkout', run.runId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.scenario;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    const loaded = await loadRun(tmp, 'checkout', run.runId);
+    expect(loaded.meta.scenario).toBe('none');
+    expect(loaded.steps.map((step) => step.result.id)).toEqual(['cart']);
+  });
 });

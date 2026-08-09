@@ -10,12 +10,33 @@ export {
   runFlow,
   mergeStep,
   planHar,
+  planNetwork,
   readPlaywrightVersion,
   statusOf,
   worstUnsettled,
   type HarPlan,
   type RunContext,
 } from './run.js';
+
+export {
+  MOCK_ONLY_SPEC,
+  ScenarioRuntime,
+  assertRecordScenarioExclusive,
+  assertRunnableScenarioName,
+  buildScenarioRuntime,
+  isAppOriginUrl,
+  mockMissMessage,
+  resolveScenario,
+  scenarioFile,
+  toRunnerError,
+  unmatchedRuleIds,
+  unmatchedRulesMessage,
+  type BuildRuntimeOptions,
+  type ResolveScenarioOptions,
+  type RouteLike,
+  type ScenarioPlan,
+  type ScenarioRuntimeOptions,
+} from './scenario.js';
 
 export {
   CHROMIUM_LAUNCH_ARGS,
@@ -40,6 +61,7 @@ export {
   loadPlaywright,
   newContext,
   requireHarPath,
+  requireScenarioRuntime,
   settle,
   type ContextOptions,
   type SettleOptions,
@@ -61,6 +83,7 @@ export {
 } from './capture.js';
 
 export {
+  harMatchFor,
   nextAnchor,
   pngSize,
   replayViewport,
@@ -83,7 +106,17 @@ export {
   type StartDevServerOptions,
 } from './devserver.js';
 
-export { REDACTED, scrubHar, scrubHarFile, scrubHarObject, type ScrubOptions } from './har.js';
+export {
+  REDACTED,
+  indexHar,
+  indexHarFile,
+  scrubHar,
+  scrubHarFile,
+  scrubHarObject,
+  type HarIndex,
+  type RecordedResponse,
+  type ScrubOptions,
+} from './har.js';
 
 export {
   depsCacheEntry,

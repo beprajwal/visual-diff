@@ -16,8 +16,11 @@
 import {
   DEFAULTS,
   DIFF_ENGINE_VERSION,
+  SCENARIO_NONE,
   type DiffEngineOptions,
   type DiffResult,
+  type PairLabel,
+  type PairScenarios,
 } from '../../types.js';
 import type { Invocation } from '../args.js';
 import type { CommandContext, CommandResult } from '../command.js';
@@ -26,13 +29,49 @@ import type { DiffData } from '../shapes.js';
 
 type DiffInvocation = Extract<Invocation, { kind: 'diff' }>;
 
+/** The labels this pair carries, in severity order. Empty for a same-scenario pair. */
+export function pairLabels(scenarios: PairScenarios | undefined): PairLabel[] {
+  if (scenarios === undefined) return [];
+  const labels: PairLabel[] = [];
+  if (scenarios.mockVsRecorded) labels.push('mock-vs-recorded');
+  if (scenarios.crossScenario) labels.push('cross-scenario');
+  return labels;
+}
+
+const showScenario = (name: string): string => (name === SCENARIO_NONE ? 'no scenario' : name);
+
+/**
+ * The sentence each label prints. Both state what the tool does not know rather than refusing the
+ * comparison (mocking spec §6): a cross-scenario pair is a legitimate question about two states,
+ * and a mock-versus-recorded pair compares a fiction to a measurement.
+ */
+export function describeLabel(label: PairLabel, scenarios: PairScenarios): string {
+  switch (label) {
+    case 'cross-scenario':
+      return (
+        `cross-scenario: base ran '${showScenario(scenarios.base)}', head ran ` +
+        `'${showScenario(scenarios.head)}' — this compares two states, not two revisions`
+      );
+    case 'mock-vs-recorded':
+      return (
+        'mock-vs-recorded: one side is a mock-only run with no recording behind it — ' +
+        'this compares a fiction to a measurement'
+      );
+  }
+}
+
 export async function diff(
   ctx: CommandContext,
   invocation: DiffInvocation,
 ): Promise<CommandResult<DiffData>> {
   const config = await ctx.ports.loadConfig(ctx.cwd);
   const store = await ctx.ports.openStore(config);
-  const pair = await store.resolvePair(invocation.flow, invocation.base, invocation.head);
+  const pair = await store.resolvePair(
+    invocation.flow,
+    invocation.base,
+    invocation.head,
+    invocation.scenario,
+  );
 
   const options: DiffEngineOptions = {
     minRegionArea: config.diff.minRegionArea,
@@ -61,8 +100,15 @@ export async function diff(
   }
 
   const summary = result.summary;
+  const labels = pairLabels(result.scenarios);
+  const scenarioCell =
+    result.scenarios === undefined ||
+    (result.scenarios.base === SCENARIO_NONE && result.scenarios.head === SCENARIO_NONE)
+      ? ''
+      : `  scenario ${showScenario(result.scenarios.base)}..${showScenario(result.scenarios.head)}`;
+
   const human: string[] = [
-    `${pair.flow}  ${pair.base}..${pair.head}${reusable ? '  (cached)' : ''}`,
+    `${pair.flow}  ${pair.base}..${pair.head}${scenarioCell}${reusable ? '  (cached)' : ''}`,
     `${summary.totalFindings} findings` +
       `  high ${summary.bySeverity.high}, med ${summary.bySeverity.med}, low ${summary.bySeverity.low}` +
       `  max pixel change ${percent(summary.maxPixelChangedRatio)}`,
@@ -71,6 +117,14 @@ export async function diff(
       ` ${summary.stepsSpecChanged} spec-changed, ${summary.stepsFailed} failed,` +
       ` ${summary.stepsBlocked} blocked`,
   ];
+
+  // Labels go above the step table, not below it: a reader who stops at the summary must still
+  // have been told that this pair is not an ordinary revision-to-revision comparison.
+  if (labels.length > 0 && result.scenarios !== undefined) {
+    const scenarios = result.scenarios;
+    human.push('');
+    for (const label of labels) human.push(`! ${describeLabel(label, scenarios)}`);
+  }
 
   const stepRows: string[][] = [];
   for (const step of result.steps) {
@@ -122,10 +176,19 @@ export async function diff(
   human.push('');
   human.push(`findings.json: ${path}`);
 
+  // `mock-vs-recorded` is flagged at high severity (mocking spec §6), so it also travels as a CLI
+  // warning: stderr in human mode, `warnings` in the envelope. `cross-scenario` is a label on a
+  // legitimate question and stays in the summary — promoting it to a warning would train readers
+  // to ignore the channel that carries the severe one.
+  const warnings = [...result.warnings];
+  if (result.scenarios !== undefined && result.scenarios.mockVsRecorded) {
+    warnings.push(describeLabel('mock-vs-recorded', result.scenarios));
+  }
+
   return {
-    data: { flow: pair.flow, pair, path, cached: reusable, result },
+    data: { flow: pair.flow, pair, path, cached: reusable, labels, result },
     human,
-    warnings: result.warnings,
+    warnings,
     // No exitCode: findings never gate. This is the spec decision, not an oversight.
   };
 }

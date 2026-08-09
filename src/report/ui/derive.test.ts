@@ -2,18 +2,34 @@ import { describe, expect, it } from 'vitest';
 
 import type { Finding, FlowDiffEntry } from '../../types.js';
 import {
+  ALL_SCENARIOS,
   alignFlowDiff,
   buildFilmstrip,
   findingsForStep,
   groupBySeverity,
+  isMockOnly,
+  pairBanners,
+  pairLabels,
   runIndex,
   runLabel,
+  runsForScenario,
+  scenarioLabel,
+  scenarioNoteRows,
+  scenariosOf,
   sortFindings,
   topSeverity,
   viewportsOf,
   visibleCells,
 } from './derive.js';
-import { makeDiff, makeFinding, makeRun, makeStepDiff, makeViewportDiff } from './test-fixtures.js';
+import {
+  makeDiff,
+  makeFinding,
+  makePairScenarios,
+  makeRun,
+  makeStepAttribution,
+  makeStepDiff,
+  makeViewportDiff,
+} from './test-fixtures.js';
 
 function entry(
   id: string,
@@ -300,5 +316,187 @@ describe('run helpers', () => {
     expect(runIndex(runs, '0002')).toBe(1);
     expect(runIndex(runs, '0009')).toBe(-1);
     expect(runIndex(runs, null)).toBe(-1);
+  });
+});
+
+/* ------------------------------------------------------------------ scenarios (mocking §6, §7) */
+
+describe('scenariosOf', () => {
+  it('lists `none` first and the rest alphabetically, so the default never moves', () => {
+    const runs = [
+      makeRun('0001', {}, { scenario: 'slow-air' }),
+      makeRun('0002'),
+      makeRun('0003', {}, { scenario: 'empty-forecast' }),
+      makeRun('0004', {}, { scenario: 'empty-forecast' }),
+    ];
+    expect(scenariosOf(runs)).toEqual(['none', 'empty-forecast', 'slow-air']);
+  });
+
+  it('omits `none` entirely when every run had a scenario', () => {
+    const runs = [makeRun('0001', {}, { scenario: 'empty-forecast' })];
+    expect(scenariosOf(runs)).toEqual(['empty-forecast']);
+  });
+
+  it('is empty for an empty timeline, so the selector can hide itself', () => {
+    expect(scenariosOf([])).toEqual([]);
+  });
+});
+
+describe('runsForScenario', () => {
+  const runs = [
+    makeRun('0001'),
+    makeRun('0002', {}, { scenario: 'empty-forecast' }),
+    makeRun('0003'),
+  ];
+
+  it('narrows to one scenario, keeping the run ids as captured (mocking §6)', () => {
+    expect(runsForScenario(runs, 'empty-forecast').map((r) => r.runId)).toEqual(['0002']);
+    expect(runsForScenario(runs, 'none').map((r) => r.runId)).toEqual(['0001', '0003']);
+  });
+
+  it('passes everything through for the all-scenarios value and for no filter', () => {
+    expect(runsForScenario(runs, ALL_SCENARIOS)).toHaveLength(3);
+    expect(runsForScenario(runs, null)).toHaveLength(3);
+  });
+});
+
+describe('scenarioLabel', () => {
+  it('renders the reserved name as the absence it is', () => {
+    expect(scenarioLabel('none')).toBe('no scenario');
+    expect(scenarioLabel('empty-forecast')).toBe('empty-forecast');
+  });
+});
+
+describe('pairLabels', () => {
+  it('is empty for a same-scenario pair and for a diff stored before this slice', () => {
+    expect(pairLabels(null)).toEqual([]);
+    expect(pairLabels(makeDiff({}))).toEqual([]);
+    expect(
+      pairLabels(makeDiff({ scenarios: makePairScenarios({ base: 'e', head: 'e' }) })),
+    ).toEqual([]);
+  });
+
+  it('orders the labels most severe first', () => {
+    const diff = makeDiff({
+      scenarios: makePairScenarios({ crossScenario: true, mockVsRecorded: true }),
+    });
+    expect(pairLabels(diff)).toEqual(['mock-vs-recorded', 'cross-scenario']);
+  });
+});
+
+describe('isMockOnly', () => {
+  it('is true only for the mock network mode (D13)', () => {
+    expect(isMockOnly({ network: 'mock' })).toBe(true);
+    expect(isMockOnly({ network: 'replay' })).toBe(false);
+    expect(isMockOnly(null)).toBe(false);
+    expect(isMockOnly(undefined)).toBe(false);
+  });
+});
+
+describe('pairBanners', () => {
+  it('says nothing for a same-scenario pair', () => {
+    expect(pairBanners(null)).toEqual([]);
+    expect(pairBanners(makeDiff({}))).toEqual([]);
+    expect(
+      pairBanners(makeDiff({ scenarios: makePairScenarios({ base: 'e', head: 'e' }) })),
+    ).toEqual([]);
+  });
+
+  it('states a cross-scenario pair at medium severity, naming both states', () => {
+    const rows = pairBanners(
+      makeDiff({
+        scenarios: makePairScenarios({
+          base: 'none',
+          head: 'empty-forecast',
+          crossScenario: true,
+        }),
+      }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.label).toBe('cross-scenario');
+    expect(rows[0]?.severity).toBe('med');
+    expect(rows[0]?.message).toBe(
+      'base ran no scenario, head ran empty-forecast. This compares two states, not two' +
+        ' revisions — findings below describe the difference between the scenarios as much as' +
+        ' the code.',
+    );
+  });
+
+  it('flags mock-versus-recorded high, and puts it first', () => {
+    const rows = pairBanners(
+      makeDiff({
+        scenarios: makePairScenarios({
+          base: 'none',
+          head: 'offline',
+          crossScenario: true,
+          mockVsRecorded: true,
+        }),
+      }),
+    );
+    expect(rows.map((row) => [row.label, row.severity])).toEqual([
+      ['mock-vs-recorded', 'high'],
+      ['cross-scenario', 'med'],
+    ]);
+    expect(rows[0]?.message).toContain('compares a fiction to a measurement');
+  });
+});
+
+describe('scenarioNoteRows', () => {
+  const patched = makeStepAttribution('forecast', {
+    rules: [
+      {
+        scenario: 'empty-forecast',
+        ruleId: 'forecast-empty',
+        action: 'patch',
+        requests: 1,
+        bodyChanged: 1,
+        urls: ['https://api/v1/forecast'],
+      },
+    ],
+  });
+
+  it('is empty when there is no attribution and when nothing fired', () => {
+    expect(scenarioNoteRows('head', undefined)).toEqual([]);
+    expect(scenarioNoteRows('head', makeStepAttribution('forecast'))).toEqual([]);
+  });
+
+  it('prints the spec’s sentence, keyed and sided so both ends can coexist', () => {
+    expect(scenarioNoteRows('head', patched)).toEqual([
+      {
+        key: 'head-forecast-empty-patch',
+        side: 'head',
+        text: 'response modified by empty-forecast rule forecast-empty',
+        urls: ['https://api/v1/forecast'],
+        severity: 'note',
+      },
+    ]);
+    expect(scenarioNoteRows('base', patched)[0]?.key).toBe('base-forecast-empty-patch');
+  });
+
+  it('counts repeats rather than repeating the line', () => {
+    const many = makeStepAttribution('forecast', {
+      rules: [{ ...patched.rules[0]!, requests: 3, bodyChanged: 3 }],
+    });
+    expect(scenarioNoteRows('head', many)[0]?.text).toBe(
+      'response modified by empty-forecast rule forecast-empty ×3',
+    );
+  });
+
+  it('raises a mock-mode miss to high severity, since the page never got a response', () => {
+    const missed = makeStepAttribution('home', { misses: 1 });
+    expect(scenarioNoteRows('head', missed)).toEqual([
+      {
+        key: 'head-miss',
+        side: 'head',
+        text: '1 request matched no rule and was aborted — this step rendered without it',
+        urls: [],
+        severity: 'high',
+      },
+    ]);
+
+    const several = makeStepAttribution('home', { misses: 3 });
+    expect(scenarioNoteRows('head', several)[0]?.text).toBe(
+      '3 requests matched no rule and were aborted — this step rendered without them',
+    );
   });
 });

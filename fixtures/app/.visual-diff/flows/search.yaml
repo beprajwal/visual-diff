@@ -1,0 +1,66 @@
+# Place search: the idle prompt, a populated result list, and a genuinely empty result.
+#
+# The empty state here is real. Open-Meteo answers a search for "zzzzzzzz" with
+# `200 {"generationtime_ms": …}` and no `results` key at all — the recording contains that response
+# verbatim, so the empty screen is a rendering of something the API actually said rather than a
+# branch the fixture takes when it feels like it.
+#
+# Search is submitted rather than debounced, which is why each step fires exactly one request. A
+# debounce would make the recorded traffic a function of how fast the driver types.
+version: 1
+flow: search
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: replay
+  har: weather.har
+
+steps:
+  - id: idle
+    goto: /#/
+    waitFor: "[data-test=search-hint]"
+    shoot: true
+
+  - id: type-query
+    fill:
+      "[data-test=search-input]": san
+    shoot: false
+
+  - id: results
+    click: "[data-test=search-submit]"
+    waitFor: "[data-test=search-results]"
+    shoot: true
+    expect:
+      - selector: "[data-test=search-results] > li"
+        count: 5
+      - selector: "[data-test=search-result-5391811] .search-result-name"
+        text: San Diego
+
+  - id: open-result
+    click: "[data-test=search-result-5391811] a"
+    # The coordinates are the ones the geocoding payload returned; `tests/har.test.ts` asserts they
+    # still match, so a re-record that moves San Diego fails a test rather than this step.
+    waitFor: '[data-place="32.71571,-117.16472"] [data-test=chart-line]'
+    shoot: true
+    expect:
+      - selector: "[data-test=place-name]"
+        text: San Diego
+
+  - id: back-to-list
+    click: "[data-test=back]"
+    waitFor: "[data-test=search-hint]"
+    shoot: false
+
+  - id: type-missing-query
+    fill:
+      "[data-test=search-input]": zzzzzzzz
+    shoot: false
+
+  - id: no-results
+    click: "[data-test=search-submit]"
+    waitFor: "[data-test=empty-state]"
+    shoot: true
+    expect:
+      - selector: "[data-test=search-results]"
+        hidden: true

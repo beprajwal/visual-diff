@@ -5,6 +5,9 @@
  * the on-disk schema for the store (spec §6). Self-contained on purpose: no imports, so it can be
  * consumed by the CLI, the runner, the diff engine, the report server and the browser-side report
  * UI alike.
+ *
+ * Bare section references (§6, D4) are to `2026-08-08-visual-diff-design.md`. References marked
+ * "mocking spec" are to `2026-08-10-api-mocking-design.md`, which adds scenarios (D10–D14).
  */
 
 /* ------------------------------------------------------------------ primitives */
@@ -23,6 +26,13 @@ export type IsoDate = string;
 export type Sha256 = string;
 
 export type JsonPrimitive = string | number | boolean | null;
+
+/**
+ * An arbitrary JSON document. The scenario layer carries recorded and synthetic response bodies
+ * around as data, so it needs a name for "any JSON" (mocking spec §5).
+ */
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
 
 export interface Rect {
   x: number;
@@ -96,7 +106,13 @@ export interface Step {
   expect?: Expectation[];
 }
 
-export type NetworkMode = 'record' | 'replay' | 'off';
+/**
+ * `mock` is a first-class mode alongside the slice-1 three, not an implicit fallback: it runs with
+ * no HAR at all and aborts every unmatched request (mocking spec D13). It is structurally recorded
+ * in meta.json and badged in the report, because fidelity under it is only as good as the scenario.
+ */
+export const NETWORK_MODES = ['record', 'replay', 'off', 'mock'] as const;
+export type NetworkMode = (typeof NETWORK_MODES)[number];
 
 export interface FlowNetwork {
   mode: NetworkMode;
@@ -121,6 +137,175 @@ export interface Viewport {
   id: ViewportId;
   width: number;
   height: number;
+}
+
+/* ------------------------------------------------- scenarios (mocking spec §5, §11, D10–D13) */
+
+/**
+ * RFC 7386 JSON merge patch, the default patch format because it reads naturally in YAML (mocking
+ * spec §5). `null` at a key deletes that key, an object merges recursively, and any other value
+ * replaces its target wholesale. Implemented in-repo, never as a dependency (mocking spec §11).
+ */
+export type MergePatch = JsonValue;
+
+/** The six RFC 6902 operations (mocking spec §5, §11). */
+export const JSON_PATCH_OPS = ['add', 'remove', 'replace', 'move', 'copy', 'test'] as const;
+export type JsonPatchOp = (typeof JSON_PATCH_OPS)[number];
+
+/**
+ * One RFC 6902 operation, split by `op` so `value` and `from` are required exactly where the RFC
+ * requires them and rejected where it does not — which is what "malformed RFC 6902 op" means in the
+ * validation list (mocking spec §8). Used for the array indices and removals merge patch cannot
+ * express (mocking spec §5).
+ */
+export type JsonPatchOperation =
+  | { op: 'add'; path: string; value: JsonValue }
+  | { op: 'remove'; path: string }
+  | { op: 'replace'; path: string; value: JsonValue }
+  | { op: 'move'; path: string; from: string }
+  | { op: 'copy'; path: string; from: string }
+  | { op: 'test'; path: string; value: JsonValue };
+
+export type JsonPatch = JsonPatchOperation[];
+
+/**
+ * `overlay` patches a recording and passes unmatched requests through to it; `mock` involves no
+ * recording at all and aborts unmatched requests as misses (mocking spec §5, D13).
+ */
+export const SCENARIO_MODES = ['overlay', 'mock'] as const;
+export type ScenarioMode = (typeof SCENARIO_MODES)[number];
+
+/** Scenario name, matching the filename stem of `.visual-diff/scenarios/<name>.yaml`. */
+export type ScenarioName = string;
+
+/**
+ * The scenario recorded for a run that had none (mocking spec §6). Reserved: no scenario file may
+ * take this name (mocking spec §11), so `meta.scenario === SCENARIO_NONE` is unambiguous and
+ * slice-1 runs stay readable.
+ */
+export const SCENARIO_NONE = 'none';
+
+/**
+ * Request matcher. `method` is optional and defaults to any; `url` is a required glob applied to
+ * the full URL including query string (mocking spec §5, §11).
+ */
+export interface RuleMatch {
+  method?: string;
+  url: string;
+  /**
+   * 1-based selector of the nth occurrence of an otherwise identical request, counted per
+   * `(method, url)` within a run (mocking spec §5, §11). Below 1 is a validation error (§8).
+   */
+  nth?: number;
+}
+
+/** A binary `respond.body`, distinguished from a JSON body by the `base64` key (mocking spec §5). */
+export interface Base64Body {
+  base64: string;
+}
+
+/**
+ * `respond.body` accepts an object (serialized as JSON), a string, or `{ base64: … }` for binary
+ * (mocking spec §5). Narrow with `'base64' in body` before treating it as JSON.
+ */
+export type ResponseBody = JsonValue | Base64Body;
+
+/** The `respond` verb: a wholly synthetic response (mocking spec §5). */
+export interface RespondSpec {
+  /** Outside 100–599 is a validation error (mocking spec §8). */
+  status: number;
+  headers?: Record<string, string>;
+  body?: ResponseBody;
+}
+
+/** The four response verbs. Exactly one per rule; two is a validation error (mocking spec §5, §8). */
+export const RESPONSE_VERBS = ['patch', 'patchOps', 'respond', 'abort'] as const;
+export type ResponseVerb = (typeof RESPONSE_VERBS)[number];
+
+/** What every rule carries, whichever verb it is built around (mocking spec §5). */
+export interface ScenarioRuleBase {
+  /**
+   * Stable and required. It is what lets two versions of a scenario be compared structurally and
+   * gives the report something to name; renaming it severs that rule's history (mocking spec §5).
+   */
+  id: string;
+  match: RuleMatch;
+  /**
+   * Milliseconds. A modifier rather than a verb: it composes with any of them and is legal on its
+   * own, passing the recorded response through late. Negative is a validation error (§5, §8).
+   */
+  delay?: number;
+}
+
+/**
+ * One rule: a match plus at most one response verb (mocking spec §5). The `?: never` slots make
+ * "exactly one verb per rule" a type error rather than an invented precedence order — a rule
+ * carrying both `patch` and `respond` matches no branch of this union. The final branch is the
+ * delay-only rule, which is why `delay` is required there and optional in the base.
+ *
+ * `patch` and `patchOps` are additionally rejected in `mock` mode, at validation time rather than
+ * run time, since a merge patch against a nonexistent recorded body looks like it worked (§5).
+ */
+export type ScenarioRule = ScenarioRuleBase &
+  (
+    | { patch: MergePatch; patchOps?: never; respond?: never; abort?: never }
+    | { patchOps: JsonPatch; patch?: never; respond?: never; abort?: never }
+    | { respond: RespondSpec; patch?: never; patchOps?: never; abort?: never }
+    | { abort: true; patch?: never; patchOps?: never; respond?: never }
+    | { delay: number; patch?: never; patchOps?: never; respond?: never; abort?: never }
+  );
+
+/** `.visual-diff/scenarios/<name>.yaml`, committed and read from git history at the target SHA. */
+export interface ScenarioSpec {
+  version: 1;
+  /** Must agree with the filename stem; disagreement is a validation error (mocking spec §8). */
+  scenario: ScenarioName;
+  description?: string;
+  /** Defaults to `overlay` when the file omits it (mocking spec §5). */
+  mode: ScenarioMode;
+  /** Evaluated per request; first match wins in file order (mocking spec §5, §11). */
+  rules: ScenarioRule[];
+}
+
+/** One row of `vdiff scenario list` (mocking spec §7). */
+export interface ScenarioSummary {
+  name: ScenarioName;
+  mode: ScenarioMode;
+  description?: string;
+  ruleCount: number;
+  /** Path relative to the .visual-diff directory. */
+  path: string;
+}
+
+/**
+ * What the scenario layer did with one request (mocking spec §8). `passthrough` is a request no
+ * rule matched, served from the recording (§3); `miss` is its `mock`-mode counterpart, aborted
+ * because there is no recording to fall back to (§8); `delay` is a rule that matched carrying only
+ * the modifier, so the recorded response went through unchanged but late.
+ */
+export const SCENARIO_ACTIONS = [
+  'passthrough',
+  'patch',
+  'patchOps',
+  'respond',
+  'abort',
+  'delay',
+  'miss',
+] as const;
+export type ScenarioAction = (typeof SCENARIO_ACTIONS)[number];
+
+/**
+ * Per-request attribution, written into network.json so the report can say "response modified by
+ * `empty-forecast` rule `forecast-empty`" without runtime instrumentation (mocking spec §8, D11).
+ */
+export interface ScenarioAttribution {
+  /** The scenario in force for the run, or `SCENARIO_NONE`. */
+  scenario: ScenarioName;
+  /** The rule that matched, or null when none did. */
+  ruleId: string | null;
+  action: ScenarioAction;
+  /** True when the body the page received differs from the recorded one. */
+  bodyChanged: boolean;
 }
 
 /* ------------------------------------------------------------------ validation (§10) */
@@ -170,6 +355,11 @@ export interface NetworkConfigFile {
 }
 
 export interface RetentionConfig {
+  /**
+   * Runs kept per `(flow, scenario)`, not per flow (mocking spec §6). Per-flow pruning would let a
+   * frequently-run scenario evict the history of a rarely-run one, which is backwards: the
+   * rarely-run scenario is the one whose history cannot be reconstructed from memory.
+   */
   keepRuns: number;
 }
 
@@ -215,7 +405,16 @@ export type RunFailureKind =
   | 'flow-invalid'
   | 'browser-missing'
   | 'locked'
-  | 'internal';
+  | 'internal'
+  /** Named scenario absent, including at the target SHA — rejected as a missing flow is (§8, D4). */
+  | 'scenario-missing'
+  /** Scenario failed validation: unknown key, two verbs on a rule, `patch` in mock mode … (§8). */
+  | 'scenario-invalid'
+  /**
+   * A rule could not be applied at run time and the run fails naming it: it matched a request with
+   * no recorded response, or patched a non-JSON body (mocking spec §8).
+   */
+  | 'scenario-failed';
 
 export interface RunFailure {
   kind: RunFailureKind;
@@ -232,25 +431,54 @@ export type RunWarningKind =
   | 'step-blocked'
   | 'console-error'
   /** The pre-shoot settle gate hit its deadline: a screenshot was taken with requests outstanding. */
-  | 'settle-timeout';
+  | 'settle-timeout'
+  /**
+   * A scenario rule matched nothing for the whole run, so the user may believe they are looking at
+   * a patched state while actually seeing the recording. The single most important warning in the
+   * mocking spec (§8): it lists the offending rule ids in `rules`.
+   */
+  | 'scenario-rule-unmatched'
+  /** `mock` mode: a request no rule matched was aborted, with no recording to fall back to (§8). */
+  | 'mock-miss';
 
 export interface RunWarning {
   kind: RunWarningKind;
   message: string;
   urls?: string[];
   steps?: StepId[];
+  /** Scenario rule ids this warning is about, e.g. the rules that never matched (mocking §8). */
+  rules?: string[];
 }
 
 /** meta.json */
 export interface RunMeta {
   runId: RunId;
   flow: string;
+  /**
+   * The third axis of run identity, `(flow, revision, scenario)` — recorded here rather than in the
+   * run path, so run ids stay monotonic per flow and scenario names never become path components
+   * (mocking spec §6, D12). `SCENARIO_NONE` for a run captured without one. Required here and
+   * defaulted to `SCENARIO_NONE` by the store when the field is absent on disk, so slice-1
+   * meta.json stays readable while in-memory code never has to handle "unknown" (mocking spec §6).
+   */
+  scenario: ScenarioName;
   flowHash: Sha256;
   revision: Revision;
   mode: RunMode;
   network: NetworkMode;
   harHits: number;
   harMisses: number;
+  /**
+   * Requests a scenario rule answered outright — `respond` or `abort` (mocking spec §8). These are
+   * deliberately *not* `harHits`: they never consulted the recording, and counting them there
+   * would report a replay's HAR coverage as higher than it is.
+   *
+   * It exists because in `mock` mode `harHits` is necessarily 0, so "har 0 hit" would be a true
+   * sentence that reads as a total failure of a run that in fact served every request from its
+   * scenario. Optional, so a slice-1 `meta.json` that predates the field is unchanged and reads
+   * back as 0.
+   */
+  scenarioServed?: number;
   viewports: ViewportId[];
   status: RunStatus;
   failedSteps: StepId[];
@@ -346,6 +574,12 @@ export interface NetworkEntry {
   harMatch: HarMatch;
   durationMs: number | null;
   failure?: string;
+  /**
+   * What the scenario layer did with this request (mocking spec §8). Written for every request of a
+   * scenario run; absent on runs with no scenario, so a slice-1 network.json is unchanged and an
+   * absent value reads as "no scenario was in force", not as "unknown".
+   */
+  attribution?: ScenarioAttribution;
 }
 
 /* ------------------------------------------------------------------ DOM capture (§7, §12) */
@@ -637,6 +871,35 @@ export interface DiffSummary {
   maxPixelChangedRatio: number;
 }
 
+/**
+ * Machine codes for the two pairings the tool permits but refuses to let pass as ordinary
+ * regressions (mocking spec §6). They appear in findings.json, CLI output and the report; a
+ * same-scenario pair carries neither.
+ */
+export const PAIR_LABELS = ['cross-scenario', 'mock-vs-recorded'] as const;
+export type PairLabel = (typeof PAIR_LABELS)[number];
+
+/**
+ * How the two paired runs relate on the scenario axis (mocking spec §6). Diffs pair same-scenario
+ * runs by default, because "did the empty state break between these revisions?" needs like-for-like
+ * pairs (D12); the flags below are how the other two pairings state what the tool does not know.
+ */
+export interface PairScenarios {
+  /** The scenario each side ran, `SCENARIO_NONE` when it ran none. */
+  base: ScenarioName;
+  head: ScenarioName;
+  /**
+   * Different scenarios: a legitimate question — it compares two states rather than two revisions —
+   * so it is permitted and labelled `cross-scenario` rather than refused (mocking spec §6).
+   */
+  crossScenario: boolean;
+  /**
+   * Exactly one side is a mock-only run: a fiction compared against a measurement. Labelled
+   * `mock-vs-recorded` at high severity, with both runs badged (mocking spec §6).
+   */
+  mockVsRecorded: boolean;
+}
+
 /** findings.json */
 export interface DiffResult {
   engineVersion: string;
@@ -645,6 +908,11 @@ export interface DiffResult {
   computedAt: IsoDate;
   baseMeta: RunMeta;
   headMeta: RunMeta;
+  /**
+   * Scenario labelling for this pair (mocking spec §6). Absent on diffs stored before this slice,
+   * which are same-scenario by construction; present and all-false for a same-scenario pair.
+   */
+  scenarios?: PairScenarios;
   flowDiff: FlowDiffEntry[];
   steps: StepDiff[];
   summary: DiffSummary;
@@ -694,6 +962,8 @@ export interface LoadedRun {
 export interface RunSummary {
   runId: RunId;
   flow: string;
+  /** The scenario column of the timeline, and what `--scenario` filters on (mocking spec §7). */
+  scenario: ScenarioName;
   revision: Revision;
   mode: RunMode;
   status: RunStatus;
@@ -872,6 +1142,12 @@ export interface RunOptions {
   at?: string;
   viewports?: ViewportId[];
   network?: NetworkMode;
+  /**
+   * Capture under this scenario (mocking spec §7). Absent means `SCENARIO_NONE`. Combining it with
+   * `network: 'record'` is a hard error: recording captures reality and a scenario alters it, so a
+   * HAR blending both is neither (mocking spec §2).
+   */
+  scenario?: ScenarioName;
   continueOnError?: boolean;
   baseUrl?: string;
   /** Write an unscrubbed HAR. Requires an explicit flag (spec §6). */
@@ -889,8 +1165,56 @@ export interface DiffCommandOptions {
   flow: string;
   base?: RunId;
   head?: RunId;
+  /** Restrict run selection to runs captured under this scenario (mocking spec §7). */
+  scenario?: ScenarioName;
   force?: boolean;
   json?: boolean;
+}
+
+/**
+ * `vdiff scenario new <name>` (mocking spec §7). `cwd` carries the same meaning it does on
+ * RunOptions: the directory the project is located from.
+ */
+export interface ScenarioNewOptions {
+  name: ScenarioName;
+  cwd?: string;
+  json?: boolean;
+}
+
+/** `--json` data for `vdiff scenario new` (mocking spec §7). */
+export interface ScenarioNewResult {
+  scenario: ScenarioName;
+  /** Path of the written file, relative to the .visual-diff directory. */
+  path: string;
+  mode: ScenarioMode;
+}
+
+/** `vdiff scenario check <name>` — validate without running (mocking spec §7). */
+export interface ScenarioCheckOptions {
+  name: ScenarioName;
+  cwd?: string;
+  json?: boolean;
+}
+
+/**
+ * `--json` data for `vdiff scenario check` (mocking spec §7). A failed check is a `CliError` at exit
+ * 2 carrying its issues (mocking spec §8), so this shape describes a scenario that passed: the
+ * warnings are what a valid scenario still has to say about itself.
+ */
+export interface ScenarioCheckResult {
+  scenario: ScenarioSummary;
+  warnings: ValidationIssue[];
+}
+
+/** `vdiff scenario list` — enumerate scenarios and their modes (mocking spec §7). */
+export interface ScenarioListOptions {
+  cwd?: string;
+  json?: boolean;
+}
+
+/** `--json` data for `vdiff scenario list` (mocking spec §7). */
+export interface ScenarioListResult {
+  scenarios: ScenarioSummary[];
 }
 
 export interface ServeOptions {
@@ -947,6 +1271,10 @@ export const DEFAULTS = {
   },
   retention: { keepRuns: 20 },
   network: { redact: [] as string[], scrub: true },
+  /** mocking spec §5 — a scenario file that omits `mode:` is an overlay. */
+  scenarioMode: 'overlay' as ScenarioMode,
+  /** mocking spec §6, §11 — what a run captured without a scenario records. */
+  scenarioNone: SCENARIO_NONE,
   /** Always dropped on HAR record regardless of config (spec §6). */
   alwaysRedactHeaders: ['authorization', 'cookie', 'set-cookie'] as string[],
   /** Concurrent viewport replays (spec §7). */

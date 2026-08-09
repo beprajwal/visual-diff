@@ -1,0 +1,68 @@
+# A screen with no backend behind it at all (mocking spec D13, §5 'The two modes').
+#
+# `mode: mock` means there is no recording: every request the page makes is either answered by a
+# rule here or aborted and reported as a miss. That is the whole point — this is the mode for UI
+# built ahead of the API it will eventually call, and the foundation subsystem 3 is built on.
+#
+# The bodies below are invented, and the tool says so: the run records `network: mock` in
+# meta.json and any diff against a recorded run is flagged `mock-vs-recorded` at high severity,
+# because comparing a fiction to a measurement is not a regression test. Fidelity is only ever as
+# good as this file.
+#
+# `patch` and `patchOps` are rejected in this mode at validation time (§5): a merge patch with
+# no recorded body to merge into would produce whatever the patch alone contains and look like it
+# had worked.
+version: 1
+scenario: mock-detail
+description: The detail screen with no recording behind it — invented forecast and air quality
+mode: mock
+
+rules:
+  - id: forecast
+    match: { method: GET, url: "**/v1/forecast**" }
+    respond:
+      status: 200
+      headers: { content-type: application/json }
+      body:
+        latitude: 52.52
+        longitude: 13.41
+        elevation: 38
+        current:
+          time: "2026-08-10T12:00"
+          temperature_2m: 23.6
+          apparent_temperature: 22.9
+          relative_humidity_2m: 54
+          precipitation: 0
+          wind_speed_10m: 12.4
+          is_day: 1
+          weather_code: 3
+        hourly:
+          time: ["2026-08-10T00:00","2026-08-10T01:00","2026-08-10T02:00","2026-08-10T03:00","2026-08-10T04:00","2026-08-10T05:00","2026-08-10T06:00","2026-08-10T07:00","2026-08-10T08:00","2026-08-10T09:00","2026-08-10T10:00","2026-08-10T11:00","2026-08-10T12:00","2026-08-10T13:00","2026-08-10T14:00","2026-08-10T15:00","2026-08-10T16:00","2026-08-10T17:00","2026-08-10T18:00","2026-08-10T19:00","2026-08-10T20:00","2026-08-10T21:00","2026-08-10T22:00","2026-08-10T23:00","2026-08-11T00:00","2026-08-11T01:00","2026-08-11T02:00","2026-08-11T03:00","2026-08-11T04:00","2026-08-11T05:00","2026-08-11T06:00","2026-08-11T07:00","2026-08-11T08:00","2026-08-11T09:00","2026-08-11T10:00","2026-08-11T11:00","2026-08-11T12:00","2026-08-11T13:00","2026-08-11T14:00","2026-08-11T15:00","2026-08-11T16:00","2026-08-11T17:00","2026-08-11T18:00","2026-08-11T19:00","2026-08-11T20:00","2026-08-11T21:00","2026-08-11T22:00","2026-08-11T23:00"]
+          temperature_2m: [12.4,13.2,14.2,15.6,17.1,18.7,20.2,21.5,22.7,23.5,23.9,24,23.6,22.8,21.8,20.4,18.9,17.3,15.8,14.5,13.3,12.5,12.1,12,12.4,13.2,14.2,15.6,17.1,18.7,20.2,21.5,22.7,23.5,23.9,24,23.6,22.8,21.8,20.4,18.9,17.3,15.8,14.5,13.3,12.5,12.1,12]
+          precipitation_probability: [0,0,5,10,25,40,15,5,0,0,0,0,0,0,5,10,25,40,15,5,0,0,0,0,0,0,5,10,25,40,15,5,0,0,0,0,0,0,5,10,25,40,15,5,0,0,0,0]
+          weather_code: [0,1,2,3,61,3,2,1,0,1,2,3,61,3,2,1,0,1,2,3,61,3,2,1,0,1,2,3,61,3,2,1,0,1,2,3,61,3,2,1,0,1,2,3,61,3,2,1]
+        daily:
+          time: ["2026-08-10","2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16"]
+          weather_code: [3,1,61,2,0,3,80]
+          temperature_2m_max: [24.1,25.3,21.8,23,26.4,22.7,20.9]
+          temperature_2m_min: [13.2,14,12.6,13.8,15.1,12.9,11.4]
+          precipitation_sum: [0,0,4.2,0.3,0,0,7.8]
+          sunrise: ["2026-08-10T05:50","2026-08-11T05:51","2026-08-12T05:52","2026-08-13T05:53","2026-08-14T05:54","2026-08-15T05:55","2026-08-16T05:56"]
+          sunset: ["2026-08-10T20:30","2026-08-11T20:31","2026-08-12T20:32","2026-08-13T20:33","2026-08-14T20:34","2026-08-15T20:35","2026-08-16T20:36"]
+
+  - id: air-quality
+    match: { method: GET, url: "**/v1/air-quality**" }
+    respond:
+      status: 200
+      headers: { content-type: application/json }
+      body:
+        current:
+          time: "2026-08-10T12:00"
+          european_aqi: 31
+          pm10: 14.2
+          pm2_5: 8.6
+          ozone: 62
+          nitrogen_dioxide: 11.3
+        hourly:
+          time: ["2026-08-10T00:00","2026-08-10T01:00","2026-08-10T02:00","2026-08-10T03:00","2026-08-10T04:00","2026-08-10T05:00","2026-08-10T06:00","2026-08-10T07:00","2026-08-10T08:00","2026-08-10T09:00","2026-08-10T10:00","2026-08-10T11:00","2026-08-10T12:00","2026-08-10T13:00","2026-08-10T14:00","2026-08-10T15:00","2026-08-10T16:00","2026-08-10T17:00","2026-08-10T18:00","2026-08-10T19:00","2026-08-10T20:00","2026-08-10T21:00","2026-08-10T22:00","2026-08-10T23:00"]
+          european_aqi: [18,25,32,39,20,27,34,41,22,29,36,43,24,31,38,19,26,33,40,21,28,35,42,23]

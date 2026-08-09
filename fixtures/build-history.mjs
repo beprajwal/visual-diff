@@ -4,7 +4,7 @@
  *
  *   node fixtures/build-history.mjs [--out <dir>] [--json] [--verify] [--dry-run] [--force]
  *
- * Copies `fixtures/app/` into a throwaway directory, initialises a *nested, self-contained* git
+ * Copies `fixtures/storefront/` into a throwaway directory, initialises a *nested, self-contained* git
  * repository there, and lays down seven commits: the baseline plus one commit per known UI change —
  * label edit, restyle, layout shift, added step, renamed selector, introduced console error.
  *
@@ -35,7 +35,13 @@ const execFileAsync = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const FIXTURES_DIR = HERE;
-export const APP_DIR = join(HERE, 'app');
+/**
+ * The slice-1 storefront (spec §11.2), which lives at `fixtures/storefront/`. `fixtures/app/` is
+ * the slice-2 weather dashboard (api-mocking spec §9) and is a different fixture with a different
+ * job: this history is about *code* change across revisions, that one is about *network* change
+ * across scenarios.
+ */
+export const APP_DIR = join(HERE, 'storefront');
 export const COMMITS_DIR = join(HERE, 'commits');
 /** Throwaway build location, ignored by fixtures/.gitignore. */
 export const DEFAULT_OUT = join(HERE, '.tmp', 'checkout-history');
@@ -552,7 +558,7 @@ const USAGE = `Usage: node fixtures/build-history.mjs [options]
   --out <dir>        where to build (default: fixtures/.tmp/checkout-history)
   --json             print the result as JSON
   --verify           assert the built history matches spec §11.2
-  --verify-sources   check fixtures/app + fixtures/commits only; builds nothing, runs no git
+  --verify-sources   check fixtures/storefront + fixtures/commits only; builds nothing, no git
   --dry-run          apply the overlays without running git
   --force            allow a non-scratch output directory to be overwritten
 `;

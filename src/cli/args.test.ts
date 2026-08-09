@@ -118,6 +118,8 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       const argv =
         command === 'flow'
           ? ['flow', 'check', 'checkout', '--json']
+          : command === 'scenario'
+            ? ['scenario', 'list', '--json']
           : command === 'pin' || command === 'prune'
             ? [command, '0007', '--json']
             : command === 'install'
@@ -284,5 +286,145 @@ describe('commandLabel', () => {
     expect(commandLabel({ kind: 'flow-new', name: 'x', json: false })).toBe('flow new');
     expect(commandLabel({ kind: 'flow-check', name: 'x', json: false })).toBe('flow check');
     expect(commandLabel({ kind: 'runs', flow: 'x', json: false })).toBe('runs');
+  });
+});
+
+/* ------------------------------------------------------------------ scenarios (mocking §7, §8) */
+
+describe('parseArgs — scenarios (mocking spec §7)', () => {
+  it('parses the three scenario subcommands', () => {
+    expect(ok(['scenario', 'new', 'empty-forecast'])).toEqual({
+      kind: 'scenario-new',
+      name: 'empty-forecast',
+      json: false,
+    });
+    expect(ok(['scenario', 'check', 'empty-forecast'])).toEqual({
+      kind: 'scenario-check',
+      name: 'empty-forecast',
+      json: false,
+    });
+    expect(ok(['scenario', 'list'])).toEqual({ kind: 'scenario-list', json: false });
+    expect(ok(['scenario', 'list', '--json'])).toEqual({ kind: 'scenario-list', json: true });
+  });
+
+  it('labels the scenario subcommands as they are typed', () => {
+    expect(commandLabel({ kind: 'scenario-new', name: 'x', json: false })).toBe('scenario new');
+    expect(commandLabel({ kind: 'scenario-check', name: 'x', json: false })).toBe('scenario check');
+    expect(commandLabel({ kind: 'scenario-list', json: false })).toBe('scenario list');
+  });
+
+  it('carries --scenario onto run, runs and diff', () => {
+    expect(ok(['run', 'forecast', '--scenario', 'empty-forecast'])).toEqual({
+      kind: 'run',
+      flow: 'forecast',
+      scenario: 'empty-forecast',
+      continueOnError: false,
+      noScrub: false,
+      json: false,
+    });
+    expect(ok(['runs', 'forecast', '--scenario', 'empty-forecast'])).toEqual({
+      kind: 'runs',
+      flow: 'forecast',
+      scenario: 'empty-forecast',
+      json: false,
+    });
+    expect(ok(['diff', 'forecast', '0003', '0007', '--scenario', 'empty-forecast'])).toEqual({
+      kind: 'diff',
+      flow: 'forecast',
+      base: '0003',
+      head: '0007',
+      scenario: 'empty-forecast',
+      json: false,
+    });
+  });
+
+  it('rejects --record with --scenario, naming why they cannot combine (mocking §2)', () => {
+    expect(err(['run', 'forecast', '--record', '--scenario', 'empty-forecast'])).toEqual({
+      code: 'conflicting-flags',
+      message:
+        "'--record' and '--scenario' are mutually exclusive: recording captures reality, a scenario alters it",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'record the flow first, then replay it under a scenario',
+    });
+  });
+
+  it('rejects the reserved name `none` where it would mean a file (mocking §11)', () => {
+    expect(err(['scenario', 'new', 'none'])).toEqual({
+      code: 'reserved-scenario-name',
+      message: "'none' is the reserved scenario name for a run captured without one",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: "pick another name; 'none' can never be a scenario file",
+    });
+    expect(err(['scenario', 'check', 'none'])).toMatchObject({ code: 'reserved-scenario-name' });
+  });
+
+  it('rejects `run --scenario none` and says to omit the flag instead', () => {
+    expect(err(['run', 'forecast', '--scenario', 'none'])).toEqual({
+      code: 'reserved-scenario-name',
+      message: "'none' is the reserved scenario name for a run captured without one",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'omit --scenario to capture without a scenario',
+    });
+  });
+
+  it('accepts `none` as a filter, because it is the value the store actually records', () => {
+    expect(ok(['runs', 'forecast', '--scenario', 'none'])).toEqual({
+      kind: 'runs',
+      flow: 'forecast',
+      scenario: 'none',
+      json: false,
+    });
+    expect(ok(['diff', 'forecast', '--scenario', 'none'])).toEqual({
+      kind: 'diff',
+      flow: 'forecast',
+      scenario: 'none',
+      json: false,
+    });
+  });
+
+  it('rejects a scenario name that could not be a filename', () => {
+    expect(err(['scenario', 'new', '../etc/passwd'])).toEqual({
+      code: 'invalid-scenario-name',
+      message: "invalid scenario name '../etc/passwd'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'use letters, digits, dot, dash or underscore, e.g. empty-forecast',
+    });
+    expect(err(['scenario', 'new', 'a..b'])).toMatchObject({ code: 'invalid-scenario-name' });
+    expect(err(['run', 'forecast', '--scenario', 'has space'])).toMatchObject({
+      code: 'invalid-scenario-name',
+    });
+    expect(err(['runs', 'forecast', '--scenario=empty/forecast'])).toMatchObject({
+      code: 'invalid-scenario-name',
+    });
+    expect(err(['runs', 'forecast', '--scenario='])).toMatchObject({
+      code: 'invalid-scenario-name',
+    });
+  });
+
+  it('rejects an unknown subcommand, a missing name and a name given to `list`', () => {
+    expect(err(['scenario', 'delete', 'x'])).toEqual({
+      code: 'unknown-subcommand',
+      message: "unknown subcommand 'scenario delete'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['scenario']?.usage,
+    });
+    expect(err(['scenario', 'new'])).toEqual({
+      code: 'missing-argument',
+      message: "'scenario new' requires a scenario name",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['scenario']?.usage,
+    });
+    expect(err(['scenario', 'list', 'empty-forecast'])).toEqual({
+      code: 'unexpected-argument',
+      message: "'scenario list' enumerates every scenario and takes no name",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['scenario']?.usage,
+    });
+    expect(err(['scenario'])).toMatchObject({ code: 'missing-argument' });
+  });
+
+  it('routes `vdiff scenario --help` to the help topic', () => {
+    expect(ok(['scenario', '--help'])).toEqual({ kind: 'help', topic: 'scenario', json: false });
+    expect(ok(['help', 'scenario'])).toEqual({ kind: 'help', topic: 'scenario', json: false });
   });
 });

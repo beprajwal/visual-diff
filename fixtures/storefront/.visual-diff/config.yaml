@@ -1,0 +1,21 @@
+# visual-diff project settings for the fixture storefront (spec §6).
+#
+# `npm install` rather than `npm ci`: the fixture ships without a lockfile so the scripted history
+# never has to carry one, and the runner's dep cache falls back to hashing package.json.
+app:
+  install: npm install --no-audit --no-fund --loglevel error
+  dev: npm run dev -- --port $PORT --strictPort
+  readyOn: http://localhost:$PORT/
+  readyTimeout: 90s
+
+diff:
+  minRegionArea: 64
+  maxRegions: 40
+  antialiasTolerance: 0.1
+  ignore: []
+
+network:
+  redact: []
+
+retention:
+  keepRuns: 20

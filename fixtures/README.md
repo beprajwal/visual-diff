@@ -1,18 +1,37 @@
-# Fixtures — the storefront app and its scripted history
+# Fixtures
 
-Spec §11.2. A tiny Vite app plus a script that builds a git history of seven commits, one per known
-UI change. Integration tests replay across that history and assert on the resulting findings. It
-doubles as the demo and as manual QA.
+Two fixture applications, with different jobs. They are not alternatives and neither replaces the
+other.
+
+| | `storefront/` | `app/` |
+|---|---|---|
+| Spec | slice-1 §11.2 | api-mocking §9, D14 |
+| Question it answers | did the **code** change between two revisions? | did the **network** change between two scenarios? |
+| Network | `off` — no backend at all | `replay` — a real recorded Open-Meteo API |
+| Carries | a scripted git history of seven commits | a committed HAR and four flows |
+| Workspace | no | yes (`private: true`, registered in the root `package.json`) |
 
 ```
 fixtures/
-  app/                     the Vite app, at its baseline state
+  storefront/              slice-1: a tiny frontend-only Vite app, at its baseline state
     .visual-diff/          committed config + flow spec (spec §6 git boundary)
-  commits/NN-name/
+  commits/NN-name/         the seven commits laid over it, one per known UI change
     commit.json            message, the change it represents, what the diff should say
     files/…                whole-file overlay copied over the working tree
-  build-history.mjs        materialises the history into a throwaway directory
+  build-history.mjs        materialises the storefront history into a throwaway directory
+
+  app/                     api-mocking: the Meridian weather dashboard over Open-Meteo
+    .visual-diff/flows/    four flow specs + weather.har, all committed
+    scripts/record-har.mjs the one thing here that touches the network, run by hand
+    README.md              data source, licence, recording date, and the known runner gap
 ```
+
+`app/` is where the api-mocking slice's scenarios land — it is the only fixture in the repository
+with a real recorded API, so it is the only one that can exercise overlay mode end to end. See
+[`app/README.md`](app/README.md), which also records a slice-1 runner gap that this fixture is the
+first thing in the repository to reach.
+
+The rest of this file is about `storefront/` and its scripted history.
 
 ## Building it
 
@@ -22,7 +41,7 @@ node fixtures/build-history.mjs --out /tmp/x --json # for a test harness
 node fixtures/build-history.mjs --verify-sources    # checks the fixtures only: no build, no git
 ```
 
-The build **never touches this repository's git history**. It copies `app/` into a throwaway
+The build **never touches this repository's git history**. It copies `storefront/` into a throwaway
 directory, runs `git init` there, and pins `GIT_DIR` and `GIT_WORK_TREE` at that directory for every
 subsequent call, so git cannot walk up and find the outer repository. It also refuses to overwrite
 any output directory that is not `fixtures/.tmp/…` or under the OS temp directory unless `--force`
@@ -58,7 +77,7 @@ unrelated line moved is a fixture that fails for a reason having nothing to do w
 test. The cost is that each overlay repeats the earlier commits' content, and
 `--verify-sources` exists precisely to catch a copy that drifted.
 
-## The app itself
+## The storefront itself
 
 Three screens — cart, payment, receipt — with no framework and no backend, so the flow's
 `network.mode` is `"off"` and no HAR is needed. Two details are deliberate:

@@ -1,0 +1,46 @@
+# The failure screens.
+#
+# The error state is driven by a recorded `400 {"error": true, "reason": "Latitude must be in range
+# of -90 to 90°. Given: 999.0."}` — a real refusal from the real API, reachable the way a real one
+# is: a URL with coordinates that are out of range. Both requests the detail screen makes are
+# recorded as 400s, so this flow replays with zero HAR misses and any miss warning it ever produces
+# is a genuine one.
+#
+# `expect` pins the reason text. That string is the entire value of committing the error response:
+# if the screen ever falls back to a generic apology, this step fails rather than quietly
+# screenshotting a less useful page.
+#
+# **Known and deliberate**: the `forecast-error` step records two console errors — Chromium logs
+# "Failed to load resource: … 400 (Bad Request)" for each of the two recorded 400 responses. No
+# application code writes them and nothing can suppress them; any app rendering an HTTP error state
+# gets the same. They are identical on every run, so two runs of this flow diff to zero `console`
+# findings. A *third* one would be real.
+version: 1
+flow: states
+baseUrl: http://localhost:5173
+viewports: [1280x800, 390x844]
+
+network:
+  mode: replay
+  har: weather.har
+
+steps:
+  - id: forecast-error
+    goto: "/#/at/999,13.405?label=Out+of+range"
+    waitFor: "[data-test=error-detail]"
+    shoot: true
+    expect:
+      - selector: "[data-test=forecast-error] [data-test=error-detail]"
+        text: "Latitude must be in range of -90 to 90°. Given: 999.0."
+      - selector: "[data-test=forecast-error] [data-test=error-status]"
+        text: HTTP 400
+
+  - id: unknown-location
+    goto: /#/location/atlantis
+    waitFor: "[data-test=unknown-location]"
+    shoot: true
+
+  - id: not-found
+    goto: /#/somewhere-else
+    waitFor: "[data-test=not-found]"
+    shoot: true
