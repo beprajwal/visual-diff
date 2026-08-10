@@ -9,6 +9,11 @@ const ROOT = path.resolve('/projects/shop');
 const V = path.join(ROOT, '.visual-diff');
 
 describe('the spec §6 tree', () => {
+  it('places the e2e title map beside config.yaml (e2e spec D26)', () => {
+    expect(paths.e2eMapFile(ROOT)).toBe(path.join(V, 'e2e-map.yaml'));
+    expect(paths.E2E_MAP_FILENAME).toBe('e2e-map.yaml');
+  });
+
   it('places runs under runs/<flow>/<runId>', () => {
     expect(paths.runDir(ROOT, 'checkout', '0007')).toBe(path.join(V, 'runs', 'checkout', '0007'));
     expect(paths.runMetaFile(ROOT, 'checkout', '0007')).toBe(

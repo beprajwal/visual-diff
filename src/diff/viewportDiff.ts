@@ -37,6 +37,7 @@ import { diffNodePair, rectChanged } from './nodeDiff.js';
 import type { NodeChange } from '../types.js';
 import { classifyNodeChange, LAYOUT_SHIFT_PX } from './severity.js';
 import type { ContrastContext, Verdict } from './severity.js';
+import { withoutUnbackedChanges } from './fidelity.js';
 import { pixelDiff, renderPixelOverlay } from './pixel.js';
 import { ignoreSelectorWarnings, matchesAny, selectorFor } from './selector.js';
 
@@ -51,6 +52,13 @@ export interface ViewportDiffInput {
   base: ShotSide | null;
   head: ShotSide | null;
   options: DiffEngineOptions;
+  /**
+   * The pair could not compare computed styles or the accessibility tree, because one or both runs
+   * were ingested from a Playwright trace (e2e spec §4). Property-level node changes are dropped
+   * rather than reported against data one side never had — see `withoutUnbackedChanges`. Optional
+   * and false by default, so every replay caller is unaffected.
+   */
+  degraded?: boolean;
 }
 
 export interface ViewportDiffOutput {
@@ -278,7 +286,13 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
       ignoredPairs.push(pair);
       continue;
     }
-    const changes = diffNodePair(pair);
+    // On a degraded pair the style subset and the a11y-derived attributes are absent from the
+    // ingested side, so comparing them would manufacture a change out of a missing capture — and,
+    // on a mixed pair, a high-severity "lost accessible name" for every named element (§4).
+    const changes =
+      input.degraded === true
+        ? withoutUnbackedChanges(diffNodePair(pair))
+        : diffNodePair(pair);
     if (changes.length > 0) changesByPair.set(pair, changes);
     if (rectChanged(pair)) {
       if (pair.base !== null) changedNodes.add(pair.base);

@@ -21,6 +21,7 @@ import {
   type ViewportId,
 } from '../../types.js';
 import type { RunAttribution, StepAttribution } from '../attribution.js';
+import type { E2eOrigin, RunSource } from '../e2e.js';
 import {
   VARIANT_NONE,
   type RunVariantAttribution,
@@ -35,8 +36,20 @@ import {
  * §5) declared optional, so the default fixture is what a record written *before* variants existed
  * looks like — no key at all — and a test that cares passes one explicitly.
  */
-export type FakeRunMeta = RunMeta & { variant?: VariantName; kept?: boolean };
-export type FakeRunSummary = RunSummary & { variant?: VariantName; kept?: boolean };
+export type FakeRunMeta = RunMeta & {
+  variant?: VariantName;
+  kept?: boolean;
+  /** The source axis (e2e spec §7), optional for the same reason `variant` is. */
+  source?: RunSource;
+  /** Where an ingested run came from (§7). Absent on a replay, which is the default fixture. */
+  e2e?: E2eOrigin;
+};
+export type FakeRunSummary = RunSummary & {
+  variant?: VariantName;
+  kept?: boolean;
+  source?: RunSource;
+  e2e?: E2eOrigin;
+};
 
 export function makeRunMeta(runId: string, patch: Partial<FakeRunMeta> = {}): FakeRunMeta {
   return {

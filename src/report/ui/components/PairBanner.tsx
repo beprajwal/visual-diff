@@ -13,19 +13,30 @@
  * none" *is* the question (D24), so it is stated at `note` severity and carries no warning stripe.
  * Dressing the normal case as an anomaly is how a banner strip stops being read at all.
  *
- * The wording and the severity are {@link pairBanners} and {@link variantBanners}; this file is the
- * markup.
+ * The source axis adds the fourth and fifth (e2e spec §4, D27), and it is the one that carries a
+ * *sub-list*. An e2e pair is not confounded — it is the regression question on the ingested timeline
+ * — but the diff beneath it genuinely cannot say everything a replay diff can, so the row states the
+ * comparison and then spells out what is missing and why. §4's whole requirement is that the reduced
+ * detail be explained rather than discovered as a disappointment, and a report that quietly shows
+ * fewer findings reads as a report that missed them.
+ *
+ * The wording and the severity are {@link pairBanners}, {@link variantBanners} and
+ * {@link sourceBanners}; this file is the markup.
  */
 
 import type { DiffResult } from '../../../types.js';
-import { pairBanners, variantBanners } from '../derive.js';
+import { pairBanners, sourceBanners, variantBanners } from '../derive.js';
 
 export interface PairBannerProps {
   diff: DiffResult | null;
 }
 
 export function PairBanner({ diff }: PairBannerProps) {
-  const rows = [...pairBanners(diff), ...variantBanners(diff)];
+  const rows = [
+    ...pairBanners(diff).map((row) => ({ ...row, details: [] as readonly string[] })),
+    ...variantBanners(diff).map((row) => ({ ...row, details: [] as readonly string[] })),
+    ...sourceBanners(diff),
+  ];
   if (rows.length === 0) return null;
 
   return (
@@ -33,7 +44,16 @@ export function PairBanner({ diff }: PairBannerProps) {
       {rows.map((row) => (
         <div class={`pair-banner ${row.severity}`} key={row.label} role="note">
           <span class="badge">{row.label}</span>
-          <span>{row.message}</span>
+          <span>
+            {row.message}
+            {row.details.length === 0 ? null : (
+              <ul class="pair-banner-details">
+                {row.details.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            )}
+          </span>
         </div>
       ))}
     </div>

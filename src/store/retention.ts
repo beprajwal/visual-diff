@@ -25,15 +25,23 @@
  * bucket would let an afternoon of variant runs evict the capture history regressions depend on —
  * a quiet data loss at exactly the wrong moment. So there are **two buckets**:
  *
+ * The e2e spec adds a third for the same reason again (§7, "retention is a separate bucket, as with
+ * variants, so ingesting a CI run's worth of traces cannot evict replay history"). A CI run is the
+ * largest batch of runs this tool will ever be handed at once — one archive per test, per shard,
+ * per retry — and letting that batch share the timeline bucket would delete the replay history in a
+ * single command.
+ *
  * | bucket | holds | default |
  * |---|---|---|
- * | `timeline` | unvaried runs, and variant runs promoted by `--keep` | `retention.keepRuns` (20) |
+ * | `timeline` | unvaried replay runs, and variant runs promoted by `--keep` | `retention.keepRuns` (20) |
  * | `variant` | ephemeral variant runs | `retention.keepVariantRuns` (10) |
+ * | `e2e` | runs ingested from a trace | `retention.keepE2eRuns` (20) |
  *
- * **Eviction never crosses that boundary in either direction.** A run only ever competes with runs
- * in its own bucket, so no number of proposals can shorten the regression history, and no amount of
- * regression capture can throw away a proposal the user is still looking at. `--keep` is the only
- * way a run moves between buckets, and moving it is the whole point of promotion.
+ * **Eviction never crosses those boundaries in any direction.** A run only ever competes with runs
+ * in its own bucket, so no number of proposals can shorten the regression history, no amount of
+ * regression capture can throw away a proposal the user is still looking at, and no volume of
+ * ingest can touch either. `--keep` is the only way a run moves between buckets, and moving it is
+ * the whole point of promotion.
  */
 
 import { promises as fsp } from 'node:fs';
@@ -43,6 +51,7 @@ import { StoreError } from './errors.js';
 import { runsReferencedByDiffs } from './diff-store.js';
 import { dirSize, listDirEntries } from './internal/fs.js';
 import { sortRunIds } from './internal/id.js';
+import { DEFAULT_KEEP_E2E_RUNS, SOURCE_REPLAY, isE2eRun } from './internal/e2e.js';
 import { DEFAULT_KEEP_VARIANT_RUNS, VARIANT_NONE, isVariantRun } from './internal/variant.js';
 import type { RetentionBucket } from './internal/variant.js';
 import * as paths from './paths.js';
@@ -100,6 +109,17 @@ export async function keepRun(
   kept = true,
 ): Promise<RunMeta> {
   const meta = await readRunMeta(root, flow, runId);
+  // Answered before the variant test, because "ran no variant" is a true but useless sentence
+  // about an ingested run: the user is holding a run from someone else's suite and needs to be
+  // told that, not told about an axis that never applied to it (e2e spec §2).
+  if (isE2eRun(meta)) {
+    throw new StoreError(
+      'e2e-not-promotable',
+      `run ${runId} of flow "${flow}" was ingested from a trace; --keep promotes a variant run ` +
+        'into the permanent timeline, and an e2e run is not a proposal',
+      { hint: `Ingested runs are listed by: vdiff runs ${flow} --e2e` },
+    );
+  }
   if (!isVariantRun(meta)) {
     throw new StoreError(
       'not-a-variant-run',
@@ -162,6 +182,11 @@ export interface PruneFlowOptions {
    * Optional so every existing caller keeps working; absent means `DEFAULT_KEEP_VARIANT_RUNS`.
    */
   keepVariantRuns?: number;
+  /**
+   * Runs kept intact per identity in the e2e bucket (e2e spec §7). Optional on the same terms;
+   * absent means `DEFAULT_KEEP_E2E_RUNS`.
+   */
+  keepE2eRuns?: number;
 }
 
 /** Which bucket a group belongs to, and the runs in it, oldest first. */
@@ -184,6 +209,7 @@ export async function retentionCandidates(
   flow: string,
   keepRuns: number,
   keepVariantRuns: number = DEFAULT_KEEP_VARIANT_RUNS,
+  keepE2eRuns: number = DEFAULT_KEEP_E2E_RUNS,
 ): Promise<RunId[]> {
   const ids = await listRunIds(root, flow);
   const index = await readRunIdentityIndex(root, flow, ids);
@@ -193,17 +219,40 @@ export async function retentionCandidates(
     const bucket: RetentionBucket = identity?.bucket ?? 'timeline';
     // JSON rather than a hand-rolled delimiter: a scenario or variant name may legally contain
     // any character a filename may, so a separator could make two distinct identities collide.
-    const key = JSON.stringify([bucket, identity?.scenario ?? '', identity?.variant ?? VARIANT_NONE]);
+    const key = JSON.stringify([
+      bucket,
+      identity?.source ?? SOURCE_REPLAY,
+      identity?.scenario ?? '',
+      identity?.variant ?? VARIANT_NONE,
+    ]);
     const group = groups.get(key);
     if (group === undefined) groups.set(key, { bucket, ids: [runId] });
     else group.ids.push(runId);
   }
   const candidates: RunId[] = [];
   for (const group of groups.values()) {
-    const keep = group.bucket === 'variant' ? keepVariantRuns : keepRuns;
+    const keep = keepForBucket(group.bucket, keepRuns, keepVariantRuns, keepE2eRuns);
     candidates.push(...group.ids.slice(0, Math.max(0, group.ids.length - keep)));
   }
   return sortRunIds(candidates);
+}
+
+/** The cap that applies to one bucket. Exhaustive by construction, so a fourth bucket cannot slip
+ * through as "the timeline default" the way an `if/else` chain would let it. */
+function keepForBucket(
+  bucket: RetentionBucket,
+  keepRuns: number,
+  keepVariantRuns: number,
+  keepE2eRuns: number,
+): number {
+  switch (bucket) {
+    case 'variant':
+      return keepVariantRuns;
+    case 'e2e':
+      return keepE2eRuns;
+    case 'timeline':
+      return keepRuns;
+  }
 }
 
 /** Apply the retention policy to one flow. */
@@ -214,6 +263,7 @@ export async function pruneFlow(
 ): Promise<PruneResult> {
   const { keepRuns } = options;
   const keepVariantRuns = options.keepVariantRuns ?? DEFAULT_KEEP_VARIANT_RUNS;
+  const keepE2eRuns = options.keepE2eRuns ?? DEFAULT_KEEP_E2E_RUNS;
   if (!Number.isInteger(keepRuns) || keepRuns < 1) {
     throw new StoreError('invalid-retention', `retention.keepRuns must be >= 1, got ${keepRuns}`);
   }
@@ -223,7 +273,13 @@ export async function pruneFlow(
       `retention.keepVariantRuns must be >= 1, got ${keepVariantRuns}`,
     );
   }
-  const candidates = await retentionCandidates(root, flow, keepRuns, keepVariantRuns);
+  if (!Number.isInteger(keepE2eRuns) || keepE2eRuns < 1) {
+    throw new StoreError(
+      'invalid-retention',
+      `retention.keepE2eRuns must be >= 1, got ${keepE2eRuns}`,
+    );
+  }
+  const candidates = await retentionCandidates(root, flow, keepRuns, keepVariantRuns, keepE2eRuns);
   if (candidates.length === 0) return { flow, pruned: [], skipped: [], freedBytes: 0 };
 
   const referenced = await runsReferencedByDiffs(root, flow);

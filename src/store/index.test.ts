@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { writeFixtureRun } from './fixtures.js';
+import { makeE2eRunMeta, writeFixtureRun } from './fixtures.js';
 import { openStore } from './index.js';
 import { parseConfigSource } from './config.js';
 import type { Config } from '../types.js';
@@ -209,5 +209,101 @@ describe('openStore', () => {
     await held.release();
     const next = await store.acquireLock('checkout');
     await next.release();
+  });
+
+  it('carries the source axis through the same bound root (e2e spec §7)', async () => {
+    const store = openStore(config);
+    // 0000 replay, 0001 e2e, 0002 replay, 0003 e2e
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', { traceHash: 'sha256:one' }),
+    });
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', { traceHash: 'sha256:two' }),
+    });
+
+    expect([...(await store.listRunSources('forecast')).values()]).toEqual([
+      'replay',
+      'e2e',
+      'replay',
+      'e2e',
+    ]);
+    // Excluded from the regression timeline by default; `--e2e` is how you see them (D27).
+    expect((await store.listRuns('forecast')).map((r) => r.runId)).toEqual(['0000', '0002']);
+    expect((await store.listRuns('forecast', { e2e: 'only' })).map((r) => r.runId)).toEqual([
+      '0001',
+      '0003',
+    ]);
+    // E2E pairs with e2e, and the replay default is untouched.
+    expect(await store.resolvePair('forecast')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0002',
+    });
+    expect(await store.resolvePair('forecast', undefined, undefined, { source: 'e2e' })).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head: '0003',
+    });
+  });
+
+  it('answers the idempotency question an ingest asks before writing (e2e spec §6)', async () => {
+    const store = openStore(config);
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', {
+        traceHash: 'sha256:archive',
+        titleKey: 'forecast.spec.ts \u203A forecast \u203A shows the week',
+      }),
+    });
+
+    expect(await store.findRunByTraceHash('forecast', 'sha256:archive')).toBe(run.runId);
+    expect(await store.findRunByTraceHash('forecast', 'sha256:other')).toBeNull();
+    expect([...(await store.listE2eRuns('forecast')).keys()]).toEqual([run.runId]);
+    expect((await store.e2eFlowIndex()).get('forecast.spec.ts \u203A forecast \u203A shows the week')).toBe(
+      'forecast',
+    );
+  });
+
+  it('applies retention with all three buckets bound from config (e2e spec §7)', async () => {
+    const store = openStore(config); // keepRuns: 2, e2e bucket defaults to 20
+    for (let i = 0; i < 3; i += 1) {
+      await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    }
+    for (let i = 0; i < 3; i += 1) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: makeE2eRunMeta('forecast', { traceHash: `sha256:${i}` }),
+      });
+    }
+
+    const result = await store.applyRetention('forecast');
+
+    // Only the oldest replay run is over its cap; the ingested runs are well inside theirs, and
+    // could not have evicted a replay run in any case.
+    expect(result.pruned).toEqual(['0000']);
+  });
+
+  it('reads e2e-map.yaml through the edge, and is empty when there is none', async () => {
+    const store = openStore(config);
+    expect((await store.loadE2eMap()).flows.size).toBe(0);
+
+    await fsp.mkdir(path.join(tmp, '.visual-diff'), { recursive: true });
+    await fsp.writeFile(
+      path.join(tmp, '.visual-diff', 'e2e-map.yaml'),
+      'flows:\n  "a.spec.ts:1 \u203A x \u203A y": xy\n',
+    );
+    expect((await store.loadE2eMap()).flows.get('a.spec.ts \u203A x \u203A y')).toBe('xy');
   });
 });

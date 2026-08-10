@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { writeDiff } from './diff-store.js';
-import { makeRunMeta, writeFixtureRun } from './fixtures.js';
+import { makeE2eRunMeta, makeRunMeta, writeFixtureRun } from './fixtures.js';
 import { listDirNames } from './internal/fs.js';
 import * as paths from './paths.js';
 import {
@@ -438,5 +438,120 @@ describe('promotion', () => {
 
   it('404s on an unknown run rather than writing a phantom meta.json', async () => {
     await expect(keepRun(tmp, 'forecast', '0099')).rejects.toThrow(/does not exist/);
+  });
+});
+
+describe('the retention policy under e2e (spec §7)', () => {
+  async function seedIngest(count: number, flow = 'forecast'): Promise<RunId[]> {
+    const ids: RunId[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const run = await writeFixtureRun({
+        root: tmp,
+        flow,
+        steps: [{ id: 'cart' }],
+        meta: makeE2eRunMeta(flow, { traceHash: `sha256:${flow}-${i}` }),
+      });
+      ids.push(run.runId);
+    }
+    return ids;
+  }
+
+  async function seedReplay(count: number, flow = 'forecast'): Promise<RunId[]> {
+    const ids: RunId[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const run = await writeFixtureRun({ root: tmp, flow, steps: [{ id: 'cart' }] });
+      ids.push(run.runId);
+    }
+    return ids;
+  }
+
+  it('never lets a CI run’s worth of traces evict replay history — the §7 guarantee', async () => {
+    const replay = await seedReplay(2);
+    await seedIngest(30);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 2, keepE2eRuns: 2 });
+
+    // 28 ingested runs are over their own cap; not one replay run is touched.
+    expect(result.pruned).toHaveLength(28);
+    for (const runId of replay) {
+      expect(result.pruned).not.toContain(runId);
+      expect((await readRunMeta(tmp, 'forecast', runId)).pruned).toBe(false);
+    }
+  });
+
+  it('never lets replay capture evict an ingested run, in the other direction', async () => {
+    const ingested = await seedIngest(2);
+    await seedReplay(30);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 2, keepE2eRuns: 2 });
+
+    expect(result.pruned).toHaveLength(28);
+    for (const runId of ingested) {
+      expect(result.pruned).not.toContain(runId);
+    }
+  });
+
+  it('keeps all three buckets apart at once', async () => {
+    // 3 replay, 3 proposals, 3 ingested — each bucket capped at 1.
+    await seedReplay(3);
+    for (let i = 0; i < 3; i += 1) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: { variant: 'denser-forecast' },
+      });
+    }
+    await seedIngest(3);
+
+    const candidates = await retentionCandidates(tmp, 'forecast', 1, 1, 1);
+
+    // Two evicted from each bucket, never three from one and none from another.
+    expect(candidates).toHaveLength(6);
+    const kept = (await listRunIds(tmp, 'forecast')).filter((id) => !candidates.includes(id));
+    expect(kept).toHaveLength(3);
+  });
+
+  it('defaults the e2e bucket when a caller names only keepRuns', async () => {
+    await seedIngest(3);
+    // The default cap is 20, so three ingested runs are all inside it.
+    expect(await pruneFlow(tmp, 'forecast', { keepRuns: 1 })).toMatchObject({ pruned: [] });
+  });
+
+  it('refuses a nonsense e2e bucket size rather than pruning everything', async () => {
+    await seedIngest(1);
+    await expect(pruneFlow(tmp, 'forecast', { keepRuns: 20, keepE2eRuns: 0 })).rejects.toThrow(
+      'retention.keepE2eRuns must be >= 1, got 0',
+    );
+  });
+
+  it('still pins and diff-protects an ingested run', async () => {
+    const ingested = await seedIngest(2);
+    await pinRun(tmp, 'forecast', ingested[0] as RunId);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepE2eRuns: 1 });
+
+    expect(result.skipped).toContainEqual({ runId: ingested[0], reason: 'pinned' });
+    expect(result.pruned).toEqual([]);
+  });
+});
+
+describe('promotion of an ingested run', () => {
+  it('is refused, and says what the run actually is rather than talking about variants', async () => {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast'),
+    });
+
+    await expect(keepRun(tmp, 'forecast', run.runId)).rejects.toThrow(
+      `run ${run.runId} of flow "forecast" was ingested from a trace; --keep promotes a variant run ` +
+        'into the permanent timeline, and an e2e run is not a proposal',
+    );
+    await expect(keepRun(tmp, 'forecast', run.runId)).rejects.toMatchObject({
+      code: 'e2e-not-promotable',
+      hint: 'Ingested runs are listed by: vdiff runs forecast --e2e',
+    });
   });
 });

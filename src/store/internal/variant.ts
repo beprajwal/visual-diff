@@ -31,6 +31,8 @@
  */
 
 import { SCENARIO_NONE } from '../../types.js';
+import { isE2eRun, isUnknownRevision, sourceOf } from './e2e.js';
+import type { MaybeE2e } from './e2e.js';
 import { scenarioOf } from './scenario.js';
 import type {
   Config,
@@ -93,8 +95,15 @@ export type VariantConfig = Omit<Config, 'retention'> & { retention: VariantRete
  */
 export type VariantFilter = 'exclude' | 'include' | 'only';
 
-/** Which retention bucket a run belongs to. The boundary eviction may never cross (D24). */
-export type RetentionBucket = 'timeline' | 'variant';
+/**
+ * Which retention bucket a run belongs to. The boundary eviction may never cross (D24, e2e §7).
+ *
+ * `e2e` was added by the e2e slice for the same reason `variant` exists one slice earlier: a batch
+ * of runs that arrives in bulk and answers a different question must not be able to shorten the
+ * regression history. Ingesting a CI run's worth of traces is the largest such batch the tool will
+ * ever see.
+ */
+export type RetentionBucket = 'timeline' | 'variant' | 'e2e';
 
 /* ------------------------------------------------------------------ reading the axis */
 
@@ -146,25 +155,42 @@ export function normalizeVariantMeta(meta: RunMeta): RunMeta {
 /* ------------------------------------------------------------------ identity and buckets */
 
 /**
- * The retention bucket of a run (D24).
+ * The retention bucket of a run (D24, e2e §7).
  *
  * A promoted run is in `timeline` even though it ran a variant: `--keep` moves it into the
  * permanent timeline, and a promoted run that stayed under the ephemeral cap would be evicted by
  * the next five proposals — which is the opposite of what promoting it asked for.
+ *
+ * The e2e test comes first, and deliberately. `commit` refuses to write a run that is both e2e and
+ * varied (§2: neither scenarios nor variants apply to a capture that already happened), but this
+ * function is also asked about `meta.json` files it did not write. If such a file ever appeared,
+ * answering `variant` would let ingested runs compete with proposals for the ephemeral bucket, and
+ * the isolation §7 asks for would be gone in the one case it was most needed.
+ *
+ * **This is the only place the boundary is decided**, which is why it is the one function that has
+ * to know about every axis that can move a run across it.
  */
-export function retentionBucketOf(meta: MaybeVariant | null | undefined): RetentionBucket {
+export function retentionBucketOf(
+  meta: (MaybeVariant & MaybeE2e) | null | undefined,
+): RetentionBucket {
+  if (isE2eRun(meta)) return 'e2e';
   return isEphemeralVariantRun(meta) ? 'variant' : 'timeline';
 }
 
 /**
- * The key runs are grouped by for retention and for the timeline's findings column: the two
- * identity axes that are attributes of a run rather than of a revision.
+ * The key runs are grouped by for retention and for the timeline's findings column: the identity
+ * axes that are attributes of a run rather than of a revision.
  *
- * NUL-separated because neither a scenario nor a variant name may contain a control character, so
- * no pair of distinct identities can collide on one key.
+ * The source axis joins it here (e2e §7, D27). Without it the timeline's findings column would
+ * count an ingested run against the replay run before it — a number produced from a pair the diff
+ * command would never choose by default, comparing a lossy 800px-wide JPEG from someone else's CI
+ * against a replay screenshot, and reported as though it were a regression.
+ *
+ * NUL-separated because no scenario, variant or source name may contain a control character, so no
+ * pair of distinct identities can collide on one key.
  */
-export function runIdentityKey(meta: MaybeVariant | null): string {
-  return `${scenarioOf(meta)}\u0000${variantOf(meta)}`;
+export function runIdentityKey(meta: (MaybeVariant & MaybeE2e) | null): string {
+  return `${sourceOf(meta)}\u0000${scenarioOf(meta)}\u0000${variantOf(meta)}`;
 }
 
 /**
@@ -180,6 +206,10 @@ export function sameRevision(
   b: Revision | null | undefined,
 ): boolean {
   if (a === null || a === undefined || b === null || b === undefined) return false;
+  // Two runs that both recorded `revision: unknown` are not known to be the same code — they are
+  // two runs nothing is known about (e2e §7). Ingested runs share that sha by construction, so
+  // treating it as a match would silently make every pair of them "the same revision".
+  if (isUnknownRevision(a) || isUnknownRevision(b)) return false;
   if (a.sha !== b.sha || a.dirty !== b.dirty) return false;
   return (a.dirtyHash ?? null) === (b.dirtyHash ?? null);
 }
@@ -193,8 +223,9 @@ export function describeVariant(name: VariantName): string {
 
 /** "9f8e7d6" / "9f8e7d6 (dirty)" — enough to tell two revisions apart in a warning. */
 export function describeRevision(revision: Revision | null | undefined): string {
-  if (revision === null || revision === undefined) return 'an unknown revision';
-  return revision.dirty ? `${revision.sha} (dirty)` : revision.sha;
+  if (isUnknownRevision(revision)) return 'an unknown revision';
+  const known = revision as Revision;
+  return known.dirty ? `${known.sha} (dirty)` : known.sha;
 }
 
 /** The `vdiff run` invocation that would capture a run of this identity — used in error hints. */

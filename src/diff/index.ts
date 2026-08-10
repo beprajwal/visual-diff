@@ -33,17 +33,24 @@ export {
 } from './cache.js';
 
 /**
- * Scenario and variant are dimensions of *which* runs are compared, not of what a finding looks
- * like: this is the whole of the diff engine's awareness of either (mocking spec §6, variants §5).
+ * Scenario, variant and source are dimensions of *which* runs are compared, not of what a finding
+ * looks like (mocking spec §6, variants §5, e2e §7). The source axis is the one exception, and a
+ * narrow one: it does not change how a finding is computed, but it does change the thresholds an
+ * ingested pair is computed under (`e2e-noise.ts`) and it marks every finding it produced as
+ * lacking property-level detail (e2e spec §4).
  */
 export {
   isMockOnly,
   labelPair,
   pairLabels,
   pairScenarios,
+  pairSources,
   pairVariants,
+  sourcePairLabels,
   variantPairLabels,
   PAIR_LABEL_SEVERITY,
+  REPLAY_PAIR,
+  SOURCE_PAIR_LABELS,
   VARIANTLESS_PAIR,
   VARIANT_PAIR_LABELS,
 } from './pairing.js';
@@ -51,10 +58,42 @@ export type {
   AnyPairLabel,
   PairFlag,
   PairLabelling,
+  PairSources,
   PairVariants,
+  SourceAwareDiffResult,
+  SourcePairLabel,
   VariantAwareDiffResult,
   VariantPairLabel,
 } from './pairing.js';
+
+/**
+ * What a pair could actually *see* (e2e spec §4). The source axis itself belongs to
+ * `store/internal/e2e.ts` and is deliberately not re-exported from here: one owner per axis, so the
+ * store and the engine can never disagree about what a run is.
+ */
+export {
+  fidelityOf,
+  unrecognisedSource,
+  unrecognisedSourceWarning,
+  withoutUnbackedChanges,
+  DEGRADED_CAPTURES,
+  DEGRADED_REASON,
+  FULL_FIDELITY,
+  UNBACKED_ATTRS,
+} from './fidelity.js';
+export type { DegradedCapture, PairFidelity } from './fidelity.js';
+
+/**
+ * The noise-tolerant settings an ingested pair is diffed under (e2e spec §5, D27) — provisional,
+ * documented, and defined in exactly one place so they stay tunable rather than becoming folklore.
+ */
+export { e2eNoiseSettings, resolveDiffOptions, E2E_DIFF_DEFAULTS } from './e2e-noise.js';
+export type {
+  E2eAwareDiffOptions,
+  E2eNoiseOverrides,
+  E2eNoiseSettings,
+  ResolvedDiffOptions,
+} from './e2e-noise.js';
 
 /**
  * Stage 1 (the structural flow diff) is implemented in `flow/`, because spec §5 assigns "structural

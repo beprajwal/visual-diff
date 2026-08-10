@@ -34,6 +34,7 @@ import { spawnCapture, waitForShutdown } from './process.js';
 import { readVersion } from './version.js';
 
 import { diff } from './commands/diff.js';
+import { e2eIngest, e2eList } from './commands/e2e.js';
 import { feedback } from './commands/feedback.js';
 import { flowCheck, flowNew } from './commands/flow.js';
 import { init } from './commands/init.js';
@@ -77,6 +78,10 @@ async function dispatch(
       return variantCheck(ctx, invocation.name);
     case 'variant-list':
       return variantList(ctx);
+    case 'e2e-ingest':
+      return e2eIngest(ctx, invocation);
+    case 'e2e-list':
+      return e2eList(ctx, invocation);
     case 'run':
       return run(ctx, invocation);
     case 'runs':

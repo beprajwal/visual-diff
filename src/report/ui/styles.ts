@@ -663,4 +663,45 @@ select {
   white-space: nowrap;
   border: 0;
 }
+
+/* ------------------------------------------------------------- e2e (§4, §7, D27) */
+
+/*
+ * An ingested run is badged as loudly as a mock-only one, and for the same reason: what is on the
+ * screen was produced by machinery this tool did not control, so "the page looks like this" is a
+ * weaker claim than it is anywhere else. It is not, however, a *fault* — ingesting is the ordinary
+ * use of the feature — so it takes the accent rather than the high-severity colour.
+ */
+.badge.e2e { color: var(--accent); border-color: var(--accent); }
+
+/*
+ * The revision an ingested run could not be attributed to. Faint on purpose: nothing is wrong, the
+ * trace simply carries no git metadata, and this is the honest statement of that (§7, §8).
+ */
+.badge.unknown-revision { color: var(--fg-faint); }
+
+/*
+ * The reduced-detail explanation, rendered as a list under the source banner rather than as one
+ * long sentence. §4 requires the degradation to be explained rather than met as a disappointment,
+ * and three separate things a reader would otherwise mis-read as a defect do not fit in one line.
+ */
+.pair-banner-details {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--fg-dim);
+}
+.pair-banner-details li { list-style: disc; }
+
+/*
+ * The "this layer could not run" note, shown where a findings section would otherwise be silently
+ * empty. It sits in the empty space it explains, so an empty style section on an e2e pair reads as
+ * a capability limit rather than as a clean bill of health.
+ */
+.unavailable-kind {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 6px;
+  color: var(--fg-faint);
+}
 `;

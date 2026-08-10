@@ -34,15 +34,15 @@ import { z } from 'zod';
 
 import { configError } from './errors.js';
 import { parseDuration } from './internal/duration.js';
+import { DEFAULT_KEEP_E2E_RUNS } from './internal/e2e.js';
+import type { E2eConfig } from './internal/e2e.js';
 import { isDirectory, readTextOrNull } from './internal/fs.js';
 import { DEFAULT_KEEP_VARIANT_RUNS } from './internal/variant.js';
-import type { VariantConfig } from './internal/variant.js';
+import { locate, yamlSyntaxIssues, zodIssues } from './internal/yaml-issues.js';
 import * as paths from './paths.js';
 import {
   DEFAULTS,
   type Config,
-  type SourceLocation,
-  type ValidationIssue,
   type ValidationResult,
 } from '../types.js';
 
@@ -80,6 +80,12 @@ const retentionSchema = z
      * runs can never evict the capture history regressions depend on.
      */
     keepVariantRuns: z.number().int().positive().optional(),
+    /**
+     * The third bucket (e2e spec §7). Separate from `keepRuns` so ingesting a CI run's worth of
+     * traces can never evict replay history — the same isolation `keepVariantRuns` provides, for a
+     * source of runs that arrives in far larger batches.
+     */
+    keepE2eRuns: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -95,96 +101,6 @@ const configSchema = z
 
 export type ConfigFile = z.infer<typeof configSchema>;
 
-/* ------------------------------------------------------------------ locating issues */
-
-/** Derived from the function rather than named directly, so a yaml type rename cannot break us. */
-type ParsedYamlDocument = ReturnType<typeof YAML.parseDocument>;
-
-function formatKeyPath(keyPath: readonly (string | number)[]): string {
-  let out = '';
-  for (const part of keyPath) {
-    if (typeof part === 'number') out += `[${part}]`;
-    else out += out === '' ? part : `.${part}`;
-  }
-  return out;
-}
-
-function nodeRange(node: unknown): number | null {
-  if (node !== null && typeof node === 'object' && 'range' in node) {
-    const range = (node as { range?: unknown }).range;
-    if (Array.isArray(range) && typeof range[0] === 'number') return range[0];
-  }
-  return null;
-}
-
-/**
- * Point at the offending key, falling back to the nearest ancestor that exists in the document —
- * which is what a missing required key needs, since the key itself has no node.
- */
-function locate(
-  doc: ParsedYamlDocument,
-  lineCounter: YAML.LineCounter,
-  file: string,
-  keyPath: readonly (string | number)[],
-): SourceLocation {
-  const key = keyPath.length === 0 ? undefined : formatKeyPath(keyPath);
-  for (let i = keyPath.length; i >= 0; i -= 1) {
-    const prefix = keyPath.slice(0, i);
-    let node: unknown;
-    try {
-      node = prefix.length === 0 ? doc.contents : doc.getIn(prefix, true);
-    } catch {
-      node = undefined;
-    }
-    const offset = nodeRange(node);
-    if (offset !== null) {
-      const pos = lineCounter.linePos(offset);
-      const at: SourceLocation = { file, line: pos.line, column: pos.col };
-      if (key !== undefined) at.key = key;
-      return at;
-    }
-  }
-  const at: SourceLocation = { file };
-  if (key !== undefined) at.key = key;
-  return at;
-}
-
-function zodIssues(
-  error: z.ZodError,
-  doc: ParsedYamlDocument,
-  lineCounter: YAML.LineCounter,
-  file: string,
-): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  for (const issue of error.issues) {
-    if (issue.code === 'unrecognized_keys') {
-      for (const key of issue.keys) {
-        const keyPath = [...issue.path, key];
-        issues.push({
-          code: 'unknown-key',
-          message: `unknown key "${formatKeyPath(keyPath)}"`,
-          at: locate(doc, lineCounter, file, keyPath),
-        });
-      }
-      continue;
-    }
-    if (issue.code === 'invalid_type' && issue.received === 'undefined') {
-      issues.push({
-        code: 'missing-key',
-        message: `missing required key "${formatKeyPath(issue.path)}"`,
-        at: locate(doc, lineCounter, file, issue.path),
-      });
-      continue;
-    }
-    issues.push({
-      code: issue.code === 'invalid_type' ? 'invalid-type' : 'invalid-value',
-      message: `${formatKeyPath(issue.path) || 'config'}: ${issue.message}`,
-      at: locate(doc, lineCounter, file, issue.path),
-    });
-  }
-  return issues;
-}
-
 /* ------------------------------------------------------------------ defaults */
 
 /** A fully-defaulted Config. `app` has no defaults: the spec's example always spells it out. */
@@ -192,8 +108,8 @@ export function buildConfig(
   root: string,
   file: ConfigFile,
   readyTimeoutMs: number,
-): VariantConfig {
-  const config: VariantConfig = {
+): E2eConfig {
+  const config: E2eConfig = {
     root,
     dir: paths.vdiffDir(root),
     app: {
@@ -217,6 +133,8 @@ export function buildConfig(
       // Not in `DEFAULTS` because `types.ts` does not yet carry the variant axis; the constant
       // lives beside the rest of the axis so config and pruner cannot drift (variants spec §5).
       keepVariantRuns: file.retention?.keepVariantRuns ?? DEFAULT_KEEP_VARIANT_RUNS,
+      // Likewise for the e2e bucket (§7): the constant lives beside the source axis it belongs to.
+      keepE2eRuns: file.retention?.keepE2eRuns ?? DEFAULT_KEEP_E2E_RUNS,
     },
   };
   if (file.app.install !== undefined) config.app.install = file.app.install;
@@ -235,19 +153,7 @@ export function parseConfigSource(
   const doc = YAML.parseDocument(source, { lineCounter });
 
   if (doc.errors.length > 0) {
-    return {
-      ok: false,
-      issues: doc.errors.map((err) => {
-        const offset = Array.isArray(err.pos) && typeof err.pos[0] === 'number' ? err.pos[0] : null;
-        const pos = offset === null ? null : lineCounter.linePos(offset);
-        const at: SourceLocation = { file };
-        if (pos !== null) {
-          at.line = pos.line;
-          at.column = pos.col;
-        }
-        return { code: 'invalid-yaml', message: err.message, at };
-      }),
-    };
+    return { ok: false, issues: yamlSyntaxIssues(doc, lineCounter, file) };
   }
 
   const raw = doc.toJS() as unknown;

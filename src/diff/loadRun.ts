@@ -16,6 +16,8 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { normalizeRunMeta } from '../store/internal/scenario.js';
 import { normalizeVariantMeta } from '../store/internal/variant.js';
+import { normalizeE2eMeta } from '../store/internal/e2e.js';
+import { unrecognisedSourceWarning } from './fidelity.js';
 import type {
   A11ySnapshot,
   ConsoleEntry,
@@ -101,10 +103,18 @@ export async function loadRunDir(runDir: string): Promise<LoadedRunResult> {
   const warnings: string[] = [];
   const stored = await readJson<RunMeta>(path.join(runDir, 'meta.json'));
   if (stored === null) throw new Error(`run directory has no readable meta.json: ${runDir}`);
-  // A slice-1 meta.json has no `scenario` key and a pre-variants one has no `variant` key; both
-  // must stay readable, and in memory both read as `none`, which is what makes the pair labelling
-  // decidable for every run on both axes (mocking spec §6, variants spec §5).
-  const meta = normalizeVariantMeta(normalizeRunMeta(stored));
+  // A slice-1 meta.json has no `scenario` key, a pre-variants one has no `variant` key and a
+  // pre-e2e one has no `source` key; all three must stay readable, and in memory they read as
+  // `none`, `none` and `replay` — which is what makes the pair labelling decidable for every run
+  // on all three axes (mocking spec §6, variants spec §5, e2e spec §7).
+  // Read off `stored`, before normalisation, because that is the only point at which the value the
+  // file actually holds still exists: `normalizeE2eMeta` replaces an unreadable one with `replay`
+  // so downstream code never handles a source it cannot name. Emitting it here — rather than from
+  // `labelPair`, which sees the normalised meta — keeps one emitter for one fact.
+  const unreadableSource = unrecognisedSourceWarning(stored);
+  if (unreadableSource !== null) warnings.push(unreadableSource);
+
+  const meta = normalizeE2eMeta(normalizeVariantMeta(normalizeRunMeta(stored)));
 
   let flow: FlowSnapshot | null = null;
   const snapshotPath = path.join(runDir, 'flow.snapshot.yaml');

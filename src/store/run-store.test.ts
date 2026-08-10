@@ -5,17 +5,21 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { StoreError } from './errors.js';
-import { makeRunMeta, writeFixtureRun } from './fixtures.js';
+import { makeE2eRunMeta, makeRunMeta, writeFixtureRun } from './fixtures.js';
 import { listDirNames } from './internal/fs.js';
 import * as paths from './paths.js';
 import {
   beginRun,
+  findRunByTraceHash,
   latestRunId,
   listFlows,
   listRunIds,
   listRunSummaries,
+  readE2eFlowIndex,
+  readE2eIndex,
   readRunMeta,
   readScenarioIndex,
+  readSourceIndex,
   readVariantIndex,
   reapAbandonedRuns,
   resolvePair,
@@ -24,7 +28,14 @@ import {
 } from './run-store.js';
 import type { RunMetaInput } from './run-store.js';
 import { keepRun } from './retention.js';
-import { VARIANT_NONE } from './internal/variant.js';
+import {
+  SOURCE_E2E,
+  SOURCE_REPLAY,
+  UNKNOWN_REVISION,
+  isUnknownRevision,
+} from './internal/e2e.js';
+import type { E2eRunInfo } from './internal/e2e.js';
+import { VARIANT_NONE, sameRevision } from './internal/variant.js';
 import { SCENARIO_NONE } from '../types.js';
 import type { RunId } from '../types.js';
 
@@ -860,6 +871,369 @@ describe('pair resolution across variants', () => {
       flow: 'forecast',
       base: '0000',
       head: '0001',
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ e2e (spec §7, D27) */
+
+describe('source in run identity', () => {
+  async function seedE2e(
+    e2e: Partial<E2eRunInfo> = {},
+    extra: Record<string, unknown> = {},
+    flow = 'forecast',
+  ): Promise<RunId> {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow,
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta(flow, e2e, extra),
+    });
+    return run.runId;
+  }
+
+  it('records the source in meta.json, never in the run path', async () => {
+    const runId = await seedE2e();
+    const meta = (await readRunMeta(tmp, 'forecast', runId)) as { source?: string };
+    expect(meta.source).toBe(SOURCE_E2E);
+    expect(paths.runDir(tmp, 'forecast', runId)).toBe(
+      path.join(tmp, '.visual-diff', 'runs', 'forecast', runId),
+    );
+    expect(await listDirNames(paths.flowRunsDir(tmp, 'forecast'))).toEqual([runId]);
+  });
+
+  it('keeps run ids monotonic per flow across sources, so 0002 is never ambiguous', async () => {
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] }); // 0000 replay
+    await seedE2e({ traceHash: 'sha256:a' });                                        // 0001 e2e
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] }); // 0002 replay
+    await seedE2e({ traceHash: 'sha256:b' });                                        // 0003 e2e
+
+    expect(await listRunIds(tmp, 'forecast')).toEqual(['0000', '0001', '0002', '0003']);
+    expect([...(await readSourceIndex(tmp, 'forecast'))]).toEqual([
+      ['0000', SOURCE_REPLAY],
+      ['0001', SOURCE_E2E],
+      ['0002', SOURCE_REPLAY],
+      ['0003', SOURCE_E2E],
+    ]);
+  });
+
+  it('writes replay explicitly for a run committed without a source', async () => {
+    const draft = await beginRun(tmp, 'checkout');
+    await draft.writeFlowSnapshot('flow: checkout\nsteps: []\n');
+    const { source: _omitted, ...withoutSource } = makeRunMeta('checkout');
+    const committed = await draft.commit(withoutSource as RunMetaInput);
+
+    expect((committed.meta as { source?: string }).source).toBe(SOURCE_REPLAY);
+    const onDisk = JSON.parse(
+      await fsp.readFile(paths.runMetaFile(tmp, 'checkout', committed.runId), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(onDisk.source).toBe('replay');
+    // No e2e block on a replay run: a field that can never be populated is noise in every
+    // meta.json the tool writes.
+    expect('e2e' in onDisk).toBe(false);
+  });
+
+  it('records the trace hash, the test title and the suite metadata a trace really provides', async () => {
+    const runId = await seedE2e({
+      traceHash: 'sha256:archive',
+      testTitle: 'checkout.spec.ts:12 › checkout › shows the cart',
+      titleKey: 'checkout.spec.ts › checkout › shows the cart',
+      // Browser, channel, playwright version and platform come from `context-options`; project and
+      // retry are recorded only when the caller parsed them out of the output directory name,
+      // because no trace archive carries them.
+      suite: {
+        browser: 'chromium',
+        playwrightVersion: '1.62.1',
+        platform: 'darwin',
+        traceVersion: 8,
+        project: 'chromium-desktop',
+        retry: 2,
+      },
+    });
+    const onDisk = JSON.parse(
+      await fsp.readFile(paths.runMetaFile(tmp, 'forecast', runId), 'utf8'),
+    ) as { source: string; e2e: Record<string, unknown> };
+    expect(onDisk.source).toBe('e2e');
+    expect(onDisk.e2e.traceHash).toBe('sha256:archive');
+    expect(onDisk.e2e.testTitle).toBe('checkout.spec.ts:12 › checkout › shows the cart');
+    expect(onDisk.e2e.titleKey).toBe('checkout.spec.ts › checkout › shows the cart');
+    expect(onDisk.e2e.suite).toEqual({
+      browser: 'chromium',
+      playwrightVersion: '1.62.1',
+      platform: 'darwin',
+      traceVersion: 8,
+      project: 'chromium-desktop',
+      retry: 2,
+    });
+  });
+
+  it('records revision unknown rather than the revision that happens to be checked out', async () => {
+    const runId = await seedE2e();
+    const meta = await readRunMeta(tmp, 'forecast', runId);
+    expect(meta.revision).toEqual(UNKNOWN_REVISION);
+    expect(isUnknownRevision(meta.revision)).toBe(true);
+    // And two ingested runs are never "the same revision" merely because both are unknown.
+    const other = await seedE2e({ traceHash: 'sha256:other' });
+    const otherMeta = await readRunMeta(tmp, 'forecast', other);
+    expect(sameRevision(meta.revision, otherMeta.revision)).toBe(false);
+  });
+
+  it('refuses to commit an e2e run with no trace hash, which is the idempotency key', async () => {
+    const draft = await beginRun(tmp, 'forecast');
+    await draft.writeFlowSnapshot('flow: forecast\nsteps: []\n');
+    await expect(
+      draft.commit(
+        makeRunMeta('forecast', {
+          source: SOURCE_E2E,
+          e2e: { traceHash: '', testTitle: 't', titleKey: 't' },
+        }),
+      ),
+    ).rejects.toThrow(
+      'e2e run of flow "forecast" records no traceHash; without it the same archive ingests twice',
+    );
+    // Nothing was published: the refusal happens before the rename.
+    expect(await listRunIds(tmp, 'forecast')).toEqual([]);
+  });
+
+  it('refuses to commit an e2e run carrying a variant, which would put it in the wrong bucket', async () => {
+    const draft = await beginRun(tmp, 'forecast');
+    await draft.writeFlowSnapshot('flow: forecast\nsteps: []\n');
+    await expect(
+      draft.commit(makeE2eRunMeta('forecast', {}, { variant: 'denser-forecast' })),
+    ).rejects.toThrow(
+      'e2e run of flow "forecast" was given variant "denser-forecast"; ' +
+        'variants operate during capture, and an e2e trace was captured elsewhere',
+    );
+    expect(await listRunIds(tmp, 'forecast')).toEqual([]);
+  });
+
+  it('reads a meta.json written before e2e mode existed as a replay', async () => {
+    const run = await writeFixtureRun({ root: tmp, flow: 'checkout', steps: [{ id: 'cart' }] });
+    const file = paths.runMetaFile(tmp, 'checkout', run.runId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.source;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    expect(((await readRunMeta(tmp, 'checkout', run.runId)) as { source?: string }).source).toBe(
+      SOURCE_REPLAY,
+    );
+    expect((await listRunSummaries(tmp, 'checkout'))[0]?.source).toBe(SOURCE_REPLAY);
+  });
+
+  it('never lets a meta patch move a run to another source', async () => {
+    const runId = await seedE2e();
+    const patched = (await updateRunMeta(tmp, 'forecast', runId, {
+      pinned: true,
+      source: SOURCE_REPLAY,
+    })) as { source?: string; pinned: boolean };
+    expect(patched.source).toBe(SOURCE_E2E);
+    expect(patched.pinned).toBe(true);
+  });
+
+  it('finds the run an archive was already ingested as — §6 idempotency', async () => {
+    const first = await seedE2e({ traceHash: 'sha256:archive-1' });
+    await seedE2e({ traceHash: 'sha256:archive-2' });
+
+    expect(await findRunByTraceHash(tmp, 'forecast', 'sha256:archive-1')).toBe(first);
+    expect(await findRunByTraceHash(tmp, 'forecast', 'sha256:missing')).toBeNull();
+  });
+
+  it('does not confuse a replay run with an ingested one when looking a hash up', async () => {
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    expect(await findRunByTraceHash(tmp, 'forecast', 'sha256:anything')).toBeNull();
+  });
+
+  it('indexes the e2e block of ingested runs only', async () => {
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] }); // 0000
+    const ingested = await seedE2e({ traceHash: 'sha256:x' });                       // 0001
+
+    const index = await readE2eIndex(tmp, 'forecast');
+    expect([...index.keys()]).toEqual([ingested]);
+    expect(index.get(ingested)?.traceHash).toBe('sha256:x');
+  });
+
+  it('maps a title to the flow it already lives in, so a name is never reassigned', async () => {
+    await seedE2e({ traceHash: 'sha256:a', titleKey: 'a.spec.ts › x › y' }, {}, 'x-y');
+    await seedE2e({ traceHash: 'sha256:b', titleKey: 'b.spec.ts › x › y' }, {}, 'x-y-other');
+
+    expect([...(await readE2eFlowIndex(tmp))]).toEqual([
+      ['a.spec.ts › x › y', 'x-y'],
+      ['b.spec.ts › x › y', 'x-y-other'],
+    ]);
+  });
+});
+
+describe('the timeline under e2e', () => {
+  beforeEach(async () => {
+    // 0000 replay, 0001 e2e, 0002 replay, 0003 e2e
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', { traceHash: 'sha256:1' }),
+    });
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', { traceHash: 'sha256:2' }),
+    });
+  });
+
+  it('excludes ingested runs by default — D27’s separate timeline', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast');
+    expect(rows.map((row) => row.runId)).toEqual(['0000', '0002']);
+    expect(rows.every((row) => row.source === SOURCE_REPLAY)).toBe(true);
+  });
+
+  it('shows only ingested runs for --e2e', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { e2e: 'only' });
+    expect(rows.map((row) => row.runId)).toEqual(['0001', '0003']);
+    expect(rows.every((row) => row.source === SOURCE_E2E)).toBe(true);
+  });
+
+  it('shows both when asked, with the source on every row', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { e2e: 'include' });
+    expect(rows.map((row) => [row.runId, row.source])).toEqual([
+      ['0000', SOURCE_REPLAY],
+      ['0001', SOURCE_E2E],
+      ['0002', SOURCE_REPLAY],
+      ['0003', SOURCE_E2E],
+    ]);
+  });
+
+  it('counts findings against the previous run of the same source, never across the two', async () => {
+    const asked: Array<[RunId, RunId]> = [];
+    await listRunSummaries(
+      tmp,
+      'forecast',
+      async (base, head) => {
+        asked.push([base, head]);
+        return 0;
+      },
+      { e2e: 'include' },
+    );
+    // 0002 against 0000 (both replay) and 0003 against 0001 (both e2e); never 0001 against 0000.
+    expect(asked).toEqual([
+      ['0000', '0002'],
+      ['0001', '0003'],
+    ]);
+  });
+});
+
+describe('pair resolution across sources', () => {
+  async function seedReplay(): Promise<RunId> {
+    const run = await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    return run.runId;
+  }
+
+  async function seedIngest(traceHash: string): Promise<RunId> {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: makeE2eRunMeta('forecast', { traceHash }),
+    });
+    return run.runId;
+  }
+
+  it('keeps the default pair on the replay timeline, ignoring ingested runs entirely', async () => {
+    await seedReplay();               // 0000
+    await seedReplay();               // 0001
+    await seedIngest('sha256:1');     // 0002
+
+    expect(await resolvePair(tmp, 'forecast')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0001',
+    });
+  });
+
+  it('pairs e2e with e2e when the e2e timeline is asked for', async () => {
+    await seedReplay();               // 0000
+    await seedIngest('sha256:1');     // 0001
+    await seedReplay();               // 0002
+    await seedIngest('sha256:2');     // 0003
+
+    expect(await resolvePair(tmp, 'forecast', undefined, undefined, { source: 'e2e' })).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head: '0003',
+    });
+  });
+
+  it('refuses to switch timelines silently when a flow holds nothing but ingested runs', async () => {
+    await seedIngest('sha256:1');
+    await seedIngest('sha256:2');
+
+    await expect(resolvePair(tmp, 'forecast')).rejects.toMatchObject({
+      code: 'no-runs',
+      message: 'flow "forecast" has no replay runs yet; every run it has is e2e',
+      hint: 'These runs were ingested; ask for that timeline: vdiff diff forecast --e2e',
+    });
+  });
+
+  it('says how to ingest one when the e2e timeline is asked for and is empty', async () => {
+    await seedReplay();
+
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, undefined, { source: 'e2e' }),
+    ).rejects.toMatchObject({
+      code: 'no-runs',
+      message: 'flow "forecast" has no e2e runs yet; every run it has is replay',
+      hint: 'Ingest one: vdiff e2e --from trace <path>',
+    });
+  });
+
+  it('refuses a named run from the other timeline when a timeline was asked for by name', async () => {
+    const replay = await seedReplay();   // 0000
+    await seedIngest('sha256:1');        // 0001
+
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, replay, { source: 'e2e' }),
+    ).rejects.toMatchObject({
+      code: 'source-mismatch',
+      message: 'head run 0000 came from replay, not e2e',
+      hint: 'e2e runs: 0001',
+    });
+  });
+
+  it('permits a cross-source pair when the user names both ends — it is a real question', async () => {
+    const replay = await seedReplay();          // 0000
+    const ingested = await seedIngest('sha256:1'); // 0001
+
+    // Flagged at high severity by the diff engine (D27), not refused here.
+    expect(await resolvePair(tmp, 'forecast', replay, ingested)).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0001',
+    });
+  });
+
+  it('keeps a named e2e head paired with an e2e base, not with the replay run before it', async () => {
+    await seedReplay();                            // 0000
+    await seedIngest('sha256:1');                  // 0001
+    await seedReplay();                            // 0002
+    const head = await seedIngest('sha256:2');     // 0003
+
+    // No --e2e: the head is named explicitly, and its base must follow it onto its own timeline.
+    expect(await resolvePair(tmp, 'forecast', undefined, head)).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head,
+    });
+  });
+
+  it('names the timeline when an ingested head has nothing before it', async () => {
+    await seedReplay();                            // 0000
+    const head = await seedIngest('sha256:1');     // 0001
+
+    await expect(resolvePair(tmp, 'forecast', undefined, head)).rejects.toMatchObject({
+      code: 'no-base',
+      message:
+        'flow "forecast" has no run ingested from a trace before 0001 to compare against',
     });
   });
 });

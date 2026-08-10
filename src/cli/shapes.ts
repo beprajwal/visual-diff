@@ -26,6 +26,8 @@ import type {
   HarnessTargets,
   InstallScope,
 } from '../adapters/index.js';
+import type { SourcePair } from './e2e.js';
+import type { E2eIngestPlan, E2eIngestReport } from './ports.js';
 import type { VariantPair } from './variant.js';
 
 /** `vdiff init` — what the scaffold wrote, and what it left alone. */
@@ -58,7 +60,25 @@ export interface FlowCheckData {
   warnings: ValidationIssue[];
 }
 
-/** `vdiff runs <flow> [--scenario <name>] [--variants]` — mirrors the report API's `RunsResponse`. */
+/**
+ * `vdiff e2e --from trace <path|glob>` — what ingestion did (e2e spec §6).
+ *
+ * `plan` is not repeated here: the report carries the archives that became runs, and an archive the
+ * pattern named but ingestion refused is an error, not a row. `vdiff e2e list` is the command that
+ * describes archives without acting on them.
+ */
+export interface E2eIngestData extends E2eIngestReport {
+  /**
+   * Archives whose hash was already in the store, so no second run was written (§6). Lifted out of
+   * `runs[].reused` so an agent can answer "did this do anything?" without folding the array.
+   */
+  reused: number;
+}
+
+/** `vdiff e2e list --from trace <path|glob>` — what *would* be ingested. Writes nothing (§6). */
+export type E2eListData = E2eIngestPlan;
+
+/** `vdiff runs <flow> [--scenario <name>] [--variants] [--e2e]` — mirrors the report's `RunsResponse`. */
 export interface RunsData {
   flow: string;
   /** The `--scenario` filter that was applied, absent when the whole timeline was listed. */
@@ -69,6 +89,12 @@ export interface RunsData {
    * unchanged from what it has always been.
    */
   variants?: true;
+  /**
+   * True when `--e2e` listed the ingested runs instead of the replay timeline (D27). Absent rather
+   * than `false` for exactly the reason `variants` is: an ordinary listing's payload must not change
+   * shape because a feature the project does not use exists.
+   */
+  e2e?: true;
   runs: RunSummary[];
 }
 
@@ -93,6 +119,15 @@ export interface DiffData {
    * pairings the tool refuses to let pass as regressions would say the opposite.
    */
   variantPair?: VariantPair;
+  /**
+   * What this pair is on the source axis (e2e spec §7, D27), absent when both sides were replayed —
+   * which is every pair a project that has never ingested a trace can produce.
+   *
+   * Kept apart from `labels` for the same reason `variantPair` is, and with the opposite emphasis:
+   * `e2e-vs-replay` genuinely is a caveat and travels as a warning too, while `e2e-pair` is the
+   * normal case for e2e mode and carries only the reduced-detail explanation (§4).
+   */
+  sourcePair?: SourcePair;
   result: DiffResult;
 }
 

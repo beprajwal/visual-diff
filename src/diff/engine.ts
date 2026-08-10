@@ -33,8 +33,11 @@ import type {
 } from '../types.js';
 import { diffDirFor, pairId, readCachedDiff, writeDiff } from './cache.js';
 import { consoleFindings, networkFindings, structuralFindings } from './findings.js';
-import { labelPair, pairScenarios, pairVariants } from './pairing.js';
-import type { VariantAwareDiffResult } from './pairing.js';
+import { labelPair, pairScenarios, pairSources, pairVariants } from './pairing.js';
+import type { SourceAwareDiffResult } from './pairing.js';
+import { resolveDiffOptions } from './e2e-noise.js';
+import type { E2eAwareDiffOptions } from './e2e-noise.js';
+import { DEGRADED_REASON } from './fidelity.js';
 import { flowLevelChanges, isComparable, structuralFlowDiff } from '../flow/index.js';
 import { inflate } from './geometry.js';
 import { loadRunDir } from './loadRun.js';
@@ -51,7 +54,12 @@ export interface DiffContext {
   vdiffDir: string;
   /** Absolute path to `diffs/<flow>/<base>..<head>`. Defaults to the spec §6 location. */
   outDir?: string;
-  options: DiffEngineOptions;
+  /**
+   * The requested options. Widened to carry the optional `e2e:` block (e2e spec §5); a caller that
+   * only knows `DiffEngineOptions` is unaffected, and an ingested pair is resolved against the
+   * block by `resolveDiffOptions` before anything is computed or keyed.
+   */
+  options: E2eAwareDiffOptions;
 }
 
 export interface DiffRequest extends DiffContext {
@@ -188,10 +196,18 @@ export interface DiffRunsResult {
 export async function diffRuns(
   base: LoadedRun,
   head: LoadedRun,
-  options: DiffEngineOptions,
+  requestedOptions: E2eAwareDiffOptions,
   loadWarnings: readonly string[] = [],
 ): Promise<DiffRunsResult> {
   const warnings: string[] = [...loadWarnings];
+
+  // An ingested pair is diffed under the noise-tolerant thresholds (e2e spec §5, D27), and a
+  // replay-only pair under exactly the options it was handed — same object, so nothing about
+  // `vdiff run` changes. Resolving here rather than in the caller keeps the decision next to the
+  // metas that make it, and `resolveDiffOptions` is idempotent so `computeDiff` may resolve too.
+  const resolved = resolveDiffOptions(requestedOptions, base.meta, head.meta);
+  const options = resolved.options;
+  warnings.push(...resolved.warnings);
 
   if (base.meta.flow !== head.meta.flow) {
     warnings.push(
@@ -278,6 +294,7 @@ export async function diffRuns(
         base: baseSide,
         head: headSide,
         options,
+        degraded: labelling.sources.fidelity.level === 'degraded',
       });
       viewports[viewport] = output.diff;
 
@@ -311,6 +328,19 @@ export async function diffRuns(
     steps.push(stepDiff);
   }
 
+  // A pair with an ingested side could not run the whole layered diff — a trace carries no
+  // computed styles and no accessibility tree (e2e spec §4) — so every finding it produced says
+  // so. Stamped on the finding, not only on the result, because a reader who filters, sorts or
+  // exports one finding must not lose the sentence that qualifies it; appended last, so it never
+  // displaces the severity heuristics that fired.
+  if (labelling.sources.fidelity.level === 'degraded') {
+    for (const step of steps) {
+      for (const finding of allFindings(step)) {
+        if (!finding.reasons.includes(DEGRADED_REASON)) finding.reasons.push(DEGRADED_REASON);
+      }
+    }
+  }
+
   // Numbering last, in reading order: step-scoped findings first, then each viewport in turn.
   let n = 0;
   const cropSource = new Map<string, PixelImage>();
@@ -332,7 +362,7 @@ export async function diffRuns(
     }
   }
 
-  const result: VariantAwareDiffResult = {
+  const result: SourceAwareDiffResult = {
     engineVersion: options.engineVersion,
     flow: head.meta.flow,
     pair: { base: base.meta.runId, head: head.meta.runId },
@@ -341,6 +371,7 @@ export async function diffRuns(
     headMeta: head.meta,
     scenarios: labelling.scenarios,
     variants: labelling.variants,
+    sources: labelling.sources,
     flowDiff,
     steps,
     summary: summarize(flowDiff, steps),
@@ -355,11 +386,17 @@ export async function diffRuns(
  * `findings.json`, `crops/<id>.png`, and `steps/<step>/<viewport>/{pixel.png,regions.json}`.
  */
 export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
-  const options = request.options;
   const [baseLoad, headLoad] = await Promise.all([
     loadRunDir(request.baseRunDir),
     loadRunDir(request.headRunDir),
   ]);
+
+  // The *effective* options, not the requested ones: an ingested pair runs under the e2e
+  // thresholds, so those are what the cache key must describe and what `writeDiff` must stamp.
+  // `diffRuns` resolves the same inputs to the same values, and the resolution is idempotent, so
+  // the two can never disagree about what was computed. Warnings are left to `diffRuns`, which is
+  // the single emitter — reporting them from both would print each one twice.
+  const options = resolveDiffOptions(request.options, baseLoad.run.meta, headLoad.run.meta).options;
 
   const outDir =
     request.outDir ??
@@ -382,6 +419,7 @@ export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
       options,
       pairScenarios(baseLoad.run.meta, headLoad.run.meta),
       pairVariants(baseLoad.run.meta, headLoad.run.meta),
+      pairSources(baseLoad.run.meta, headLoad.run.meta),
     );
     if (cached !== null) return cached;
   }

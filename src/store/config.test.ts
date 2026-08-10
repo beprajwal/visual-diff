@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { findProjectRoot, loadConfig, loadConfigOrThrow, parseConfigSource } from './config.js';
+import { DEFAULT_KEEP_E2E_RUNS, keepE2eRunsOf } from './internal/e2e.js';
 import { DEFAULT_KEEP_VARIANT_RUNS, keepVariantRunsOf } from './internal/variant.js';
 import { DEFAULTS } from '../types.js';
 
@@ -53,8 +54,13 @@ describe('parseConfigSource', () => {
       ignore: ['[data-test=session-id]'],
     });
     expect(result.value.network).toEqual({ redact: ['x-api-key'], scrub: true });
-    // The §6 example names only `keepRuns`; the variant bucket defaults beside it (variants §5).
-    expect(result.value.retention).toEqual({ keepRuns: 20, keepVariantRuns: 10 });
+    // The §6 example names only `keepRuns`; the variant and e2e buckets default beside it
+    // (variants §5, e2e §7).
+    expect(result.value.retention).toEqual({
+      keepRuns: 20,
+      keepVariantRuns: 10,
+      keepE2eRuns: 20,
+    });
     expect(result.value.root).toBe(ROOT);
     expect(result.value.dir).toBe(path.join(ROOT, '.visual-diff'));
   });
@@ -169,6 +175,36 @@ describe('parseConfigSource', () => {
     expect(result.issues[0]?.at.key).toBe('retention.keepVariantRuns');
   });
 
+  it('reads the e2e retention bucket (e2e spec §7)', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepE2eRuns: 7'].join('\n'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(keepE2eRunsOf(result.value.retention)).toBe(7);
+  });
+
+  it('defaults the e2e bucket when the file predates the key', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepRuns: 30'].join('\n'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(keepE2eRunsOf(result.value.retention)).toBe(DEFAULT_KEEP_E2E_RUNS);
+  });
+
+  it('reports a mistyped keepE2eRuns with file, line and the offending key', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepE2eRun: 7'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.code).toBe('unknown-key');
+    expect(result.issues[0]?.message).toBe('unknown key "retention.keepE2eRun"');
+    expect(result.issues[0]?.at.line).toBe(5);
+  });
+
+  it('refuses a zero e2e bucket at the schema, before the pruner sees it as a cap', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepE2eRuns: 0'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('retention.keepE2eRuns');
+  });
+
   it('accepts a project-level baseUrl override', () => {
     const result = parse([MINIMAL, 'baseUrl: http://localhost:4321'].join('\n'));
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
@@ -229,4 +265,5 @@ describe('project discovery', () => {
     await fsp.writeFile(path.join(tmp, '.visual-diff', 'config.yaml'), 'app: {}\n');
     await expect(loadConfigOrThrow({ cwd: tmp })).rejects.toMatchObject({ exitCode: 2 });
   });
+
 });

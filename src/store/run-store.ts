@@ -31,6 +31,22 @@ import {
 import { isRunId, nextRunId, normalizeRunId, parseRunId, sortRunIds } from './internal/id.js';
 import { stableStringify } from './internal/json.js';
 import {
+  SOURCE_E2E,
+  SOURCE_REPLAY,
+  assertRunSourceConsistent,
+  e2eInfoOf,
+  normalizeE2eMeta,
+  sourceOf,
+  traceHashOf,
+} from './internal/e2e.js';
+import type {
+  E2eFilter,
+  E2eRunInfo,
+  E2eRunSummary,
+  MaybeE2e,
+  RunSource,
+} from './internal/e2e.js';
+import {
   normalizeRunMeta,
   normalizeScenarioName,
   scenarioOf,
@@ -53,7 +69,6 @@ import type {
   VariantFilter,
   VariantName,
   VariantRunMeta,
-  VariantRunSummary,
 } from './internal/variant.js';
 import * as paths from './paths.js';
 import { serializeFlowSnapshot } from './snapshot.js';
@@ -83,7 +98,7 @@ import type {
  * `variant` and `kept` ride along structurally (variants spec §5): the runner passes them exactly
  * as it passes `scenario`, and `commit` is what turns them into the fields on disk.
  */
-export type RunMetaInput = Omit<RunMeta, 'runId'> & { runId?: RunId } & MaybeVariant;
+export type RunMetaInput = Omit<RunMeta, 'runId'> & { runId?: RunId } & MaybeVariant & MaybeE2e;
 
 export interface ShotInput {
   viewport: ViewportId;
@@ -224,16 +239,29 @@ function makeDraft(root: string, flow: string, dir: string): RunDraft {
       // `kept` is written only for a variant run. A run that rendered the application as it stands
       // is in the permanent timeline by construction, so a promotion flag on it would be a field
       // that can never be true — noise in every meta.json the tool has ever written.
+      //
+      // `source` joins them on the same terms (e2e §7): every run says on disk where it came
+      // from, so a reader never has to infer "no source key means replay" from the absence of
+      // something. `assertRunSourceConsistent` runs *before* anything is written, because every
+      // inconsistency it catches — an e2e run with no trace hash, a varied e2e run — is one that
+      // would be discovered later as a duplicate ingest or as a run in the wrong retention bucket.
+      assertRunSourceConsistent(flow, meta);
       const variant = variantOf(meta);
-      const finalMeta: VariantRunMeta = {
+      const source = sourceOf(meta);
+      const finalMeta: VariantRunMeta & { source: RunSource; e2e?: E2eRunInfo } = {
         ...meta,
         runId,
         flow,
         scenario: scenarioOf(meta),
         variant,
+        source,
       };
       if (variant === VARIANT_NONE) delete finalMeta.kept;
       else finalMeta.kept = isKept(meta);
+      // The e2e block is written only for an e2e run, for the reason `kept` is written only for a
+      // variant one: a field that can never be populated is noise in every meta.json the tool
+      // writes. `assertRunSourceConsistent` has already refused the mismatched combinations.
+      if (source === SOURCE_REPLAY) delete finalMeta.e2e;
       await fsp.writeFile(
         path.join(dir, paths.META_FILENAME),
         `${stableStringify(finalMeta)}\n`,
@@ -297,9 +325,10 @@ export async function readRunMeta(root: string, flow: string, runId: RunId): Pro
   if (meta === null) {
     throw new StoreError('unknown-run', `run ${runId} does not exist for flow "${flow}"`);
   }
-  // Normalised on the way out, so a meta.json written before `scenario` or `variant` existed is
-  // readable and reads as the reserved `none` on both axes (mocking spec §6, variants spec §5).
-  return normalizeVariantMeta(normalizeRunMeta(meta));
+  // Normalised on the way out, so a meta.json written before `scenario`, `variant` or `source`
+  // existed is readable and reads as the reserved default on every axis (mocking spec §6, variants
+  // spec §5, e2e spec §7).
+  return normalizeE2eMeta(normalizeVariantMeta(normalizeRunMeta(meta)));
 }
 
 export async function readRunMetaOrNull(
@@ -308,7 +337,7 @@ export async function readRunMetaOrNull(
   runId: RunId,
 ): Promise<RunMeta | null> {
   const meta = await readJsonOrNull<RunMeta>(paths.runMetaFile(root, flow, runId));
-  return meta === null ? null : normalizeVariantMeta(normalizeRunMeta(meta));
+  return meta === null ? null : normalizeE2eMeta(normalizeVariantMeta(normalizeRunMeta(meta)));
 }
 
 /**
@@ -349,6 +378,76 @@ export async function readVariantIndex(
 }
 
 /**
+ * The source each committed run of one flow came from (e2e spec §7) — the third of the trio, and
+ * what `vdiff runs --e2e` and the report's source badge read.
+ */
+export async function readSourceIndex(
+  root: string,
+  flow: string,
+  ids?: readonly RunId[],
+): Promise<Map<RunId, RunSource>> {
+  const runIds = ids ?? (await listRunIds(root, flow));
+  const index = new Map<RunId, RunSource>();
+  for (const runId of runIds) {
+    index.set(runId, sourceOf(await readRunMetaOrNull(root, flow, runId)));
+  }
+  return index;
+}
+
+/** The e2e block of every ingested run of one flow, in run-id order. Replay runs are absent. */
+export async function readE2eIndex(
+  root: string,
+  flow: string,
+  ids?: readonly RunId[],
+): Promise<Map<RunId, E2eRunInfo>> {
+  const runIds = ids ?? (await listRunIds(root, flow));
+  const index = new Map<RunId, E2eRunInfo>();
+  for (const runId of runIds) {
+    const info = e2eInfoOf(await readRunMetaOrNull(root, flow, runId));
+    if (info !== null) index.set(runId, info);
+  }
+  return index;
+}
+
+/**
+ * The run one archive was already ingested as, or null (§6, "ingestion is idempotent: the same
+ * trace ingested twice produces one run, keyed by a content hash of the archive").
+ *
+ * The oldest match wins, so re-ingesting is a no-op that names the run that already exists rather
+ * than the newest of several — which matters only if a duplicate ever got written, and in that case
+ * pointing at the original is the answer that keeps the timeline stable.
+ */
+export async function findRunByTraceHash(
+  root: string,
+  flow: string,
+  traceHash: string,
+): Promise<RunId | null> {
+  for (const runId of await listRunIds(root, flow)) {
+    if (traceHashOf(await readRunMetaOrNull(root, flow, runId)) === traceHash) return runId;
+  }
+  return null;
+}
+
+/**
+ * Every flow that already holds an ingested run, keyed by the normalised test title it came from
+ * (D26).
+ *
+ * This is what makes flow naming stable across ingests: a title that has been seen before keeps the
+ * flow name it was given, whatever the derivation rules would produce today, so a later collision —
+ * or a later change to the slug rules — can never rename existing history. `allocateFlowName`
+ * handles only the titles this map has never seen.
+ */
+export async function readE2eFlowIndex(root: string): Promise<Map<string, string>> {
+  const index = new Map<string, string>();
+  for (const flow of await listFlows(root)) {
+    for (const info of (await readE2eIndex(root, flow)).values()) {
+      if (!index.has(info.titleKey)) index.set(info.titleKey, flow);
+    }
+  }
+  return index;
+}
+
+/**
  * Everything about a run that decides which other runs it groups, pairs and competes for retention
  * with — read once, because every one of those answers needs the same `meta.json`.
  *
@@ -360,6 +459,8 @@ export interface RunIdentity {
   runId: RunId;
   scenario: ScenarioName;
   variant: VariantName;
+  /** Replay capture, or ingested from someone else's trace (e2e spec §7). */
+  source: RunSource;
   /** `--keep`: promoted into the permanent timeline. */
   kept: boolean;
   bucket: RetentionBucket;
@@ -379,6 +480,7 @@ export async function readRunIdentityIndex(
       runId,
       scenario: scenarioOf(meta),
       variant: variantOf(meta),
+      source: sourceOf(meta),
       kept: isKept(meta),
       bucket: retentionBucketOf(meta),
       revision: meta?.revision ?? null,
@@ -395,19 +497,22 @@ export async function updateRunMeta(
   root: string,
   flow: string,
   runId: RunId,
-  patch: Partial<RunMeta> & MaybeVariant,
+  patch: Partial<RunMeta> & MaybeVariant & MaybeE2e,
 ): Promise<RunMeta> {
   const current = await readRunMeta(root, flow, runId);
   // Run identity — id, flow, scenario and variant — is fixed at commit and never patched
   // afterwards. `kept` is deliberately *not* identity: promoting a run changes which timeline and
   // which retention bucket it lives in, not which capture it is (variants spec §5).
-  const next: VariantRunMeta = {
+  const next: VariantRunMeta & { source: RunSource } = {
     ...current,
     ...patch,
     runId: current.runId,
     flow: current.flow,
     scenario: current.scenario,
     variant: variantOf(current),
+    // `source` is identity too, and more strongly than the others: patching it would let a run
+    // claim a provenance it does not have, and would move it between retention buckets.
+    source: sourceOf(current),
   };
   await writeJsonAtomic(paths.runMetaFile(root, flow, runId), next);
   return next;
@@ -453,6 +558,12 @@ export interface ListRunSummariesOptions {
    * from the regression timeline by default" — and `vdiff runs <flow> --variants` passes `only`.
    */
   variants?: VariantFilter;
+  /**
+   * Which ingested runs the timeline shows (e2e spec §7, D27). Defaults to `exclude`: e2e runs are
+   * a separate timeline, and `vdiff runs <flow>` keeps meaning what it meant before the tool could
+   * ingest anything. `vdiff runs <flow> --e2e` passes `only`.
+   */
+  e2e?: E2eFilter;
 }
 
 /**
@@ -472,12 +583,20 @@ function passesVariantFilter(
   return identity.variant === VARIANT_NONE || identity.kept;
 }
 
+/** Whether one run survives the source filter (e2e spec §7). */
+function passesE2eFilter(source: RunSource, filter: E2eFilter): boolean {
+  if (filter === 'include') return true;
+  if (filter === 'only') return source === SOURCE_E2E;
+  return source === SOURCE_REPLAY;
+}
+
 /**
  * One row per run, oldest first — the `vdiff runs <flow>` timeline (spec §9), with the scenario
- * column the mocking spec adds (§7).
+ * column the mocking spec adds (§7) and the source column the e2e spec adds (§7).
  *
  * `findingsCount` is taken from the stored diff against the previous run of the **same identity** —
- * same scenario *and* same variant — and is null when no diff has been computed for that pair.
+ * same source, same scenario *and* same variant — and is null when no diff has been computed for
+ * that pair.
  * Like-for-like is the pairing the diff command defaults to (mocking spec §6), so anything else in
  * this column would be a count for a pair the tool would never have chosen — and, for a flow
  * captured under several scenarios, a number that quietly compares two states rather than two
@@ -492,26 +611,29 @@ export async function listRunSummaries(
   flow: string,
   findingsCountFor: (base: RunId, head: RunId) => Promise<number | null> = async () => null,
   options: ListRunSummariesOptions = {},
-): Promise<VariantRunSummary[]> {
+): Promise<E2eRunSummary[]> {
   const ids = await listRunIds(root, flow);
   const wantedScenario =
     options.scenario === undefined ? null : normalizeScenarioName(options.scenario);
   const wantedVariant =
     options.variant === undefined ? null : normalizeVariantName(options.variant);
   const filter: VariantFilter = options.variants ?? 'exclude';
+  const e2eFilter: E2eFilter = options.e2e ?? 'exclude';
   const previousOfIdentity = new Map<string, RunId>();
-  const out: VariantRunSummary[] = [];
+  const out: E2eRunSummary[] = [];
 
   for (const runId of ids) {
     const meta = await readRunMetaOrNull(root, flow, runId);
     if (meta === null) continue;
     const scenario = scenarioOf(meta);
     const variant = variantOf(meta);
+    const source = sourceOf(meta);
     const kept = isKept(meta);
     const identity = runIdentityKey(meta);
     const previous = previousOfIdentity.get(identity) ?? null;
     previousOfIdentity.set(identity, meta.runId);
     if (wantedScenario !== null && scenario !== wantedScenario) continue;
+    if (!passesE2eFilter(source, e2eFilter)) continue;
     if (!passesVariantFilter({ variant, kept }, wantedVariant, filter)) continue;
     const findingsCount = previous === null ? null : await findingsCountFor(previous, meta.runId);
     out.push({
@@ -519,6 +641,7 @@ export async function listRunSummaries(
       flow: meta.flow,
       scenario,
       variant,
+      source,
       kept,
       revision: meta.revision,
       mode: meta.mode,
@@ -549,12 +672,21 @@ export interface ResolvePairOptions {
    * option unable to resolve the one pair it exists to produce.
    */
   variant?: VariantName;
+  /**
+   * Which timeline to resolve the pair on — `vdiff diff <flow> --e2e` passes `'e2e'` (e2e §6, D27).
+   *
+   * Restricts **both ends**, as `scenario` does and unlike `variant`: an e2e run's question is
+   * regression against the previous ingest of the same test, so both ends have to come from the
+   * same timeline. Defaults to `replay`, which is what keeps `vdiff diff <flow>` meaning exactly
+   * what it meant before the tool could ingest anything (§2).
+   */
+  source?: RunSource;
 }
 
 /**
  * Resolve a pair for `vdiff diff <flow> [base] [head]`. Defaults are **N-1 vs N** (spec §9) *on the
- * identity axes*: head is the newest run, base is the newest earlier run of the **same scenario and
- * the same variant** (mocking spec §6, D12; variants spec §5).
+ * identity axes*: head is the newest run, base is the newest earlier run of the **same source, the
+ * same scenario and the same variant** (mocking spec §6, D12; variants spec §5; e2e spec D27).
  *
  * Like-for-like is the default because the regression question is "did the empty state break
  * between these revisions?", and that needs matching ends. A flow captured with neither scenarios
@@ -568,9 +700,18 @@ export interface ResolvePairOptions {
  * never chosen as a default *head*: it is outside the regression timeline, so `vdiff diff <flow>`
  * with no arguments keeps meaning what it meant before variants existed.
  *
- * Naming both ends explicitly overrides every default — a cross-scenario or cross-variant pair is a
- * legitimate question and is permitted, then labelled rather than refused (mocking spec §6,
- * variants spec §5). Ids may be given loosely (`7`) and are normalised to the padded form.
+ * **The source axis is the strictest of the three (D27).** E2E runs are their own timeline: they
+ * are excluded from the default head, and a default base is only ever another e2e run. A flow whose
+ * runs are *all* ingested does not silently switch timelines either — it refuses and names the
+ * flag, because a `vdiff diff <flow>` that means the replay timeline on Monday and the e2e one on
+ * Tuesday is worse than one that says which it wanted. Comparing a lossy 800px-wide JPEG from
+ * someone else's CI against a replay screenshot is a real comparison, but it is never the one the
+ * user did not ask for.
+ *
+ * Naming both ends explicitly overrides every default — a cross-scenario, cross-variant or
+ * cross-source pair is a legitimate question and is permitted, then labelled rather than refused
+ * (mocking spec §6, variants spec §5; e2e §3, D27 flags e2e-versus-replay at high severity).
+ * Ids may be given loosely (`7`) and are normalised to the padded form.
  */
 export async function resolvePair(
   root: string,
@@ -589,18 +730,21 @@ export async function resolvePair(
   const wanted = options.scenario === undefined ? null : normalizeScenarioName(options.scenario);
   const wantedVariant =
     options.variant === undefined ? null : normalizeVariantName(options.variant);
+  const wantedSource: RunSource = options.source ?? SOURCE_REPLAY;
   const index = await readRunIdentityIndex(root, flow, ids);
   const identityOf = (runId: RunId): RunIdentity =>
     index.get(runId) ?? {
       runId,
       scenario: SCENARIO_NONE,
       variant: VARIANT_NONE,
+      source: SOURCE_REPLAY,
       kept: false,
       bucket: 'timeline',
       revision: null,
     };
   const scenarioFor = (runId: RunId): ScenarioName => identityOf(runId).scenario;
   const variantFor = (runId: RunId): VariantName => identityOf(runId).variant;
+  const sourceFor = (runId: RunId): RunSource => identityOf(runId).source;
   const underScenario = wanted === null ? ids : ids.filter((id) => scenarioFor(id) === wanted);
 
   if (wanted !== null && underScenario.length === 0) {
@@ -609,9 +753,25 @@ export async function resolvePair(
     });
   }
 
+  const underSource = underScenario.filter((id) => sourceFor(id) === wantedSource);
+  // Only a *default* end needs a non-empty timeline. Naming both ends explicitly is how a
+  // cross-source pair is asked for, and that is permitted (D27).
+  if (underSource.length === 0 && (head === undefined || base === undefined)) {
+    const other = wantedSource === SOURCE_E2E ? SOURCE_REPLAY : SOURCE_E2E;
+    const hint =
+      wantedSource === SOURCE_E2E
+        ? `Ingest one: vdiff e2e --from trace <path>`
+        : `These runs were ingested; ask for that timeline: vdiff diff ${flow} --e2e`;
+    throw new StoreError(
+      'no-runs',
+      `flow "${flow}" has no ${wantedSource} runs yet; every run it has is ${other}`,
+      { hint },
+    );
+  }
+
   // What `head` may default to: one named variant, or — with no `--variant` — the regression
   // timeline, which excludes ephemeral variant runs and keeps promoted ones (D24).
-  const candidates = underScenario.filter((id) =>
+  const candidates = underSource.filter((id) =>
     passesVariantFilter(identityOf(id), wantedVariant, 'exclude'),
   );
 
@@ -654,6 +814,15 @@ export async function resolvePair(
         { hint: `Runs under "${wantedVariant}": ${candidates.join(', ')}` },
       );
     }
+    // Checked only when the caller asked for a timeline by name. Without `--e2e` a named run is
+    // taken at its word, which is what makes an explicit cross-source pair possible at all.
+    if (options.source !== undefined && sourceFor(normalized) !== wantedSource) {
+      throw new StoreError(
+        'source-mismatch',
+        `${label} run ${normalized} came from ${sourceFor(normalized)}, not ${wantedSource}`,
+        { hint: `${wantedSource} runs: ${underSource.join(', ') || 'none'}` },
+      );
+    }
     return normalized;
   };
 
@@ -676,9 +845,23 @@ export async function resolvePair(
     return { flow, base: proposalBaseline(flow, ids, identityOf, headIdentity), head: headId };
   }
 
-  const headIndex = candidates.indexOf(headId);
+  // The base is searched on the **head's own** timeline, not on the one the caller named (D27).
+  // Without `--e2e` a user may still name an ingested run as the head, and pairing it with the
+  // replay run before it would compare a lossy 800px-wide JPEG from someone else's CI against a
+  // replay screenshot — every difference a finding, none of them a regression. `candidates` is the
+  // right list only when the head came from the timeline that was asked for.
+  const baseCandidates =
+    headIdentity.source === wantedSource
+      ? candidates
+      : underScenario.filter(
+          (id) =>
+            identityOf(id).source === headIdentity.source &&
+            passesVariantFilter(identityOf(id), wantedVariant, 'exclude'),
+        );
+
+  const headIndex = baseCandidates.indexOf(headId);
   for (let i = headIndex - 1; i >= 0; i -= 1) {
-    const candidate = candidates[i] as RunId;
+    const candidate = baseCandidates[i] as RunId;
     const identity = identityOf(candidate);
     if (identity.scenario === headIdentity.scenario && identity.variant === VARIANT_NONE) {
       return { flow, base: candidate, head: headId };
@@ -689,9 +872,10 @@ export async function resolvePair(
   // run", when the flow may have twenty under other scenarios and none to compare this one against.
   const scenarioClause =
     headIdentity.scenario === SCENARIO_NONE ? '' : ` under scenario "${headIdentity.scenario}"`;
+  const sourceClause = headIdentity.source === SOURCE_E2E ? ' ingested from a trace' : '';
   throw new StoreError(
     'no-base',
-    `flow "${flow}" has no run before ${headId}${scenarioClause} to compare against`,
+    `flow "${flow}" has no run${sourceClause} before ${headId}${scenarioClause} to compare against`,
     {
       hint: `Run it again to create a second point: ${captureHint(
         flow,
@@ -727,6 +911,11 @@ function proposalBaseline(
     const identity = identityOf(id);
     if (identity.variant !== VARIANT_NONE) continue;
     if (identity.scenario !== head.scenario) continue;
+    // A variant run is a replay run by construction (§2 forbids variants over ingested traces), so
+    // this only ever excludes an e2e run that happens to sit at the same point on the other axes.
+    // `sameRevision` would already reject it — an ingested run's revision is unknown — but relying
+    // on that would make the guarantee depend on a fact about revisions rather than about sources.
+    if (identity.source !== head.source) continue;
     if (!sameRevision(identity.revision, head.revision)) continue;
     const distance = Math.abs((parseRunId(id) ?? 0) - headOrdinal);
     if (distance < bestDistance) {

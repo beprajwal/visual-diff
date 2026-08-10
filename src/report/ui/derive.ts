@@ -24,6 +24,21 @@ import type {
 import { SCENARIO_NONE, SEVERITIES, SEVERITY_ORDER } from '../../types.js';
 import { describeRuleHit, type StepAttribution } from '../attribution.js';
 import {
+  classifySourcePair,
+  describeE2eOrigin,
+  describeE2eRevision,
+  describeSourcePair,
+  e2eOriginOf,
+  isE2eRun,
+  isE2eWarningKind,
+  isHighSeverityE2eWarningKind,
+  sourceOf,
+  E2E_DEGRADED_SENTENCES,
+  SOURCE_E2E,
+  type RunSource,
+  type SourcePairLabel,
+} from '../e2e.js';
+import {
   classifyVariantPair,
   describeVariantHit,
   describeVariantPair,
@@ -527,6 +542,181 @@ export function variantNoteRows(
   }));
 }
 
+/* ------------------------------------------------------------------ e2e (§4, §7, D27) */
+
+/** The value the source selector uses for "either timeline". */
+export const ALL_SOURCES = '*';
+
+/** How a source reads in the interface. */
+export function sourceLabel(source: RunSource): string {
+  return source === SOURCE_E2E ? 'e2e' : 'replay';
+}
+
+/**
+ * Every source present in a run list, `replay` first and `e2e` after — the fixed order rather than
+ * the order they happen to appear in, so the picker does not reorder itself as runs arrive.
+ */
+export function sourcesOf(runs: readonly RunSummary[]): RunSource[] {
+  const seen = new Set<RunSource>();
+  for (const run of runs) seen.add(sourceOf(run));
+  return (['replay', SOURCE_E2E] as RunSource[]).filter((source) => seen.has(source));
+}
+
+/**
+ * Runs from `source`; every run for {@link ALL_SOURCES} or a null filter.
+ *
+ * Like {@link runsForVariant}, this deliberately does *not* hide ingested runs by default the way
+ * `vdiff runs` does (D27). That CLI default exists because the timeline is where regression history
+ * is read and a CI batch would bury it; the report is a viewer with an explicit picker, and a run
+ * that cannot be selected cannot be looked at. They are badged instead.
+ */
+export function runsForSource(
+  runs: readonly RunSummary[],
+  source: RunSource | typeof ALL_SOURCES | null,
+): RunSummary[] {
+  if (source === null || source === ALL_SOURCES) return runs.slice();
+  return runs.filter((run) => sourceOf(run) === source);
+}
+
+/** True when this timeline row was ingested from a test suite's artifact rather than replayed. */
+export function isIngestedRun(run: RunSummary): boolean {
+  return isE2eRun(run);
+}
+
+/**
+ * One line of provenance for an ingested run: the test it came from, the browser, the versions.
+ *
+ * Null for a replay run and for an ingested one whose archive recorded nothing worth naming — which
+ * is the ordinary case for a library-only trace, not a fault. The caller renders nothing rather than
+ * an empty rail.
+ */
+export function e2eOriginLine(run: object | null | undefined): string | null {
+  return describeE2eOrigin(e2eOriginOf(run));
+}
+
+/**
+ * The "this run is not attributed to a commit" line, for an ingested run whose revision is unknown.
+ *
+ * Only for ingested runs: a *replay* with an empty revision means the tool failed to read git, which
+ * is a different problem with a different remedy, and answering it with "traces carry no git
+ * metadata" would send the reader somewhere useless.
+ */
+export function e2eRevisionNote(run: RunSummary | null | undefined): string | null {
+  if (run === null || run === undefined || !isE2eRun(run)) return null;
+  return describeE2eRevision(run.revision);
+}
+
+/**
+ * The banner a pair carries on the source axis (e2e spec §4, D27).
+ *
+ * Two rows at most, and the split is the decision:
+ *
+ *  - `e2e-vs-replay` is **high**, the same severity as `mock-vs-recorded`, because the two sides
+ *    came out of different machinery: a different browser, no frozen clock, no settle gate, and a
+ *    lossy downscaled viewport frame compared against a full-page PNG. Almost every finding beneath
+ *    it describes the capture rather than the application.
+ *  - `e2e-pair` is a **note**. Both sides ingested is what e2e mode exists to produce, so it is
+ *    stated calmly — but it is stated, because §4's reduced detail applies and a reader who is not
+ *    told will read the absent property-level findings as findings the tool missed.
+ */
+export interface SourceBannerRow {
+  label: SourcePairLabel;
+  severity: 'high' | 'note';
+  message: string;
+  /**
+   * The reduced-detail explanation, carried on the row rather than folded into `message` so the
+   * component can render it as a sub-list instead of one unreadable sentence. Empty when the pair
+   * is not degraded.
+   */
+  details: readonly string[];
+}
+
+const SOURCE_BANNER_SEVERITY: Record<SourcePairLabel, 'high' | 'note'> = {
+  'e2e-vs-replay': 'high',
+  'e2e-pair': 'note',
+};
+
+/**
+ * The source banner for a pair, derived from the two runs' meta rather than from a field on the
+ * stored diff — so a pair computed before e2e mode existed classifies as replay-versus-replay
+ * instead of reading as "no source information", and carries no banner at all.
+ */
+export function sourceBanners(diff: DiffResult | null): SourceBannerRow[] {
+  if (diff === null) return [];
+  const pair = classifySourcePair(diff.baseMeta, diff.headMeta);
+  const message = describeSourcePair(pair);
+  if (pair.label === null || message === null) return [];
+  return [
+    {
+      label: pair.label,
+      severity: SOURCE_BANNER_SEVERITY[pair.label],
+      message,
+      details: pair.degraded ? E2E_DEGRADED_SENTENCES : [],
+    },
+  ];
+}
+
+/**
+ * Finding kinds an ingested pair cannot produce, so the report can say *why* a layer is empty (§4).
+ *
+ * `style` is the one that matters: without computed styles there are no property-level findings, so
+ * an empty style section on an e2e diff is a capability limit and not a clean bill of health. `a11y`
+ * is absent for the same reason — a trace records no accessibility tree.
+ */
+const E2E_UNAVAILABLE_KIND_NOTES: ReadonlyMap<string, { layer: string; why: string }> = new Map([
+  [
+    'style',
+    {
+      layer: 'computed-style findings',
+      why:
+        'not available for an e2e pair: a Playwright trace records no computed styles, so there is' +
+        ' nothing to compare property by property',
+    },
+  ],
+  [
+    'a11y',
+    {
+      layer: 'accessibility findings',
+      why: 'not available for an e2e pair: a Playwright trace records no accessibility tree',
+    },
+  ],
+]);
+
+/** The `Finding['kind']` values an ingested pair cannot produce, in §4's table order. */
+export const E2E_UNAVAILABLE_FINDING_KINDS: readonly string[] = [...E2E_UNAVAILABLE_KIND_NOTES.keys()];
+
+/**
+ * Why a finding kind is empty on this pair, or null when it is empty because nothing changed.
+ *
+ * This is the whole point of §4's "marks these runs so the report can explain the reduced detail
+ * rather than appear to have missed something": an empty list and an impossible list look identical
+ * until one of them says so.
+ */
+export function unavailableKindNote(diff: DiffResult | null, kind: string): string | null {
+  if (diff === null) return null;
+  if (!classifySourcePair(diff.baseMeta, diff.headMeta).degraded) return null;
+  return E2E_UNAVAILABLE_KIND_NOTES.get(kind)?.why ?? null;
+}
+
+/**
+ * Every "this layer could not run" line for a pair, in the order §4's table lists them.
+ *
+ * Rendered beside the findings rather than in the banner strip, because the rail is where a reader
+ * decides the tool found nothing. "No findings for this step" and "no findings of that kind are
+ * obtainable from a trace" look identical until one of them says so, and the difference between
+ * them is the difference between a passing review and a review that never happened.
+ *
+ * Empty for a replay pair, so an ordinary review is unchanged.
+ */
+export function degradedLayerNotes(diff: DiffResult | null): string[] {
+  const notes: string[] = [];
+  for (const [kind, entry] of E2E_UNAVAILABLE_KIND_NOTES) {
+    const note = unavailableKindNote(diff, kind);
+    if (note !== null) notes.push(`${entry.layer}: ${note}`);
+  }
+  return notes;
+}
+
 /**
  * Run-warning kinds the rail renders as high severity.
  *
@@ -537,7 +727,21 @@ export function variantNoteRows(
  * quietly, so it is the loudest thing it says.
  */
 export function isHighSeverityWarning(kind: string): boolean {
-  return HIGH_WARNING_KINDS.has(kind) || isVariantWarningKind(kind);
+  return (
+    HIGH_WARNING_KINDS.has(kind) ||
+    isVariantWarningKind(kind) ||
+    // Only one of the e2e kinds qualifies. A stale `e2e-map.yaml` entry means the step-id pin the
+    // user wrote is not being applied, so the diff is aligning on something they did not choose —
+    // the same failure as a never-matched scenario rule. Duplicate step titles and an unknown
+    // revision are notices: both are ordinary, both were handled deterministically, and promoting
+    // them would make the loud channel routine on every ingested run.
+    isHighSeverityE2eWarningKind(kind)
+  );
+}
+
+/** True for any run warning this slice's ingestion raises, whatever its severity. */
+export function isE2eWarning(kind: string): boolean {
+  return isE2eWarningKind(kind);
 }
 
 const HIGH_WARNING_KINDS: ReadonlySet<string> = new Set([

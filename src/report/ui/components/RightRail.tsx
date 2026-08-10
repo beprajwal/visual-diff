@@ -4,6 +4,11 @@
  *
  * Severity orders and colours the list; it never hides anything (spec §8), so every group present
  * in the data is rendered even when the reviewer is filtering steps.
+ *
+ * `unavailable` is the one thing here that is *not* a finding, and it is here rather than in the
+ * banner strip on purpose (e2e spec §4). This rail is where a reader decides the tool found nothing;
+ * an e2e pair cannot produce property-level or accessibility findings at all, and an empty list that
+ * does not say so is indistinguishable from a clean review.
  */
 
 import type { Finding, Severity } from '../../../types.js';
@@ -13,6 +18,8 @@ import { FindingItem } from './FindingItem.js';
 export interface RightRailProps {
   findings: Finding[];
   selectedFinding: string | null;
+  /** Layers this pair could not run, each already a whole sentence. Empty for a replay pair. */
+  unavailable?: readonly string[];
   cropUrl: (finding: Finding) => string | null;
   onSelect: (finding: Finding) => void;
   onComment: (finding: Finding) => void;
@@ -27,6 +34,7 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 export function RightRail({
   findings,
   selectedFinding,
+  unavailable = [],
   cropUrl,
   onSelect,
   onComment,
@@ -59,6 +67,15 @@ export function RightRail({
               ))}
             </div>
           ))
+        )}
+        {unavailable.length === 0 ? null : (
+          <ul class="unavailable-kinds">
+            {unavailable.map((note) => (
+              <li class="unavailable-kind" key={note}>
+                {note}
+              </li>
+            ))}
+          </ul>
         )}
     </section>
   );

@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "fixture:record": "node scripts/record-har.mjs",
+    "fixture:traces": "node scripts/record-traces.mjs",
     "showcase": "node scripts/showcase.mjs"
   },
   "dependencies": {

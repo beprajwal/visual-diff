@@ -8,6 +8,7 @@
  */
 
 import * as diffStore from './diff-store.js';
+import * as e2eMap from './e2e-map.js';
 import * as feedbackStore from './feedback-store.js';
 import * as lockModule from './lock.js';
 import * as paths from './paths.js';
@@ -16,8 +17,11 @@ import * as revision from './revision.js';
 import * as runLoad from './run-load.js';
 import * as runStore from './run-store.js';
 import { parseFlowSnapshot, serializeFlowSnapshot } from './snapshot.js';
+import { keepE2eRunsOf } from './internal/e2e.js';
+import type { E2eRunInfo, E2eRunSummary, RunSource } from './internal/e2e.js';
 import { keepVariantRunsOf } from './internal/variant.js';
-import type { VariantName, VariantRunSummary } from './internal/variant.js';
+import type { VariantName } from './internal/variant.js';
+import type { E2eMap } from './e2e-map.js';
 import type { AckResult, ReadFeedbackFilter } from './feedback-store.js';
 import type { AcquireLockOptions, LockHandle } from './lock.js';
 import type { PruneResult } from './retention.js';
@@ -56,11 +60,27 @@ export interface Store {
    * The timeline, optionally narrowed to one scenario (mocking spec §7) or one variant, and by
    * default excluding ephemeral variant runs (variants spec §5, D24).
    */
-  listRuns(flow: string, options?: ListRunSummariesOptions): Promise<VariantRunSummary[]>;
+  listRuns(flow: string, options?: ListRunSummariesOptions): Promise<E2eRunSummary[]>;
   /** The scenario each run of the flow was captured under (mocking spec §6). */
   listRunScenarios(flow: string): Promise<Map<RunId, ScenarioName>>;
   /** The variant each run of the flow was captured under (variants spec §5). */
   listRunVariants(flow: string): Promise<Map<RunId, VariantName>>;
+  /** The source each run of the flow came from (e2e spec §7). */
+  listRunSources(flow: string): Promise<Map<RunId, RunSource>>;
+  /** The e2e block of every ingested run of the flow (e2e spec §7). */
+  listE2eRuns(flow: string): Promise<Map<RunId, E2eRunInfo>>;
+  /**
+   * The run one archive was already ingested as, or null — the idempotency check `vdiff e2e` makes
+   * before writing anything (e2e spec §6).
+   */
+  findRunByTraceHash(flow: string, traceHash: string): Promise<RunId | null>;
+  /**
+   * Normalised test title → the flow it is already ingested into (e2e spec D26). What keeps flow
+   * names stable across ingests: a title that has been seen before never gets a new name.
+   */
+  e2eFlowIndex(): Promise<Map<string, string>>;
+  /** `.visual-diff/e2e-map.yaml`, or an empty map when the project has none (e2e spec D26). */
+  loadE2eMap(): Promise<E2eMap>;
   loadRun(flow: string, runId: RunId, options?: runLoad.LoadRunOptions): Promise<LoadedRun>;
   runDir(flow: string, runId: RunId): string;
   beginRun(flow: string): Promise<RunDraft>;
@@ -123,6 +143,11 @@ export function openStore(config: Config): Store {
       ),
     listRunScenarios: (flow) => runStore.readScenarioIndex(root, flow),
     listRunVariants: (flow) => runStore.readVariantIndex(root, flow),
+    listRunSources: (flow) => runStore.readSourceIndex(root, flow),
+    listE2eRuns: (flow) => runStore.readE2eIndex(root, flow),
+    findRunByTraceHash: (flow, traceHash) => runStore.findRunByTraceHash(root, flow, traceHash),
+    e2eFlowIndex: () => runStore.readE2eFlowIndex(root),
+    loadE2eMap: () => e2eMap.loadE2eMapOrThrow(root),
     loadRun: (flow, runId, options) => runLoad.loadRun(root, flow, runId, options),
     runDir: (flow, runId) => paths.runDir(root, flow, runId),
     beginRun: (flow) => runStore.beginRun(root, flow),
@@ -143,11 +168,13 @@ export function openStore(config: Config): Store {
     pin: (flow, runId, pinned = true) => retention.pinRun(root, flow, runId, pinned),
     keep: (flow, runId, kept = true) => retention.keepRun(root, flow, runId, kept),
     prune: (flow, runId) => retention.pruneRun(root, flow, runId),
-    // Two buckets, so a run of proposals can never evict the capture history (variants spec §5).
+    // Three buckets, so neither a run of proposals nor a CI run's worth of ingested traces can
+    // ever evict the capture history (variants spec §5, e2e spec §7).
     applyRetention: (flow) =>
       retention.pruneFlow(root, flow, {
         keepRuns: config.retention.keepRuns,
         keepVariantRuns: keepVariantRunsOf(config.retention),
+        keepE2eRuns: keepE2eRunsOf(config.retention),
       }),
 
     acquireLock: (flow, options) => lockModule.acquireLock(root, flow, options),
@@ -175,15 +202,19 @@ export {
 export type { AcquireLockOptions, LockHandle };
 export {
   beginRun,
+  findRunByTraceHash,
   latestRunId,
   listFlows,
   listRunIds,
   listRunSummaries,
+  readE2eFlowIndex,
+  readE2eIndex,
   readFlowSnapshotSource,
   readRunIdentityIndex,
   readRunMeta,
   readRunMetaOrNull,
   readScenarioIndex,
+  readSourceIndex,
   readStepResult,
   readVariantIndex,
   reapAbandonedRuns,
@@ -239,6 +270,77 @@ export type {
   VariantRunMeta,
   VariantRunSummary,
 } from './internal/variant.js';
+/**
+ * The source axis of run identity (e2e spec §7, D27), exported from the store edge for the reason
+ * the scenario and variant helpers are: the ingest command, the diff engine, the CLI and the report
+ * all need to read a run's source, and none of them may reimplement "absent means replay".
+ */
+export {
+  DEFAULT_KEEP_E2E_RUNS,
+  E2E_DUPLICATE_STEP_TITLES,
+  E2E_MAP_UNMATCHED,
+  REVISION_UNKNOWN_SHA,
+  RUN_SOURCES,
+  SOURCE_E2E,
+  SOURCE_REPLAY,
+  UNKNOWN_REVISION,
+  assertRunSourceConsistent,
+  describeSource,
+  duplicateStepTitlesWarning,
+  e2eInfoOf,
+  isE2eRun,
+  isUnknownRevision,
+  keepE2eRunsOf,
+  normalizeE2eMeta,
+  parseRunSource,
+  sameSource,
+  sourceOf,
+  traceHashOf,
+  unmatchedMapWarning,
+} from './internal/e2e.js';
+export type {
+  DuplicateStepTitle,
+  E2eConfig,
+  E2eFilter,
+  E2eRetentionConfig,
+  E2eRunInfo,
+  E2eRunMeta,
+  E2eRunSummary,
+  E2eRunWarning,
+  E2eRunWarningKind,
+  E2eSuiteMeta,
+  FullRetentionConfig,
+  MaybeE2e,
+  RunSource,
+} from './internal/e2e.js';
+/**
+ * Title mapping (D26): the only translation from what a trace carries — titles — to the ids the
+ * diff engine needs. Exported whole because the ingest command derives names with it and the report
+ * has to be able to explain a name it sees.
+ */
+export {
+  MAX_SLUG_LENGTH,
+  TITLE_SEPARATOR,
+  allocateFlowName,
+  assignStepIds,
+  flowNameForTitle,
+  normalizeTitle,
+  parseLocation,
+  parseTestTitle,
+  sameTitle,
+  slugify,
+  specStem,
+  splitTitle,
+} from './internal/e2e-title.js';
+export type { ParsedTestTitle, StepIdAssignment } from './internal/e2e-title.js';
+export {
+  createE2eMapper,
+  emptyE2eMap,
+  loadE2eMap,
+  loadE2eMapOrThrow,
+  parseE2eMapSource,
+} from './e2e-map.js';
+export type { E2eMap, E2eMapFile, E2eMapper } from './e2e-map.js';
 export { loadRun, loadRunDir } from './run-load.js';
 export type { LoadRunOptions } from './run-load.js';
 export {

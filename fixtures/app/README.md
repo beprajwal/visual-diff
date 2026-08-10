@@ -148,6 +148,34 @@ screenshot is the recorded state while its author believes it is the patched one
 
 ---
 
+## Trace archives
+
+`traces/` holds four **real Playwright trace archives** recorded from this app, committed so that
+e2e ingestion (e2e spec §9, test 1) is tested against archives Playwright actually wrote rather than
+against hand-built zips that only prove the reader agrees with our assumptions.
+
+| Archive | Layout | What it is for |
+|---|---|---|
+| `dashboard-baseline.zip` | library | Named steps from `tracing.group`, including a deliberately duplicated title |
+| `dashboard-changed.zip` | library | The same test against a build with three documented edits — the pair that makes a diff non-empty |
+| `search-library.zip` | library | No step titles at all, so every step id is synthesized from a selector |
+| `dashboard-runner.zip` | `@playwright/test` | `test.trace` plus one `N-trace.*` prefix per BrowserContext |
+
+```bash
+npm run fixture:traces -w fixtures/app         # the three library archives — offline
+node scripts/record-runner-trace.mjs           # the runner archive — needs the npm registry
+```
+
+Both are manual, like `fixture:record`. The library archives need no dependency beyond the
+`playwright-core` this repository already has; the runner archive is recorded by installing
+`@playwright/test` into a throwaway directory outside the repository, because adding it to a
+`package.json` here would put a browser download back into every install.
+
+`traces/README.md` documents what each archive contains, what was stripped from them and why, and
+the facts about trace screenshots and snapshots that they are the evidence for.
+
+---
+
 ## Running it
 
 ```bash
@@ -174,6 +202,7 @@ The suite is:
 | `tests/har.test.ts` | The committed recording: coverage, CORS, headers, payload shape, scrubbing |
 | `tests/flows.test.ts` | The flow specs, parsed by the repository's own parser |
 | `tests/replay.e2e.test.ts` | **Every flow, executed in Chromium, served entirely from the HAR** |
+| `tests/traces.test.ts` | The committed trace archives: readable by this repository's reader *and* by Playwright's own, and still containing the properties they were recorded for |
 
 ---
 

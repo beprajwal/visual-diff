@@ -36,6 +36,23 @@
  * against each other, and a proposal compared against the unmodified page *at another revision*,
  * where every difference is the sum of the proposal and the intervening code change and nothing
  * separates the two.
+ *
+ * ### The source axis, which is the scenario shape again rather than the variant one
+ *
+ * E2E adds a third axis: was each side captured by `vdiff run`, or ingested from a Playwright trace
+ * (e2e spec §7, D27)? Here the scenario reasoning applies unchanged, because the question is the
+ * same one: like-for-like is the regression question, and mixing the two capture paths compares a
+ * trace's lossy, viewport-only, JPEG screencast frame against vdiff's own PNG under a frozen clock.
+ *
+ * | pair | behaviour |
+ * |---|---|
+ * | e2e vs e2e | the regression question on this axis, and the default pairing — no flag |
+ * | replay vs replay | every pre-e2e pair — no flag |
+ * | e2e vs replay | permitted, flagged `e2e-vs-replay` at **high** severity, "exactly as mock-versus-recorded is" (D27) |
+ *
+ * There is deliberately **no flag on an e2e/e2e pair**, which is the D24 lesson carried over: a
+ * warning printed on the intended use of a feature teaches people to stop reading warnings. What an
+ * e2e pair carries instead is {@link PairFidelity} — structured, unmissable, and not a warning.
  */
 
 import {
@@ -56,6 +73,10 @@ import {
   variantOf,
 } from '../store/internal/variant.js';
 import type { VariantName } from '../store/internal/variant.js';
+import { SOURCE_E2E, SOURCE_REPLAY, describeSource, sourceOf } from '../store/internal/e2e.js';
+import type { MaybeE2e, RunSource } from '../store/internal/e2e.js';
+import { fidelityOf } from './fidelity.js';
+import type { PairFidelity } from './fidelity.js';
 
 /**
  * Machine codes for the pairings the variant axis permits but refuses to let pass as ordinary
@@ -65,8 +86,16 @@ import type { VariantName } from '../store/internal/variant.js';
 export const VARIANT_PAIR_LABELS = ['cross-variant'] as const;
 export type VariantPairLabel = (typeof VARIANT_PAIR_LABELS)[number];
 
-/** Every label a pair can carry, across both identity axes. */
-export type AnyPairLabel = PairLabel | VariantPairLabel;
+/**
+ * Machine codes for the pairings the source axis permits but refuses to let pass as ordinary
+ * regressions (e2e spec §7, D27). One code: e2e-versus-e2e and replay-versus-replay are both the
+ * regression question, one on each timeline.
+ */
+export const SOURCE_PAIR_LABELS = ['e2e-vs-replay'] as const;
+export type SourcePairLabel = (typeof SOURCE_PAIR_LABELS)[number];
+
+/** Every label a pair can carry, across all three identity axes. */
+export type AnyPairLabel = PairLabel | VariantPairLabel | SourcePairLabel;
 
 /**
  * How the two paired runs relate on the variant axis (variants spec §5).
@@ -98,6 +127,35 @@ export const VARIANTLESS_PAIR: PairVariants = {
 };
 
 /**
+ * How the two paired runs relate on the source axis (e2e spec §7, D27).
+ *
+ * `fidelity` sits here rather than being derived per consumer because it is a property of the
+ * *pair*: an e2e/e2e pair is on its own timeline and perfectly comparable, and still cannot produce
+ * a property-level finding, so "which runs were compared" and "what the comparison could see" are
+ * two different questions with one answer between them (e2e spec §4).
+ */
+export interface PairSources {
+  /** The source each side came from, `replay` when the run predates the axis. */
+  base: RunSource;
+  head: RunSource;
+  /** Exactly one side was ingested: two capture paths, flagged `e2e-vs-replay` at high severity. */
+  crossSource: boolean;
+  /** What the layered diff could actually run for this pair. */
+  fidelity: PairFidelity;
+}
+
+/**
+ * The source identity of a pair neither side of which was ingested — every pre-e2e pair, and the
+ * default every entry point falls back to when a caller has nothing to say about sources.
+ */
+export const REPLAY_PAIR: PairSources = {
+  base: SOURCE_REPLAY,
+  head: SOURCE_REPLAY,
+  crossSource: false,
+  fidelity: fidelityOf(SOURCE_REPLAY, SOURCE_REPLAY),
+};
+
+/**
  * Severity per label, so the CLI, the report and this module cannot disagree about how loud each
  * one is.
  *
@@ -113,6 +171,12 @@ export const PAIR_LABEL_SEVERITY: Record<AnyPairLabel, Severity> = {
   // Same reasoning as `cross-scenario`, one axis over: both sides are real captures of something,
   // the comparison is deliberate, and reading it as a regression would be wrong.
   'cross-variant': 'med',
+  // **high**, and for the same reason `mock-vs-recorded` is: the two sides were produced by
+  // different machinery. A trace frame is a lossy JPEG, viewport-only, downscaled to fit 800×800
+  // with the device scale factor discarded, taken by a throttled screencast near — not at — the
+  // step boundary; a replay shot is a full PNG at a known scale under a frozen clock. Every
+  // difference between the two is of unknown provenance (e2e spec §4, D27).
+  'e2e-vs-replay': 'high',
 };
 
 /** A run whose responses came entirely from a scenario, with no recording behind them (D13). */
@@ -155,6 +219,24 @@ export function pairVariants(base: RunMeta, head: RunMeta): PairVariants {
   return { base: baseVariant, head: headVariant, proposal, crossVariant: !proposal };
 }
 
+/**
+ * Source labelling for a pair.
+ *
+ * Deliberately the plain "do the two sides differ" rule of the scenario axis, not the variant
+ * axis's rule with a hole in it: unlike a proposal, a cross-source pair is never the question the
+ * user meant to ask, so there is nothing to exempt.
+ */
+export function pairSources(base: MaybeE2e, head: MaybeE2e): PairSources {
+  const baseSource = sourceOf(base);
+  const headSource = sourceOf(head);
+  return {
+    base: baseSource,
+    head: headSource,
+    crossSource: baseSource !== headSource,
+    fidelity: fidelityOf(baseSource, headSource),
+  };
+}
+
 /** One label that applies to a pair, with the severity and the sentence that carry it. */
 export interface PairFlag {
   label: AnyPairLabel;
@@ -165,9 +247,11 @@ export interface PairFlag {
 export interface PairLabelling {
   scenarios: PairScenarios;
   variants: PairVariants;
+  sources: PairSources;
   /**
-   * Empty for a same-scenario, same-fidelity, same-variant pair — the ordinary regression question
-   * — and equally empty for the proposal pair, which is the ordinary *variant* question.
+   * Empty for a same-scenario, same-fidelity, same-variant, same-source pair — the ordinary
+   * regression question — and equally empty for the proposal pair, which is the ordinary *variant*
+   * question, and for an e2e/e2e pair, which is the ordinary question on its own timeline.
    */
   flags: PairFlag[];
 }
@@ -180,6 +264,7 @@ function describeScenario(name: string): string {
 export function labelPair(base: RunMeta, head: RunMeta): PairLabelling {
   const scenarios = pairScenarios(base, head);
   const variants = pairVariants(base, head);
+  const sources = pairSources(base, head);
   const flags: PairFlag[] = [];
 
   if (scenarios.crossScenario) {
@@ -214,7 +299,20 @@ export function labelPair(base: RunMeta, head: RunMeta): PairLabelling {
     });
   }
 
-  return { scenarios, variants, flags };
+  if (sources.crossSource) {
+    const ingested = sources.head === SOURCE_E2E ? head : base;
+    const captured = sources.head === SOURCE_E2E ? base : head;
+    flags.push({
+      label: 'e2e-vs-replay',
+      severity: PAIR_LABEL_SEVERITY['e2e-vs-replay'],
+      message:
+        `e2e-vs-replay pair: run ${ingested.runId} is ${describeSource(SOURCE_E2E)} while run ` +
+        `${captured.runId} is ${describeSource(SOURCE_REPLAY)} — two capture paths, so a ` +
+        'difference between them may be the application or may be the machinery that recorded it',
+    });
+  }
+
+  return { scenarios, variants, sources, flags };
 }
 
 /**
@@ -258,6 +356,12 @@ export function variantPairLabels(variants: PairVariants): VariantPairLabel[] {
   return VARIANT_PAIR_LABELS.filter((label) => applies[label]);
 }
 
+/** The source-axis labels that apply to a pair, in `SOURCE_PAIR_LABELS` order. */
+export function sourcePairLabels(sources: PairSources): SourcePairLabel[] {
+  const applies: Record<SourcePairLabel, boolean> = { 'e2e-vs-replay': sources.crossSource };
+  return SOURCE_PAIR_LABELS.filter((label) => applies[label]);
+}
+
 /**
  * `DiffResult` with the variant block this slice adds.
  *
@@ -267,3 +371,13 @@ export function variantPairLabels(variants: PairVariants): VariantPairLabel[] {
  * trip untouched.
  */
 export type VariantAwareDiffResult = DiffResult & { variants?: PairVariants };
+
+/**
+ * `DiffResult` with the source block this slice adds, on the same terms as the variant one:
+ * additive, structural, and written straight through `findings.json` by serialization.
+ *
+ * `sources.fidelity` is what §4 means by "`findings.json` marks these runs so the report can
+ * explain the reduced detail rather than appear to have missed something". Absent on every diff
+ * stored before this slice, which were replay pairs by construction.
+ */
+export type SourceAwareDiffResult = VariantAwareDiffResult & { sources?: PairSources };

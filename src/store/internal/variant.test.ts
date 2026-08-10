@@ -31,6 +31,7 @@ import {
   variantOf,
 } from './variant.js';
 import type { MaybeVariant } from './variant.js';
+import { SOURCE_E2E, SOURCE_REPLAY, UNKNOWN_REVISION } from './e2e.js';
 import { SCENARIO_NONE } from '../../types.js';
 import type { Revision, RunMeta } from '../../types.js';
 
@@ -137,6 +138,19 @@ describe('the retention boundary (D24)', () => {
     expect(isKept(null)).toBe(false);
     expect(isKept({ kept: false })).toBe(false);
   });
+
+  it('puts an ingested run in its own bucket (e2e §7)', () => {
+    expect(retentionBucketOf({ ...META, source: SOURCE_E2E })).toBe('e2e');
+    expect(retentionBucketOf({ ...META, source: SOURCE_REPLAY })).toBe('timeline');
+  });
+
+  it('answers e2e even for a run that also claims a variant, so ingest can never enter the variant bucket', () => {
+    // `commit` refuses to write such a run (§2), but this function is also asked about meta.json
+    // files it did not write, and the isolation §7 asks for must not depend on that refusal.
+    expect(retentionBucketOf({ ...META, source: SOURCE_E2E, variant: 'denser-forecast' })).toBe(
+      'e2e',
+    );
+  });
 });
 
 describe('runIdentityKey', () => {
@@ -160,8 +174,14 @@ describe('runIdentityKey', () => {
     );
   });
 
-  it('reads a run missing both fields as the none/none identity', () => {
-    expect(runIdentityKey(null)).toBe(runIdentityKey({ scenario: SCENARIO_NONE, variant: VARIANT_NONE }));
+  it('reads a run missing every field as the replay/none/none identity', () => {
+    expect(runIdentityKey(null)).toBe(
+      runIdentityKey({ scenario: SCENARIO_NONE, variant: VARIANT_NONE, source: SOURCE_REPLAY }),
+    );
+  });
+
+  it('separates the two timelines, so an ingested run is never counted against a replay one', () => {
+    expect(runIdentityKey({ ...META, source: SOURCE_E2E })).not.toBe(runIdentityKey(META));
   });
 });
 
@@ -192,6 +212,13 @@ describe('sameRevision', () => {
     expect(sameRevision(null, null)).toBe(false);
     expect(sameRevision(clean, undefined)).toBe(false);
   });
+
+  it('refuses to call two ingested runs the same code merely because both are unknown', () => {
+    // Every e2e run records `revision: unknown` (e2e §7), so a match here would silently make any
+    // two of them "the same revision" and let one stand in as the other's baseline.
+    expect(sameRevision(UNKNOWN_REVISION, UNKNOWN_REVISION)).toBe(false);
+    expect(sameRevision(clean, UNKNOWN_REVISION)).toBe(false);
+  });
 });
 
 describe('sameVariant', () => {
@@ -214,6 +241,8 @@ describe('prose helpers', () => {
     expect(describeRevision({ sha: '9f8e7d6', ref: 'main', dirty: false })).toBe('9f8e7d6');
     expect(describeRevision({ sha: '9f8e7d6', ref: 'main', dirty: true })).toBe('9f8e7d6 (dirty)');
     expect(describeRevision(null)).toBe('an unknown revision');
+    // And the recorded form of "unknown" reads the same as the absent one.
+    expect(describeRevision(UNKNOWN_REVISION)).toBe('an unknown revision');
   });
 
   it('builds the capture command a hint should print, on both axes', () => {

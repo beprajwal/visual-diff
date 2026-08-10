@@ -3,13 +3,19 @@ import { describe, expect, it } from 'vitest';
 import type { Finding, FlowDiffEntry } from '../../types.js';
 import {
   ALL_SCENARIOS,
+  ALL_SOURCES,
   ALL_VARIANTS,
   alignFlowDiff,
   buildFilmstrip,
+  degradedLayerNotes,
+  e2eOriginLine,
+  e2eRevisionNote,
   findingsForStep,
   groupBySeverity,
+  isE2eWarning,
   isEphemeralRun,
   isHighSeverityWarning,
+  isIngestedRun,
   isMockOnly,
   pairBanners,
   pairLabels,
@@ -18,9 +24,14 @@ import {
   runsForScenario,
   runsForVariant,
   scenarioLabel,
+  runsForSource,
   scenarioNoteRows,
   scenariosOf,
   sortFindings,
+  sourceBanners,
+  sourceLabel,
+  sourcesOf,
+  unavailableKindNote,
   topSeverity,
   variantBanners,
   variantLabel,
@@ -695,5 +706,138 @@ describe('isHighSeverityWarning', () => {
     expect(isHighSeverityWarning('dom-truncated')).toBe(false);
     expect(isHighSeverityWarning('settle-timeout')).toBe(false);
     expect(isHighSeverityWarning('har-recorded')).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ e2e (e2e spec §4, §7, D27) */
+
+describe('the source axis in the report (e2e spec §7)', () => {
+  it('reads a run written before this slice as a replay, and badges nothing', () => {
+    expect(isIngestedRun(makeRun('0001'))).toBe(false);
+    expect(sourcesOf([makeRun('0001'), makeRun('0002')])).toEqual(['replay']);
+  });
+
+  it('lists both sources in a fixed order, so the picker does not reorder as runs arrive', () => {
+    const runs = [makeRun('0001', {}, { source: 'e2e' }), makeRun('0002')];
+    expect(sourcesOf(runs)).toEqual(['replay', 'e2e']);
+    expect(sourceLabel('e2e')).toBe('e2e');
+    expect(sourceLabel('replay')).toBe('replay');
+  });
+
+  /**
+   * Deliberately unlike `vdiff runs`, which hides them (D27). The report is a viewer with an
+   * explicit picker, and a run that cannot be selected cannot be looked at.
+   */
+  it('does not hide ingested runs from the picker; it filters only when asked', () => {
+    const runs = [makeRun('0001'), makeRun('0002', {}, { source: 'e2e' })];
+    expect(runsForSource(runs, null).map((run) => run.runId)).toEqual(['0001', '0002']);
+    expect(runsForSource(runs, ALL_SOURCES).map((run) => run.runId)).toEqual(['0001', '0002']);
+    expect(runsForSource(runs, 'e2e').map((run) => run.runId)).toEqual(['0002']);
+    expect(runsForSource(runs, 'replay').map((run) => run.runId)).toEqual(['0001']);
+  });
+
+  it('renders one provenance line for an ingested run, and nothing for a replay', () => {
+    expect(
+      e2eOriginLine(
+        makeRun('0002', {}, {
+          source: 'e2e',
+          e2e: { title: 'weather.spec.ts:12 › weather › shows the forecast', browser: 'chromium' },
+        }),
+      ),
+    ).toBe('test weather.spec.ts:12 › weather › shows the forecast · chromium');
+    expect(e2eOriginLine(makeRun('0001'))).toBeNull();
+  });
+
+  it('explains an ingested run with no revision, and stays silent about a replay with none', () => {
+    expect(e2eRevisionNote(makeRun('0002', { sha: '' }, { source: 'e2e' }))).toBe(
+      'revision unknown: a Playwright trace records no git metadata, so this run is not attributed' +
+        ' to a commit rather than being attributed to the wrong one',
+    );
+    // A replay with no revision means git could not be read — a different problem with a different
+    // remedy, and answering it with "traces carry no git metadata" would be actively misleading.
+    expect(e2eRevisionNote(makeRun('0001', { sha: '' }))).toBeNull();
+    expect(e2eRevisionNote(makeRun('0002', {}, { source: 'e2e' }))).toBeNull();
+  });
+});
+
+describe('sourceBanners (e2e spec §4, D27)', () => {
+  const e2eDiff = (base: string | null, head: string | null) =>
+    makeDiff({
+      baseMeta: makeRunMeta('0003', base === null ? {} : { source: 'e2e' }),
+      headMeta: makeRunMeta('0007', head === null ? {} : { source: 'e2e' }),
+    });
+
+  it('shows nothing for two replays — every pair the report could show before this slice', () => {
+    expect(sourceBanners(e2eDiff(null, null))).toEqual([]);
+    expect(sourceBanners(null)).toEqual([]);
+  });
+
+  it('states an e2e pair at note severity, carrying the reduced-detail list', () => {
+    const [row] = sourceBanners(e2eDiff('e2e', 'e2e'));
+    expect(row?.label).toBe('e2e-pair');
+    expect(row?.severity).toBe('note');
+    expect(row?.details).toHaveLength(3);
+    expect(row?.details[0]).toContain('no property-level findings');
+  });
+
+  it('raises a mixed pair to high, the same severity as mock-vs-recorded', () => {
+    const [row] = sourceBanners(e2eDiff(null, 'e2e'));
+    expect(row?.label).toBe('e2e-vs-replay');
+    expect(row?.severity).toBe('high');
+    expect(row?.message).toContain('captured by different machinery');
+    // Degraded as well as confounded: the property-level findings are missing from this comparison
+    // too, and a reader told only "these are incomparable" would still misread the empty layers.
+    expect(row?.details).toHaveLength(3);
+  });
+});
+
+describe('the degraded-diff explanation in the findings rail (§4)', () => {
+  it('says nothing on a replay pair, so an ordinary review is unchanged', () => {
+    expect(degradedLayerNotes(makeDiff({}))).toEqual([]);
+    expect(degradedLayerNotes(null)).toEqual([]);
+  });
+
+  /**
+   * The whole requirement of §4: an empty findings list and an unobtainable one look identical
+   * until one of them says so, and the difference is a passing review versus a review that never
+   * happened.
+   */
+  it('explains each layer a trace cannot supply, naming the layer', () => {
+    const diff = makeDiff({
+      baseMeta: makeRunMeta('0003', { source: 'e2e' }),
+      headMeta: makeRunMeta('0007', { source: 'e2e' }),
+    });
+    expect(degradedLayerNotes(diff)).toEqual([
+      'computed-style findings: not available for an e2e pair: a Playwright trace records no' +
+        ' computed styles, so there is nothing to compare property by property',
+      'accessibility findings: not available for an e2e pair: a Playwright trace records no' +
+        ' accessibility tree',
+    ]);
+  });
+
+  it('says nothing about a kind an e2e pair can still produce', () => {
+    const diff = makeDiff({
+      baseMeta: makeRunMeta('0003', { source: 'e2e' }),
+      headMeta: makeRunMeta('0007', { source: 'e2e' }),
+    });
+    // Console entries are recorded unconditionally by Playwright tracing, and pixel regions and DOM
+    // attribution both survive; only the two style layers are gone.
+    expect(unavailableKindNote(diff, 'console')).toBeNull();
+    expect(unavailableKindNote(diff, 'content')).toBeNull();
+    expect(unavailableKindNote(diff, 'style')).not.toBeNull();
+    expect(unavailableKindNote(diff, 'a11y')).not.toBeNull();
+  });
+});
+
+describe('isHighSeverityWarning over the e2e kinds (§8)', () => {
+  it('promotes a stale e2e-map entry, exactly as it promotes a never-matched scenario rule', () => {
+    expect(isHighSeverityWarning('e2e-map-unmatched')).toBe(true);
+  });
+
+  it('leaves the two ordinary e2e notices where they are', () => {
+    expect(isHighSeverityWarning('e2e-step-title-duplicate')).toBe(false);
+    expect(isHighSeverityWarning('e2e-revision-unknown')).toBe(false);
+    expect(isE2eWarning('e2e-step-title-duplicate')).toBe(true);
+    expect(isE2eWarning('har-miss')).toBe(false);
   });
 });
