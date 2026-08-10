@@ -32,7 +32,15 @@ import type {
   ValidationResult,
 } from '../types.js';
 
-import type { AdapterInstallDetail, WriteOptions } from '../adapters/index.js';
+import type {
+  HarnessAdapter,
+  HarnessId,
+  HarnessInstallDetail,
+  HarnessTargets,
+  InstallOptions,
+  InstallScope,
+  ManagedFile,
+} from '../adapters/index.js';
 
 import { runFailure } from './error.js';
 import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
@@ -138,6 +146,30 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
   };
 }
 
+/* ------------------------------------------------------------------ the adapter registry */
+
+/**
+ * The one edge reached through a registry lookup rather than a named export.
+ *
+ * `getAdapter` returns undefined for an id the registry does not hold; the CLI validates the id
+ * against `listAdapters()` before it gets here, so reaching this failure means the registry
+ * changed under us and it is reported as a module-contract error rather than a user mistake.
+ */
+async function resolveAdapter(id: string): Promise<HarnessAdapter<HarnessId>> {
+  const get = await loadExport<(id: string) => HarnessAdapter<HarnessId> | undefined>(
+    MODULE_SPECIFIERS.adapters,
+    'getAdapter',
+  );
+  const adapter = get(id);
+  if (adapter === undefined) {
+    throw runFailure(
+      'module-contract',
+      `internal module '${MODULE_SPECIFIERS.adapters}' has no adapter '${id}'`,
+    );
+  }
+  return adapter;
+}
+
 /* ------------------------------------------------------------------ the ports */
 
 /** Ports bound to the real modules. Used by the binary; tests pass their own implementation. */
@@ -233,21 +265,39 @@ export function createPorts(): Ports {
           `internal module '${MODULE_SPECIFIERS.adapters}' does not export 'ADAPTERS'`,
         );
       }
-      return (adapters as HarnessInfo[]).map((adapter) => ({
+      const notes = (module['HARNESS_NOTES'] ?? {}) as Partial<Record<string, readonly string[]>>;
+      return (adapters as HarnessAdapter[]).map((adapter) => ({
         id: adapter.id,
         label: adapter.label,
+        notes: notes[adapter.id] ?? [],
       }));
+    },
+
+    async adapterFiles(id: string, scope: InstallScope): Promise<ManagedFile[]> {
+      return await (await resolveAdapter(id)).files(scope);
+    },
+
+    async adapterTargets(id: string, scope: InstallScope): Promise<HarnessTargets> {
+      return (await resolveAdapter(id)).targets(scope);
     },
 
     async installAdapter(
       id: string,
       root: string,
-      options: WriteOptions,
-    ): Promise<AdapterInstallDetail> {
+      options: InstallOptions,
+    ): Promise<HarnessInstallDetail> {
       const fn = await loadExport<
-        (id: string, root: string, options: WriteOptions) => Promise<AdapterInstallDetail>
+        (id: string, root: string, options: InstallOptions) => Promise<HarnessInstallDetail>
       >(MODULE_SPECIFIERS.adapters, 'installAdapter');
       return await fn(id, root, options);
+    },
+
+    async readInstalledVersion(content: string): Promise<string | null> {
+      const fn = await loadExport<(content: string) => string | null>(
+        MODULE_SPECIFIERS.adapters,
+        'readInstalledVersion',
+      );
+      return fn(content);
     },
   };
 }

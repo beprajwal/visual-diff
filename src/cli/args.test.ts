@@ -108,6 +108,52 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     expect('list' in ok(['install', 'claude-code'])).toBe(false);
   });
 
+  it('--global rides on the invocation only when it was asked for (D16)', () => {
+    expect(ok(['install', 'codex', '--global'])).toEqual({
+      kind: 'install',
+      harness: 'codex',
+      global: true,
+      force: false,
+      dryRun: false,
+      json: false,
+    });
+    expect('global' in ok(['install', 'codex'])).toBe(false);
+  });
+
+  it('`--check` takes an optional harness, unlike `--list`', () => {
+    expect(ok(['install', '--check'])).toEqual({
+      kind: 'install',
+      check: true,
+      force: false,
+      dryRun: false,
+      json: false,
+    });
+    expect(ok(['install', '--check', 'pi'])).toMatchObject({ check: true, harness: 'pi' });
+    expect(ok(['install', '--check', '--json'])).toMatchObject({ check: true, json: true });
+  });
+
+  it('rejects `--list` with `--check`: they answer different questions', () => {
+    const error = err(['install', '--list', '--check']);
+    expect(error.code).toBe('conflicting-flags');
+    expect(error.exitCode).toBe(EXIT.CONFIG_ERROR);
+    expect(error.message).toContain("'--list' and '--check'");
+  });
+
+  it('rejects `--check --global`: --check reports every scope by design', () => {
+    const error = err(['install', '--check', '--global']);
+    expect(error.code).toBe('conflicting-flags');
+    expect(error.message).toBe("'--check' reports every scope and takes no '--global'");
+  });
+
+  it('rejects a write flag on a subcommand that writes nothing', () => {
+    expect(err(['install', '--check', '--force']).message).toBe(
+      "'--check' writes nothing, so '--force' has nothing to act on",
+    );
+    expect(err(['install', '--list', '--dry-run']).message).toBe(
+      "'--list' writes nothing, so '--dry-run' has nothing to act on",
+    );
+  });
+
   it('does not confuse `install` with `install-browser`', () => {
     expect(ok(['install-browser'])).toEqual({ kind: 'install-browser', json: false });
     expect(err(['install-browser', 'claude-code']).code).toBe('unexpected-argument');

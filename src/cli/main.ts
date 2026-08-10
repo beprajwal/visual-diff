@@ -12,6 +12,8 @@
  *   2  config or spec error (also: an unknown command, flag or argument)
  */
 
+import { homedir } from 'node:os';
+
 import { EXIT, type CliEnvelope, type CliError, type ExitCode } from '../types.js';
 
 import { commandLabel, parseArgs, wantsJson, type Invocation } from './args.js';
@@ -148,6 +150,7 @@ function emitError(
 export async function main(argv: readonly string[]): Promise<void> {
   const code = await runCli(argv, {
     cwd: process.cwd(),
+    home: homedir(),
     ports: createPorts(),
     version: await readVersion(),
     spawn: spawnCapture,

@@ -29,34 +29,149 @@ import {
   type ServeInfo,
 } from '../types.js';
 
-import type { AdapterInstallDetail, FileOutcome } from '../adapters/index.js';
+import type {
+  FileOutcome,
+  HarnessInstallDetail,
+  HarnessTargets,
+  InstallOptions,
+  InstallScope,
+  ManagedFile,
+} from '../adapters/index.js';
 
 import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
 
 /**
- * The registry as the CLI sees it. Deliberately mirrors the real one (spec §5 registers exactly
- * one adapter in slice 1); `src/adapters/index.test.ts` is what pins the real list.
+ * The registry as the CLI sees it. Deliberately mirrors one row of the real one; the real table is
+ * pinned by `src/adapters/index.test.ts`, and the note is present because install output prints it.
  */
 export function fakeHarnesses(): HarnessInfo[] {
-  return [{ id: 'claude-code', label: 'Claude Code' }];
+  return [
+    {
+      id: 'claude-code',
+      label: 'Claude Code',
+      notes: ['a copy in ~/.claude/skills overrides this project one'],
+    },
+  ];
 }
 
-/** A successful first install: three managed files, all created. */
-export function fakeInstallDetail(
-  overrides: Partial<AdapterInstallDetail> = {},
-): AdapterInstallDetail {
-  const files: FileOutcome[] = [
-    { path: '.claude/skills/visual-diff/SKILL.md', status: 'created' },
-    { path: '.claude/commands/vdiff.md', status: 'created' },
-    { path: '.claude/commands/vdiff-review.md', status: 'created' },
-  ];
+/** The directories the fake harness claims, per scope. */
+export function fakeTargets(scope: InstallScope = 'project'): HarnessTargets {
   return {
-    id: 'claude-code',
-    written: files.map((file) => file.path),
-    skipped: [],
-    files,
-    ...overrides,
+    scope,
+    skills: '.claude/skills',
+    commands: '.claude/commands',
+    instructions: null,
   };
+}
+
+/**
+ * What a fake adapter composes. Real frontmatter carrying the version stamp, because `--check`
+ * reads that stamp back and a body without one would skip the path being tested.
+ */
+export function fakeManagedFiles(scope: InstallScope = 'project', version = '0.1.0'): ManagedFile[] {
+  const stamp = `metadata:\n  x-vdiff-version: "${version}"\n  x-vdiff-source: "@beprajwal/visual-diff"`;
+  return [
+    {
+      path: '.claude/skills/visual-diff/SKILL.md',
+      body: `---\nname: visual-diff\n${stamp}\n---\n\n# Visual Diff (${scope})\n`,
+    },
+    {
+      path: '.claude/commands/vdiff.md',
+      body: `---\ndescription: "run"\n${stamp}\n---\n\nRun it.\n`,
+    },
+    {
+      path: '.claude/commands/vdiff-review.md',
+      body: `---\ndescription: "review"\n${stamp}\n---\n\nReview it.\n`,
+    },
+  ];
+}
+
+/** Everything the adapter ports were asked for, plus the files the fake believes exist. */
+export interface TestInstallState {
+  /** Absolute path → body, exactly as last written. Seed it to simulate an existing install. */
+  disk: Map<string, string>;
+  /** Absolute paths this fake wrote. A path only in `disk` reads as edited by a human. */
+  ours: Set<string>;
+  /** Every install (or dry run), in order. */
+  installs: Array<{ id: string; root: string; options: InstallOptions }>;
+  /** Every `adapterFiles` request, in order. */
+  composed: Array<{ id: string; scope: InstallScope }>;
+}
+
+/**
+ * An in-memory stand-in for the adapter edges.
+ *
+ * It models the one behaviour the install command depends on and cannot fake for itself: a file
+ * that is already exactly what we would write is `unchanged`, one we wrote and would now write
+ * differently is `updated`, and one we did not write is `preserved`. That is enough for the
+ * envelope, precedence and drift tests; the byte-level round trip runs against the real adapter
+ * registry in `install.test.ts`.
+ */
+export function createTestInstall(seed: Partial<TestInstallState> = {}): {
+  state: TestInstallState;
+  adapterFiles: Ports['adapterFiles'];
+  adapterTargets: Ports['adapterTargets'];
+  installAdapter: Ports['installAdapter'];
+} {
+  const state: TestInstallState = {
+    disk: seed.disk ?? new Map<string, string>(),
+    ours: seed.ours ?? new Set<string>(),
+    installs: seed.installs ?? [],
+    composed: seed.composed ?? [],
+  };
+
+  return {
+    state,
+    adapterFiles: async (id: string, scope: InstallScope): Promise<ManagedFile[]> => {
+      state.composed.push({ id, scope });
+      return fakeManagedFiles(scope);
+    },
+    adapterTargets: async (_id: string, scope: InstallScope): Promise<HarnessTargets> =>
+      fakeTargets(scope),
+    installAdapter: async (
+      id: string,
+      root: string,
+      options: InstallOptions,
+    ): Promise<HarnessInstallDetail> => {
+      state.installs.push({ id, root, options });
+      const files = fakeManagedFiles(options.scope ?? 'project', options.version ?? '0.1.0');
+      const outcomes: FileOutcome[] = files.map((file) => {
+        const key = `${root}/${file.path}`;
+        const existing = state.disk.get(key);
+        const planned: FileOutcome['status'] =
+          existing === undefined
+            ? 'created'
+            : existing === file.body
+              ? 'unchanged'
+              : state.ours.has(key)
+                ? 'updated'
+                : 'preserved';
+        const status =
+          planned === 'preserved' && options.force === true ? 'updated' : planned;
+        if ((status === 'created' || status === 'updated') && options.dryRun !== true) {
+          state.disk.set(key, file.body);
+          state.ours.add(key);
+        }
+        return { path: file.path, status };
+      });
+      return {
+        id: id as HarnessInstallDetail['id'],
+        written: outcomes
+          .filter((o) => o.status === 'created' || o.status === 'updated')
+          .map((o) => o.path),
+        skipped: outcomes
+          .filter((o) => o.status === 'unchanged' || o.status === 'preserved')
+          .map((o) => o.path),
+        files: outcomes,
+      };
+    },
+  };
+}
+
+/** The version stamp the fake writes, read back the way the real adapter reads it. */
+export function fakeReadInstalledVersion(content: string): string | null {
+  const match = /x-vdiff-version:\s*"([^"]*)"/.exec(content);
+  return match === null ? null : (match[1] as string);
 }
 
 export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): Config {
@@ -375,6 +490,7 @@ export const TEST_SCENARIOS: ScenarioName[] = [];
 
 export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
   const store = createTestStore();
+  const adapters = createTestInstall();
   return {
     loadConfig: async (cwd: string) => fakeConfig(cwd),
     parseFlowFile: async () => ({ ok: true, value: fakeFlowSpec(), warnings: [] }),
@@ -391,7 +507,10 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
       close: async () => undefined,
     }),
     listAdapters: async () => fakeHarnesses(),
-    installAdapter: async () => fakeInstallDetail(),
+    adapterFiles: adapters.adapterFiles,
+    adapterTargets: adapters.adapterTargets,
+    installAdapter: adapters.installAdapter,
+    readInstalledVersion: async (content: string) => fakeReadInstalledVersion(content),
     ...overrides,
   };
 }

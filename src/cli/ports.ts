@@ -19,7 +19,6 @@
  */
 
 import type {
-  AdapterId,
   Config,
   DiffEngineOptions,
   DiffResult,
@@ -36,7 +35,14 @@ import type {
   ServeOptions,
   ValidationResult,
 } from '../types.js';
-import type { AdapterInstallDetail, WriteOptions } from '../adapters/index.js';
+import type {
+  HarnessId,
+  HarnessInstallDetail,
+  HarnessTargets,
+  InstallOptions,
+  InstallScope,
+  ManagedFile,
+} from '../adapters/index.js';
 
 /** A running report server. `close()` releases the port and removes `serve.json`. */
 export interface ServeHandle {
@@ -137,16 +143,44 @@ export interface Ports {
    * are actually registered and adding one to the registry needs no CLI change.
    */
   listAdapters(): Promise<HarnessInfo[]>;
-  /** `adapters/index.ts#installAdapter` — writes one harness's managed files under `root`. */
-  installAdapter(
-    id: string,
-    root: string,
-    options: WriteOptions,
-  ): Promise<AdapterInstallDetail>;
+  /**
+   * `adapters/index.ts#getAdapter(id).files(scope)` — every file a harness would write for one
+   * scope, fully composed. Touches no directory, which is what lets `install --list` promise it
+   * writes nothing.
+   */
+  adapterFiles(id: string, scope: InstallScope): Promise<ManagedFile[]>;
+  /**
+   * `adapters/index.ts#getAdapter(id).targets(scope)` — the real directories an install writes.
+   * Output names these rather than the harness id, because `vdiff install codex` writing something
+   * not called "codex" is otherwise baffling (D18).
+   */
+  adapterTargets(id: string, scope: InstallScope): Promise<HarnessTargets>;
+  /**
+   * `adapters/index.ts#installAdapter` — writes one harness's managed files under `root`.
+   *
+   * The CLI supplies `scope` and `version` because only it knows which the invocation meant and
+   * which build is running. Everything about *what* the files contain stays in the adapter.
+   */
+  installAdapter(id: string, root: string, options: InstallOptions): Promise<HarnessInstallDetail>;
+  /**
+   * `adapters/index.ts#readInstalledVersion` — the version stamp of a file already on disk,
+   * whichever mechanism carries it: frontmatter for a whole-file install, the block comment for
+   * `AGENTS.md`. Null when the file carries none, which is what a copy written by a build from
+   * before the stamp existed looks like.
+   */
+  readInstalledVersion(content: string): Promise<string | null>;
 }
 
-/** One registered harness adapter, as the CLI needs to print it. */
+/**
+ * One registered harness adapter, as the CLI needs to print it.
+ *
+ * `notes` are the caveats the registry records against each harness: what "installed" does *not*
+ * guarantee. They are printed rather than kept internal because in every case a correctly written
+ * file can still fail to be read — a personal copy overriding the project one, a duplicate staying
+ * visible in a selector, or the skill mechanism being switched off by configuration.
+ */
 export interface HarnessInfo {
-  id: AdapterId;
+  id: HarnessId;
   label: string;
+  notes: readonly string[];
 }

@@ -1232,7 +1232,15 @@ export interface FeedbackOptions {
 
 /* ------------------------------------------------------------------ adapters (§5, §9) */
 
-export type AdapterId = 'claude-code';
+/**
+ * Every harness this build can install into (harness-packaging spec §4).
+ *
+ * The registry in `src/adapters/harnesses.ts` derives its own `HarnessId` from the table rows, and
+ * a test pins the two unions to each other — this declaration is the published one, so leaving it
+ * naming a single harness while four are installable would make the package's own types lie about
+ * what `vdiff install` accepts.
+ */
+export type AdapterId = 'claude-code' | 'codex' | 'opencode' | 'pi';
 
 export interface AdapterInstallResult {
   id: AdapterId;
