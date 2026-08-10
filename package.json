@@ -1,6 +1,6 @@
 {
   "name": "@beprajwal/visual-diff",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Replay an agent-authored UI workflow across revisions, diff the results visually and semantically, and review them in a live local report.",
   "license": "MIT",
   "repository": {
