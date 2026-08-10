@@ -1,0 +1,29 @@
+$ vdiff diff detail 0001 0000     # the unmodified page vs the empty-forecast scenario
+detail  0001..0000  scenario no scenario..empty-forecast
+312 findings  high 256, med 52, low 4  max pixel change 11.3%
+steps: 2 compared, 2 changed, 0 added, 0 removed, 0 spec-changed, 0 failed, 0 blocked
+
+! cross-scenario: base ran 'no scenario', head ran 'empty-forecast' — this compares two states, not two revisions
+
+STEP         STATUS   VIEWPORT  PIXELS  FINDINGS  DETAIL
+berlin       matched  1280x800  6.3%    82
+berlin       matched  390x844   11.3%   74
+air-quality  matched  1280x800  6.3%    82
+air-quality  matched  390x844   11.3%   74
+
+
+$ vdiff diff detail 0001 0002     # the unmodified page vs the denser-forecast proposal
+detail  0001..0002
+214 findings  high 126, med 84, low 4  max pixel change 8.5%
+steps: 2 compared, 2 changed, 0 added, 0 removed, 0 spec-changed, 0 failed, 0 blocked
+
+proposal: variant 'denser-forecast' against the unmodified page at the same revision
+
+STEP         STATUS   VIEWPORT  PIXELS  FINDINGS  DETAIL
+berlin       matched  1280x800  6.7%    55
+berlin       matched  390x844   8.5%    52
+air-quality  matched  1280x800  6.7%    55
+air-quality  matched  390x844   8.5%    52
+
+
+(truncated: each summary continues with a per-step, per-viewport table)

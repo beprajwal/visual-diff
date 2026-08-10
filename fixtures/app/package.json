@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "fixture:record": "node scripts/record-har.mjs"
+    "fixture:record": "node scripts/record-har.mjs",
+    "showcase": "node scripts/showcase.mjs"
   },
   "dependencies": {
     "preact": "^10.25.4"
