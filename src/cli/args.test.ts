@@ -33,12 +33,18 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     expect(ok(['run', 'checkout'])).toEqual({
       kind: 'run',
       flow: 'checkout',
+      keep: false,
       continueOnError: false,
       noScrub: false,
       json: false,
     });
 
-    expect(ok(['runs', 'checkout'])).toEqual({ kind: 'runs', flow: 'checkout', json: false });
+    expect(ok(['runs', 'checkout'])).toEqual({
+      kind: 'runs',
+      flow: 'checkout',
+      variants: false,
+      json: false,
+    });
 
     expect(ok(['diff', 'checkout'])).toEqual({ kind: 'diff', flow: 'checkout', json: false });
     expect(ok(['diff', 'checkout', '0003', '0007'])).toEqual({
@@ -164,8 +170,8 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       const argv =
         command === 'flow'
           ? ['flow', 'check', 'checkout', '--json']
-          : command === 'scenario'
-            ? ['scenario', 'list', '--json']
+          : command === 'scenario' || command === 'variant'
+            ? [command, 'list', '--json']
           : command === 'pin' || command === 'prune'
             ? [command, '0007', '--json']
             : command === 'install'
@@ -197,6 +203,7 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       flow: 'checkout',
       at: 'HEAD~3',
       viewports: ['1280x800', '390x844'],
+      keep: false,
       continueOnError: true,
       noScrub: true,
       json: true,
@@ -331,7 +338,7 @@ describe('commandLabel', () => {
   it('renders the two-word flow subcommands as they are typed', () => {
     expect(commandLabel({ kind: 'flow-new', name: 'x', json: false })).toBe('flow new');
     expect(commandLabel({ kind: 'flow-check', name: 'x', json: false })).toBe('flow check');
-    expect(commandLabel({ kind: 'runs', flow: 'x', json: false })).toBe('runs');
+    expect(commandLabel({ kind: 'runs', flow: 'x', variants: false, json: false })).toBe('runs');
   });
 });
 
@@ -364,6 +371,7 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
       kind: 'run',
       flow: 'forecast',
       scenario: 'empty-forecast',
+      keep: false,
       continueOnError: false,
       noScrub: false,
       json: false,
@@ -372,6 +380,7 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
       kind: 'runs',
       flow: 'forecast',
       scenario: 'empty-forecast',
+      variants: false,
       json: false,
     });
     expect(ok(['diff', 'forecast', '0003', '0007', '--scenario', 'empty-forecast'])).toEqual({
@@ -417,6 +426,7 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
     expect(ok(['runs', 'forecast', '--scenario', 'none'])).toEqual({
       kind: 'runs',
       flow: 'forecast',
+      variants: false,
       scenario: 'none',
       json: false,
     });
@@ -472,5 +482,164 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
   it('routes `vdiff scenario --help` to the help topic', () => {
     expect(ok(['scenario', '--help'])).toEqual({ kind: 'help', topic: 'scenario', json: false });
     expect(ok(['help', 'scenario'])).toEqual({ kind: 'help', topic: 'scenario', json: false });
+  });
+});
+
+/* ------------------------------------------------------------------ variants (§6, §7) */
+
+/**
+ * The variant surface is the scenario surface with one difference that matters: `--variants` on
+ * `runs` is not a filter but a switch between two timelines, because variant runs are excluded
+ * from the regression timeline by default (D24). Everything else — reserved `none`, name shape,
+ * subcommand arity — is asserted to behave identically, because a difference between the two axes
+ * would be a bug in one of them rather than a design.
+ */
+describe('parseArgs — variants (variants spec §6)', () => {
+  it('parses the three variant subcommands', () => {
+    expect(ok(['variant', 'new', 'denser-forecast'])).toEqual({
+      kind: 'variant-new',
+      name: 'denser-forecast',
+      json: false,
+    });
+    expect(ok(['variant', 'check', 'denser-forecast'])).toEqual({
+      kind: 'variant-check',
+      name: 'denser-forecast',
+      json: false,
+    });
+    expect(ok(['variant', 'list'])).toEqual({ kind: 'variant-list', json: false });
+    expect(ok(['variant', 'list', '--json'])).toEqual({ kind: 'variant-list', json: true });
+  });
+
+  it('labels the variant subcommands as they are typed', () => {
+    expect(commandLabel({ kind: 'variant-new', name: 'x', json: false })).toBe('variant new');
+    expect(commandLabel({ kind: 'variant-check', name: 'x', json: false })).toBe('variant check');
+    expect(commandLabel({ kind: 'variant-list', json: false })).toBe('variant list');
+  });
+
+  it('carries --variant onto run and diff, and --variants onto runs', () => {
+    expect(ok(['run', 'forecast', '--variant', 'denser-forecast'])).toEqual({
+      kind: 'run',
+      flow: 'forecast',
+      variant: 'denser-forecast',
+      keep: false,
+      continueOnError: false,
+      noScrub: false,
+      json: false,
+    });
+    expect(ok(['runs', 'forecast', '--variants'])).toEqual({
+      kind: 'runs',
+      flow: 'forecast',
+      variants: true,
+      json: false,
+    });
+    expect(ok(['diff', 'forecast', '0003', '0007', '--variant', 'denser-forecast'])).toEqual({
+      kind: 'diff',
+      flow: 'forecast',
+      base: '0003',
+      head: '0007',
+      variant: 'denser-forecast',
+      json: false,
+    });
+  });
+
+  /** "The denser layout, in the empty state" is a reasonable question (variants spec §5). */
+  it('combines --variant with --scenario on one run', () => {
+    expect(
+      ok(['run', 'forecast', '--scenario', 'empty-forecast', '--variant', 'denser-forecast']),
+    ).toEqual({
+      kind: 'run',
+      flow: 'forecast',
+      scenario: 'empty-forecast',
+      variant: 'denser-forecast',
+      keep: false,
+      continueOnError: false,
+      noScrub: false,
+      json: false,
+    });
+  });
+
+  it('carries --keep alongside the variant it promotes (D24)', () => {
+    expect(ok(['run', 'forecast', '--variant', 'denser-forecast', '--keep'])).toMatchObject({
+      variant: 'denser-forecast',
+      keep: true,
+    });
+  });
+
+  it('rejects --keep without a variant, because a plain run is kept already', () => {
+    expect(err(['run', 'forecast', '--keep'])).toEqual({
+      code: 'keep-without-variant',
+      message:
+        "'--keep' promotes a variant run into the permanent timeline, and this run has no variant",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'pass --variant <name>, or drop --keep: runs without a variant are kept already',
+    });
+  });
+
+  it('rejects `none` as a variant file name and as a capture argument', () => {
+    expect(err(['variant', 'new', 'none'])).toEqual({
+      code: 'reserved-variant-name',
+      message: "'none' is the reserved variant name for a run captured without one",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: "pick another name; 'none' can never be a variant file",
+    });
+    expect(err(['variant', 'check', 'none'])).toMatchObject({ code: 'reserved-variant-name' });
+    expect(err(['run', 'forecast', '--variant', 'none'])).toEqual({
+      code: 'reserved-variant-name',
+      message: "'none' is the reserved variant name for a run captured without one",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'omit --variant to capture without a variant',
+    });
+  });
+
+  it('accepts `none` as a diff filter, because it is the value the store records', () => {
+    expect(ok(['diff', 'forecast', '--variant', 'none'])).toEqual({
+      kind: 'diff',
+      flow: 'forecast',
+      variant: 'none',
+      json: false,
+    });
+  });
+
+  it('rejects a variant name that could not be a filename', () => {
+    expect(err(['variant', 'new', '../etc/passwd'])).toEqual({
+      code: 'invalid-variant-name',
+      message: "invalid variant name '../etc/passwd'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'use letters, digits, dot, dash or underscore, e.g. denser-forecast',
+    });
+    expect(err(['variant', 'new', 'a..b'])).toMatchObject({ code: 'invalid-variant-name' });
+    expect(err(['run', 'forecast', '--variant', 'has space'])).toMatchObject({
+      code: 'invalid-variant-name',
+    });
+    expect(err(['diff', 'forecast', '--variant='])).toMatchObject({
+      code: 'invalid-variant-name',
+    });
+  });
+
+  it('reports an unknown subcommand and a missing name', () => {
+    expect(err(['variant', 'delete', 'x'])).toEqual({
+      code: 'unknown-subcommand',
+      message: "unknown subcommand 'variant delete'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['variant']?.usage,
+    });
+    expect(err(['variant', 'new'])).toEqual({
+      code: 'missing-argument',
+      message: "'variant new' requires a variant name",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['variant']?.usage,
+    });
+    expect(err(['variant', 'list', 'denser-forecast'])).toEqual({
+      code: 'unexpected-argument',
+      message: "'variant list' enumerates every variant and takes no name",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['variant']?.usage,
+    });
+    expect(err(['variant'])).toMatchObject({ code: 'missing-argument' });
+  });
+
+  it('routes `vdiff variant --help` to the help topic', () => {
+    expect(ok(['variant', '--help'])).toEqual({ kind: 'help', topic: 'variant', json: false });
+    expect(ok(['help', 'variant'])).toEqual({ kind: 'help', topic: 'variant', json: false });
   });
 });

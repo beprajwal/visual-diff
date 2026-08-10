@@ -43,6 +43,23 @@ import type {
   InstallScope,
   ManagedFile,
 } from '../adapters/index.js';
+import type { VariantName, VariantSpec } from './variant.js';
+
+/**
+ * How stored runs are narrowed, on both axes of run identity beyond `(flow, revision)`.
+ *
+ * One object rather than two positional arguments because the two filters compose — "the denser
+ * layout, in the empty state" is a reasonable question (variants spec §5) — and because the store
+ * already takes an options object for `scenario`.
+ *
+ * `variant` is the recorded value, so `VARIANT_NONE` selects the regression timeline (runs captured
+ * without a variant) and a name selects one proposal's runs. Omitting it selects *everything*,
+ * which is what `vdiff diff <flow> 0003 0007` naming two runs outright has to keep doing.
+ */
+export interface RunFilter {
+  scenario?: ScenarioName;
+  variant?: VariantName;
+}
 
 /** A running report server. `close()` releases the port and removes `serve.json`. */
 export interface ServeHandle {
@@ -63,22 +80,22 @@ export interface StorePort {
   /** Flow names that have a spec or at least one run. */
   listFlows(): Promise<string[]>;
   /**
-   * Timeline rows, oldest first, optionally narrowed to one scenario (mocking spec §7). The filter
-   * belongs to the store rather than the CLI because `findingsCount` is measured against the
-   * previous run *of the same scenario*, which a caller filtering the returned array cannot undo.
+   * Timeline rows, oldest first, optionally narrowed (mocking spec §7, variants spec §5). The
+   * filter belongs to the store rather than the CLI because `findingsCount` is measured against the
+   * previous run *of the same identity*, which a caller filtering the returned array cannot undo.
    */
-  listRuns(flow: string, scenario?: ScenarioName): Promise<RunSummary[]>;
+  listRuns(flow: string, filter?: RunFilter): Promise<RunSummary[]>;
   /**
    * Defaults to N-1 vs N when base/head are omitted (spec §9). `scenario` narrows that default to
    * runs captured under it, because "did the empty state break between these revisions?" needs
    * like-for-like pairs (mocking spec §6, D12); `SCENARIO_NONE` narrows it to runs that had none.
+   *
+   * `variant` is different in kind, and deliberately so (D24): for a variant the question is not
+   * regression but the proposal itself, so the default pair is the newest run of that variant
+   * against the nearest run *without* one at the same revision. The store resolves that, because
+   * which runs exist at which revision is store knowledge.
    */
-  resolvePair(
-    flow: string,
-    base?: RunId,
-    head?: RunId,
-    scenario?: ScenarioName,
-  ): Promise<PairRef>;
+  resolvePair(flow: string, base?: RunId, head?: RunId, filter?: RunFilter): Promise<PairRef>;
   /** Absolute path of `runs/<flow>/<runId>`. */
   runDir(flow: string, runId: RunId): string;
   /** Absolute path of `diffs/<flow>/<base>..<head>/findings.json`. */
@@ -125,6 +142,26 @@ export interface Ports {
    * feature's user interface, so the CLI prints them verbatim.
    */
   parseScenarioFile(file: string): Promise<ValidationResult<ScenarioSpec>>;
+
+  /*
+   * The variant edge (`variant/index.ts`), the exact shape of the scenario edge above and for the
+   * same reasons: `.visual-diff/variants/<name>.yaml` is defined by the variants spec (§4
+   * "Storage") and read from git history at the target SHA by the module that parses it.
+   */
+
+  /** Absolute path of `.visual-diff/variants`. Async only because the edge is loaded on first use. */
+  variantsDir(config: Config): Promise<string>;
+  /** Absolute path of `.visual-diff/variants/<name>.yaml`. */
+  variantFile(config: Config, name: VariantName): Promise<string>;
+  /** Variant names with a spec file on disk, sorted. */
+  listVariants(config: Config): Promise<VariantName[]>;
+  /**
+   * Parse + validate a variant file without running it (variants spec §6, §7). Same contract as
+   * {@link parseFlowFile}: issues carry file, line and offending key, and the messages are the
+   * feature's user interface, so the CLI prints them verbatim.
+   */
+  parseVariantFile(file: string): Promise<ValidationResult<VariantSpec>>;
+
   /** `store/index.ts#openStore`. */
   openStore(config: Config): Promise<StorePort>;
   /** `runner/index.ts#runFlow`. */

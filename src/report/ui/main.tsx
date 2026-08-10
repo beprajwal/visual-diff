@@ -15,6 +15,7 @@ import { Header } from './components/Header.js';
 import { PairBanner } from './components/PairBanner.js';
 import { RightRail } from './components/RightRail.js';
 import { ScenarioNotes } from './components/ScenarioNotes.js';
+import { VariantNotes } from './components/VariantNotes.js';
 import { ViewportTabs } from './components/ViewportTabs.js';
 import { Warnings } from './components/Warnings.js';
 import { createClient, type ApiClient } from './client.js';
@@ -22,7 +23,13 @@ import { buildFilmstrip, findingsForStep, viewportDiffOf, viewportsOf, visibleCe
 import { KEY_BINDINGS, resolveKey } from './keys.js';
 import { formatHash, parseHash } from './route.js';
 import { pairId, screenshotPath } from './paths.js';
-import { attributionForRun, initialState, reduce, routeOf } from './state.js';
+import {
+  attributionForRun,
+  initialState,
+  reduce,
+  routeOf,
+  variantAttributionForRun,
+} from './state.js';
 import { STYLES } from './styles.js';
 
 export interface AppProps {
@@ -111,6 +118,29 @@ export function App({ client }: AppProps) {
     };
   }, [client, flow, base, head]);
 
+  /*
+   * Variant attribution for both ends of the pair (variants spec §7), fetched per run for the same
+   * reasons and swallowed on failure for the same one: an annotation that could not be loaded must
+   * never replace the diff the reviewer came for. A separate request from the scenario attribution
+   * because a run can carry both axes at once and the two answer different questions — what changed
+   * the responses, and what changed the rendered page.
+   */
+  useEffect(() => {
+    if (!flow || !base || !head) return undefined;
+    let cancelled = false;
+    for (const runId of base === head ? [head] : [base, head]) {
+      client
+        .variantAttribution(flow, runId)
+        .then((attribution) => {
+          if (!cancelled) dispatch({ type: 'variant-attribution-loaded', attribution });
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [client, flow, base, head]);
+
   /* ------------------------------------------------------------ live channel */
 
   useEffect(
@@ -160,6 +190,14 @@ export function App({ client }: AppProps) {
   const headAttribution = useMemo(
     () => attributionForRun(state, state.head),
     [state.attribution, state.head],
+  );
+  const baseVariantAttribution = useMemo(
+    () => variantAttributionForRun(state, state.base),
+    [state.variantAttribution, state.base],
+  );
+  const headVariantAttribution = useMemo(
+    () => variantAttributionForRun(state, state.head),
+    [state.variantAttribution, state.head],
   );
   const viewportCounts = useMemo(() => {
     const counts: Record<ViewportId, number> = {};
@@ -374,6 +412,13 @@ export function App({ client }: AppProps) {
             <ScenarioNotes
               base={baseAttribution[state.step]}
               head={headAttribution[state.step]}
+            />
+          ) : null}
+
+          {state.step !== null ? (
+            <VariantNotes
+              base={baseVariantAttribution[state.step]}
+              head={headVariantAttribution[state.step]}
             />
           ) : null}
 

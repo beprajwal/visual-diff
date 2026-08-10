@@ -21,8 +21,24 @@ import {
   type ViewportId,
 } from '../../types.js';
 import type { RunAttribution, StepAttribution } from '../attribution.js';
+import {
+  VARIANT_NONE,
+  type RunVariantAttribution,
+  type StepVariantAttribution,
+  type VariantName,
+  type VariantRuleHit,
+  type VariantVerb,
+} from '../variant.js';
 
-export function makeRunMeta(runId: string, patch: Partial<RunMeta> = {}): RunMeta {
+/**
+ * `RunMeta` and `RunSummary` as this slice's tests need them: with the variant axis (variants spec
+ * §5) declared optional, so the default fixture is what a record written *before* variants existed
+ * looks like — no key at all — and a test that cares passes one explicitly.
+ */
+export type FakeRunMeta = RunMeta & { variant?: VariantName; kept?: boolean };
+export type FakeRunSummary = RunSummary & { variant?: VariantName; kept?: boolean };
+
+export function makeRunMeta(runId: string, patch: Partial<FakeRunMeta> = {}): FakeRunMeta {
   return {
     runId,
     flow: 'checkout',
@@ -57,8 +73,8 @@ export function makeRunMeta(runId: string, patch: Partial<RunMeta> = {}): RunMet
 export function makeRun(
   runId: string,
   revision: Partial<RunSummary['revision']> = {},
-  patch: Partial<RunSummary> = {},
-): RunSummary {
+  patch: Partial<FakeRunSummary> = {},
+): FakeRunSummary {
   return {
     runId,
     flow: 'checkout',
@@ -191,4 +207,42 @@ export function makeAttribution(
   patch: Partial<RunAttribution> = {},
 ): RunAttribution {
   return { flow: 'checkout', runId, scenario: SCENARIO_NONE, steps: [], ...patch };
+}
+
+/* ------------------------------------------------------------------ variants (§5, §7) */
+
+export function makeVariantHit(
+  ruleId: string,
+  patch: Partial<VariantRuleHit> = {},
+): VariantRuleHit {
+  return {
+    variant: 'denser-forecast',
+    ruleId,
+    verb: 'style' as VariantVerb,
+    elements: 1,
+    viewports: ['1280x800'],
+    ...patch,
+  };
+}
+
+export function makeStepVariantAttribution(
+  step: StepId,
+  patch: Partial<StepVariantAttribution> = {},
+): StepVariantAttribution {
+  return { step, rules: [], ...patch };
+}
+
+export function makeVariantAttribution(
+  runId: string,
+  patch: Partial<RunVariantAttribution> = {},
+): RunVariantAttribution {
+  return {
+    flow: 'checkout',
+    runId,
+    variant: VARIANT_NONE,
+    steps: [],
+    unmatchedRules: [],
+    revertedRules: [],
+    ...patch,
+  };
 }

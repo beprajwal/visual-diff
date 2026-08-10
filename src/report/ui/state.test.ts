@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FlowDiffEntry, RunCompletedEvent, RunSummary } from '../../types.js';
-import { ALL_SCENARIOS } from './derive.js';
+import { ALL_SCENARIOS, ALL_VARIANTS } from './derive.js';
 import {
   type Action,
   type AppState,
@@ -13,6 +13,7 @@ import {
   newestRunId,
   reduce,
   routeOf,
+  variantAttributionForRun,
   visibleRuns,
 } from './state.js';
 import {
@@ -22,6 +23,9 @@ import {
   makeRun,
   makeStepAttribution,
   makeStepDiff,
+  makeStepVariantAttribution,
+  makeVariantAttribution,
+  makeVariantHit,
   makeViewportDiff,
 } from './test-fixtures.js';
 
@@ -713,5 +717,189 @@ describe('attribution (mocking §8)', () => {
       { type: 'attribution-loaded', attribution: makeAttribution('0004', { scenario: 'b' }) },
     );
     expect(Object.keys(state.attribution).sort()).toEqual(['0002', '0004']);
+  });
+});
+
+/* ------------------------------------------------------------------ variants (§5, §7) */
+
+/**
+ * A flow whose timeline carries both axes at once, which is permitted and reasonable — "the denser
+ * layout, in the empty state" (variants spec §5) — and is the case where a filter applied on one
+ * axis only would quietly show the wrong runs.
+ */
+const PROPOSALS: RunSummary[] = [
+  makeRun('0001'),
+  makeRun('0002', {}, { variant: 'denser-forecast' }),
+  makeRun('0003', {}, { scenario: 'empty-forecast' }),
+  makeRun('0004', {}, { scenario: 'empty-forecast', variant: 'denser-forecast' }),
+  makeRun('0005', {}, { variant: 'sidebar-upsell', kept: true }),
+];
+
+function proposals(): AppState {
+  return apply(
+    initialState(),
+    { type: 'flows-loaded', flows: [{ name: 'checkout', runs: 5, latest: '0005' }] },
+    { type: 'runs-loaded', flow: 'checkout', runs: PROPOSALS },
+  );
+}
+
+describe('the variant filter (variants §5)', () => {
+  it('starts off, so a reviewer who has never written a variant sees every run', () => {
+    const state = proposals();
+    expect(state.variant).toBe(ALL_VARIANTS);
+    expect(visibleRuns(state).map((r) => r.runId)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+    ]);
+  });
+
+  it('re-defaults the pair to that variant’s runs, and `none` selects the unvaried ones', () => {
+    const denser = apply(proposals(), { type: 'select-variant', variant: 'denser-forecast' });
+    expect(visibleRuns(denser).map((r) => r.runId)).toEqual(['0002', '0004']);
+    expect(denser).toMatchObject({ base: '0002', head: '0004', following: true, diffStale: true });
+
+    const plain = apply(proposals(), { type: 'select-variant', variant: 'none' });
+    expect(visibleRuns(plain).map((r) => r.runId)).toEqual(['0001', '0003']);
+  });
+
+  /** Run identity is `(flow, revision, scenario, variant)`: the filters narrow together. */
+  it('composes with the scenario filter rather than replacing it', () => {
+    const state = apply(
+      proposals(),
+      { type: 'select-scenario', scenario: 'empty-forecast' },
+      { type: 'select-variant', variant: 'denser-forecast' },
+    );
+    expect(visibleRuns(state).map((r) => r.runId)).toEqual(['0004']);
+    expect(state).toMatchObject({ scenario: 'empty-forecast', variant: 'denser-forecast' });
+  });
+
+  it('keeps a pair that survives the new filter rather than re-selecting one', () => {
+    const state = apply(
+      proposals(),
+      { type: 'select-pair', base: '0002', head: '0004' },
+      { type: 'select-variant', variant: 'denser-forecast' },
+    );
+    expect(state).toMatchObject({ base: '0002', head: '0004', following: true });
+  });
+
+  it('clears the pair when the filter leaves nothing to compare', () => {
+    const state = apply(proposals(), { type: 'select-variant', variant: 'nothing-here' });
+    expect(state).toMatchObject({ base: null, head: null, diff: null, diffStale: false });
+    expect(visibleRuns(state)).toEqual([]);
+  });
+
+  it('steps through the filtered history, not in and out of other proposals', () => {
+    const state = apply(
+      proposals(),
+      { type: 'select-variant', variant: 'denser-forecast' },
+      { type: 'run-older' },
+    );
+    expect(state).toMatchObject({ base: '0002', head: '0002' });
+  });
+
+  it('drops the filter when the flow changes, since the variant may not exist in the next one', () => {
+    const state = apply(
+      proposals(),
+      { type: 'select-variant', variant: 'denser-forecast' },
+      { type: 'select-flow', flow: 'settings' },
+    );
+    expect(state.variant).toBe(ALL_VARIANTS);
+    expect(state.variantAttribution).toEqual({});
+  });
+
+  it('is a no-op when the same variant is re-selected', () => {
+    const state = apply(proposals(), { type: 'select-variant', variant: 'denser-forecast' });
+    expect(apply(state, { type: 'select-variant', variant: 'denser-forecast' })).toBe(state);
+  });
+
+  it('round-trips through the route, omitting the default', () => {
+    expect(routeOf(proposals()).variant).toBeUndefined();
+    const filtered = apply(proposals(), { type: 'select-variant', variant: 'denser-forecast' });
+    expect(routeOf(filtered).variant).toBe('denser-forecast');
+    expect(initialState({ variant: 'denser-forecast' }).variant).toBe('denser-forecast');
+  });
+});
+
+describe('the live channel under a variant filter (§9, variants §5)', () => {
+  function variantRunEvent(runId: string, variant?: string): RunCompletedEvent {
+    return {
+      type: 'run',
+      ts: '2026-08-10T11:00:00Z',
+      flow: 'checkout',
+      run: variant === undefined ? makeRun(runId) : makeRun(runId, {}, { variant }),
+    };
+  }
+
+  it('advances to a new run of the variant being followed', () => {
+    const state = apply(
+      proposals(),
+      { type: 'select-variant', variant: 'denser-forecast' },
+      { type: 'server-event', event: variantRunEvent('0006', 'denser-forecast') },
+    );
+    expect(state).toMatchObject({ base: '0004', head: '0006', following: true, diffStale: true });
+  });
+
+  it('adds a run of another variant to the timeline without moving or badging', () => {
+    const before = apply(proposals(), { type: 'select-variant', variant: 'denser-forecast' });
+    const after = apply(before, { type: 'server-event', event: variantRunEvent('0006') });
+
+    expect(after.runs.map((r) => r.runId)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+      '0006',
+    ]);
+    expect(after).toMatchObject({ base: '0002', head: '0004', pendingRun: null });
+  });
+});
+
+describe('variant attribution (variants §7)', () => {
+  it('indexes a run’s variant attribution by step id', () => {
+    const attribution = makeVariantAttribution('0004', {
+      variant: 'denser-forecast',
+      steps: [
+        makeStepVariantAttribution('forecast', {
+          rules: [makeVariantHit('tighter-cards', { elements: 12 })],
+        }),
+      ],
+    });
+    const state = apply(proposals(), { type: 'variant-attribution-loaded', attribution });
+
+    expect(variantAttributionForRun(state, '0004')['forecast']?.rules[0]?.ruleId).toBe(
+      'tighter-cards',
+    );
+    expect(variantAttributionForRun(state, '0004')['home']).toBeUndefined();
+  });
+
+  it('is an empty map for a run whose variant attribution has not been fetched', () => {
+    expect(variantAttributionForRun(proposals(), '0002')).toEqual({});
+    expect(variantAttributionForRun(proposals(), null)).toEqual({});
+  });
+
+  /**
+   * The proposal pair is exactly the case where the two ends differ: one ran a variant and the
+   * other deliberately did not, so folding them together would lose the side that explains the
+   * difference.
+   */
+  it('keeps both ends of a pair, and stays separate from the scenario attribution', () => {
+    const state = apply(
+      proposals(),
+      {
+        type: 'variant-attribution-loaded',
+        attribution: makeVariantAttribution('0001'),
+      },
+      {
+        type: 'variant-attribution-loaded',
+        attribution: makeVariantAttribution('0002', { variant: 'denser-forecast' }),
+      },
+      { type: 'attribution-loaded', attribution: makeAttribution('0002', { scenario: 'a' }) },
+    );
+    expect(Object.keys(state.variantAttribution).sort()).toEqual(['0001', '0002']);
+    expect(Object.keys(state.attribution)).toEqual(['0002']);
   });
 });

@@ -17,6 +17,7 @@ import type {
   ServerEvent,
 } from '../../types.js';
 import type { RunAttribution } from '../attribution.js';
+import type { RunVariantAttribution } from '../variant.js';
 import { blobUrl } from './paths.js';
 
 const TOKEN_STORAGE_KEY = 'vdiff.token';
@@ -56,6 +57,8 @@ export interface ApiClient {
   diff(flow: string, base: RunId, head: RunId): Promise<DiffResponse>;
   /** What the scenario layer did to each step of one run (mocking spec §8). */
   attribution(flow: string, runId: RunId): Promise<RunAttribution>;
+  /** What the variant layer did to each step of one run (variants spec §7). */
+  variantAttribution(flow: string, runId: RunId): Promise<RunVariantAttribution>;
   postFeedback(input: FeedbackInput): Promise<FeedbackEntry>;
   /** Absolute URL for a blob path relative to the `.visual-diff` directory. */
   blob(storePath: string): string;
@@ -127,6 +130,12 @@ export function createClient(options: ClientOptions = {}): ApiClient {
     attribution(flow, runId) {
       return getJson<RunAttribution>(
         `/attribution/${encodeURIComponent(flow)}/${encodeURIComponent(runId)}`,
+      );
+    },
+
+    variantAttribution(flow, runId) {
+      return getJson<RunVariantAttribution>(
+        `/variant/${encodeURIComponent(flow)}/${encodeURIComponent(runId)}`,
       );
     },
 

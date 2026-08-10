@@ -202,6 +202,13 @@ select {
 /* A mock-only run has no recording behind it, so it is badged as loudly as an unstable one. */
 .badge.mock { color: var(--sev-high); border-color: var(--sev-high); }
 .badge.scenario { color: var(--accent); border-color: var(--accent); }
+/*
+ * A variant run is a proposal, not a regression capture. It is badged as plainly as a scenario —
+ * loud enough that nobody mistakes it for the shipped UI, calm enough that it does not read as a
+ * fault, because producing one is the ordinary use of the feature (D24).
+ */
+.badge.variant { color: var(--accent); border-color: var(--accent); }
+.badge.kept { color: var(--fg-dim); }
 
 .live { display: flex; align-items: center; gap: 5px; color: var(--fg-dim); }
 .live .dot {
@@ -569,6 +576,29 @@ select {
 }
 .scenario-note.high { border-left-color: var(--sev-high); }
 .scenario-note code { color: var(--fg); word-break: break-all; }
+
+/* ------------------------------------------------------------- variants (§5, §7) */
+
+/*
+ * The proposal banner. "note" is a severity of its own rather than a reuse of "med", because the
+ * pairing it describes is the normal result of running a variant: it states what was compared,
+ * without the stripe that means "the findings below are not what they look like".
+ */
+.pair-banner.note { border-left-color: var(--accent); }
+.pair-banner.note .badge { color: var(--accent); border-color: var(--accent); }
+
+/* Variant attribution is step-local, exactly as scenario attribution is, and renders beside it. */
+.variant-notes { display: grid; gap: 3px; margin: 8px 10px 0; }
+.variant-note {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  border-left: 2px solid var(--accent);
+  padding-left: 6px;
+  color: var(--fg-dim);
+}
+.variant-note code { color: var(--fg); word-break: break-all; }
+.variant-note .badge.verb { color: var(--accent); border-color: var(--accent); }
 
 .feedback {
   position: fixed;

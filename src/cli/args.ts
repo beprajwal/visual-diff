@@ -22,6 +22,7 @@ import {
   type ScenarioName,
   type ViewportId,
 } from '../types.js';
+import { VARIANT_NONE, type VariantName } from './variant.js';
 
 export type Invocation =
   | { kind: 'help'; topic?: string; json: boolean }
@@ -32,6 +33,9 @@ export type Invocation =
   | { kind: 'scenario-new'; name: ScenarioName; json: boolean }
   | { kind: 'scenario-check'; name: ScenarioName; json: boolean }
   | { kind: 'scenario-list'; json: boolean }
+  | { kind: 'variant-new'; name: VariantName; json: boolean }
+  | { kind: 'variant-check'; name: VariantName; json: boolean }
+  | { kind: 'variant-list'; json: boolean }
   | {
       kind: 'run';
       flow: string;
@@ -40,11 +44,26 @@ export type Invocation =
       network?: NetworkMode;
       /** Capture under this scenario (mocking spec §7). Never `none`: that is the absence of one. */
       scenario?: ScenarioName;
+      /** Capture under this variant (variants spec §6). Never `none`, for the same reason. */
+      variant?: VariantName;
+      /** Promote this variant run into the permanent timeline (D24). Only legal with a variant. */
+      keep: boolean;
       continueOnError: boolean;
       noScrub: boolean;
       json: boolean;
     }
-  | { kind: 'runs'; flow: string; scenario?: ScenarioName; json: boolean }
+  | {
+      kind: 'runs';
+      flow: string;
+      scenario?: ScenarioName;
+      /**
+       * List the variant runs instead of the regression timeline (variants spec §5). Variant runs
+       * are exploratory and live in their own retention bucket, so the default timeline excludes
+       * them; this is how you go and look at them.
+       */
+      variants: boolean;
+      json: boolean;
+    }
   | {
       kind: 'diff';
       flow: string;
@@ -52,6 +71,8 @@ export type Invocation =
       head?: RunId;
       /** Restrict run selection to this scenario; `none` selects runs captured without one. */
       scenario?: ScenarioName;
+      /** Restrict run selection to this variant; `none` selects runs captured without one. */
+      variant?: VariantName;
       json: boolean;
     }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
@@ -134,13 +155,23 @@ export const COMMANDS: Record<string, CommandSpec> = {
     minPositionals: 1,
     maxPositionals: 2,
   },
+  variant: {
+    usage: 'vdiff variant new|check <name> | vdiff variant list',
+    summary: 'scaffold / validate / enumerate proposed UI changes',
+    // `list` takes no name, exactly as under `scenario`.
+    flags: flags(),
+    minPositionals: 1,
+    maxPositionals: 2,
+  },
   run: {
     usage:
-      'vdiff run <flow> [--at <ref>] [--scenario <name>] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub]',
+      'vdiff run <flow> [--at <ref>] [--scenario <name>] [--variant <name>] [--keep] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub]',
     summary: 'replay a flow at the working tree or a historical revision',
     flags: flags({
       at: { type: 'string' },
       scenario: { type: 'string' },
+      variant: { type: 'string' },
+      keep: { type: 'boolean' },
       viewport: { type: 'list' },
       record: { type: 'boolean' },
       'no-net': { type: 'boolean' },
@@ -151,16 +182,16 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 1,
   },
   runs: {
-    usage: 'vdiff runs <flow> [--scenario <name>]',
+    usage: 'vdiff runs <flow> [--scenario <name>] [--variants]',
     summary: 'timeline: SHA, dirty, scenario, status, findings count',
-    flags: flags({ scenario: { type: 'string' } }),
+    flags: flags({ scenario: { type: 'string' }, variants: { type: 'boolean' } }),
     minPositionals: 1,
     maxPositionals: 1,
   },
   diff: {
-    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>]',
+    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>]',
     summary: 'compute and print summary (defaults: N-1 vs N)',
-    flags: flags({ scenario: { type: 'string' } }),
+    flags: flags({ scenario: { type: 'string' }, variant: { type: 'string' } }),
     minPositionals: 1,
     maxPositionals: 3,
   },
@@ -232,6 +263,12 @@ export function commandLabel(invocation: Invocation): string {
       return 'scenario check';
     case 'scenario-list':
       return 'scenario list';
+    case 'variant-new':
+      return 'variant new';
+    case 'variant-check':
+      return 'variant check';
+    case 'variant-list':
+      return 'variant list';
     default:
       return invocation.kind;
   }
@@ -245,48 +282,71 @@ function fail(command: string, code: string, message: string, hint?: string): Pa
 
 const VIEWPORT_RE = /^[1-9]\d{0,4}x[1-9]\d{0,4}$/;
 const RUN_ID_RE = /^\d{1,8}$/;
-/** A scenario name becomes a filename under `.visual-diff/scenarios/`, so it is restricted here. */
-const SCENARIO_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
-const SCENARIO_NAME_HINT = 'use letters, digits, dot, dash or underscore, e.g. empty-forecast';
+/**
+ * A scenario or variant name becomes a filename under `.visual-diff/`, so it is restricted here.
+ * One regex for both: the two dimensions are stored the same way and a name legal as one and
+ * illegal as the other would be a difference nobody could explain.
+ */
+const SPEC_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 
 /**
- * How a scenario name is being used, which decides whether the reserved name `none` is legal.
+ * How a name is being used, which decides whether the reserved name `none` is legal.
  *
- * `none` is what `meta.json` records for a run captured *without* a scenario (mocking spec §6, §11).
- * As a filename or a capture argument it is therefore meaningless and rejected; as a *filter* over
- * stored runs it is the real recorded value, so `vdiff runs checkout --scenario none` selects
- * exactly the runs that had no scenario. Silently accepting it in the first two roles would create
- * a scenario nobody can tell apart from its own absence.
+ * `none` is what `meta.json` records for a run captured *without* a scenario (mocking spec §6, §11)
+ * or without a variant (variants spec §5). As a filename or a capture argument it is therefore
+ * meaningless and rejected; as a *filter* over stored runs it is the real recorded value, so
+ * `vdiff runs checkout --scenario none` selects exactly the runs that had no scenario. Silently
+ * accepting it in the first two roles would create a scenario — or a variant — that nobody can tell
+ * apart from its own absence.
  */
-type ScenarioNameRole = 'capture' | 'file' | 'filter';
+type SpecNameRole = 'capture' | 'file' | 'filter';
+
+/** Which axis of run identity a name belongs to. The messages name it, so it travels explicitly. */
+type SpecDimension = 'scenario' | 'variant';
+
+const DIMENSION_HINT: Record<SpecDimension, string> = {
+  scenario: 'use letters, digits, dot, dash or underscore, e.g. empty-forecast',
+  variant: 'use letters, digits, dot, dash or underscore, e.g. denser-forecast',
+};
 
 /** Returns a failure outcome when the name is unusable in this role, or null when it is fine. */
-function checkScenarioName(
+function checkSpecName(
+  dimension: SpecDimension,
   command: string,
   name: string,
-  role: ScenarioNameRole,
+  role: SpecNameRole,
 ): ParseOutcome | null {
-  if (name === SCENARIO_NONE) {
+  const reserved = dimension === 'scenario' ? SCENARIO_NONE : VARIANT_NONE;
+  if (name === reserved) {
     if (role === 'filter') return null;
     return fail(
       command,
-      'reserved-scenario-name',
-      `'${SCENARIO_NONE}' is the reserved scenario name for a run captured without one`,
+      `reserved-${dimension}-name`,
+      `'${reserved}' is the reserved ${dimension} name for a run captured without one`,
       role === 'capture'
-        ? `omit --scenario to capture without a scenario`
-        : `pick another name; '${SCENARIO_NONE}' can never be a scenario file`,
+        ? `omit --${dimension} to capture without a ${dimension}`
+        : `pick another name; '${reserved}' can never be a ${dimension} file`,
     );
   }
-  if (name.length === 0 || !SCENARIO_NAME_RE.test(name) || name.includes('..')) {
+  if (name.length === 0 || !SPEC_NAME_RE.test(name) || name.includes('..')) {
     return fail(
       command,
-      'invalid-scenario-name',
-      `invalid scenario name '${name}'`,
-      SCENARIO_NAME_HINT,
+      `invalid-${dimension}-name`,
+      `invalid ${dimension} name '${name}'`,
+      DIMENSION_HINT[dimension],
     );
   }
   return null;
 }
+
+const checkScenarioName = (
+  command: string,
+  name: string,
+  role: SpecNameRole,
+): ParseOutcome | null => checkSpecName('scenario', command, name, role);
+
+const checkVariantName = (command: string, name: string, role: SpecNameRole): ParseOutcome | null =>
+  checkSpecName('variant', command, name, role);
 
 /**
  * `--json` is read straight off argv before parsing, so a *parse* failure can still be reported as
@@ -537,6 +597,47 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       };
     }
 
+    case 'variant': {
+      const sub = positionals[0] as string;
+      if (sub === 'list') {
+        if (positionals.length > 1) {
+          return fail(
+            'variant',
+            'unexpected-argument',
+            `'variant list' enumerates every variant and takes no name`,
+            spec.usage,
+          );
+        }
+        return { ok: true, value: { kind: 'variant-list', json } };
+      }
+      if (sub !== 'new' && sub !== 'check') {
+        return fail(
+          'variant',
+          'unknown-subcommand',
+          `unknown subcommand 'variant ${sub}'`,
+          spec.usage,
+        );
+      }
+      const name = positionals[1];
+      if (name === undefined) {
+        return fail(
+          'variant',
+          'missing-argument',
+          `'variant ${sub}' requires a variant name`,
+          spec.usage,
+        );
+      }
+      const invalid = checkVariantName('variant', name, 'file');
+      if (invalid !== null) return invalid;
+      return {
+        ok: true,
+        value:
+          sub === 'new'
+            ? { kind: 'variant-new', name, json }
+            : { kind: 'variant-check', name, json },
+      };
+    }
+
     case 'run': {
       const record = bool(values, 'record');
       const noNet = bool(values, 'no-net');
@@ -563,6 +664,23 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         const invalid = checkScenarioName('run', rawScenario, 'capture');
         if (invalid !== null) return invalid;
       }
+      const rawVariant = values['variant'];
+      if (typeof rawVariant === 'string') {
+        const invalid = checkVariantName('run', rawVariant, 'capture');
+        if (invalid !== null) return invalid;
+      }
+      const keep = bool(values, 'keep');
+      // `--keep` promotes a variant run out of its own retention bucket and into the permanent
+      // timeline (D24). A run captured without a variant is already in that timeline, so asking to
+      // keep it is a misunderstanding of what the flag does rather than a harmless no-op.
+      if (keep && typeof rawVariant !== 'string') {
+        return fail(
+          'run',
+          'keep-without-variant',
+          "'--keep' promotes a variant run into the permanent timeline, and this run has no variant",
+          'pass --variant <name>, or drop --keep: runs without a variant are kept already',
+        );
+      }
       const rawViewports = values['viewport'];
       let viewports: ViewportId[] | undefined;
       if (Array.isArray(rawViewports)) {
@@ -582,6 +700,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const invocation: Extract<Invocation, { kind: 'run' }> = {
         kind: 'run',
         flow: positionals[0] as string,
+        keep,
         continueOnError: bool(values, 'continue-on-error'),
         noScrub: bool(values, 'no-scrub'),
         json,
@@ -589,6 +708,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const at = values['at'];
       if (typeof at === 'string') invocation.at = at;
       if (typeof rawScenario === 'string') invocation.scenario = rawScenario;
+      if (typeof rawVariant === 'string') invocation.variant = rawVariant;
       if (viewports !== undefined) invocation.viewports = viewports;
       if (record) invocation.network = 'record';
       if (noNet) invocation.network = 'off';
@@ -599,6 +719,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const invocation: Extract<Invocation, { kind: 'runs' }> = {
         kind: 'runs',
         flow: positionals[0] as string,
+        variants: bool(values, 'variants'),
         json,
       };
       const scenario = values['scenario'];
@@ -625,6 +746,12 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         const invalid = checkScenarioName('diff', scenario, 'filter');
         if (invalid !== null) return invalid;
         invocation.scenario = scenario;
+      }
+      const variant = values['variant'];
+      if (typeof variant === 'string') {
+        const invalid = checkVariantName('diff', variant, 'filter');
+        if (invalid !== null) return invalid;
+        invocation.variant = variant;
       }
       return { ok: true, value: invocation };
     }

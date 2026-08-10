@@ -1,16 +1,30 @@
 /**
- * Header: flow selector, scenario selector, base/head run pickers showing SHA, ref, dirty badge and
- * timestamp, plus the live indicator and the "run NNNN available" badge that appears instead of
- * yanking a pinned reviewer to a newer run (spec §9).
+ * Header: flow selector, scenario selector, variant selector, base/head run pickers showing SHA,
+ * ref, dirty badge and timestamp, plus the live indicator and the "run NNNN available" badge that
+ * appears instead of yanking a pinned reviewer to a newer run (spec §9).
  *
- * The scenario selector sits between the flow and the run pickers because that is the order in
- * which the three narrow: a flow, then which state of it, then which two captures of that state
- * (mocking spec §7). It only appears once a flow has more than one scenario in its timeline —
- * a control with a single option is furniture.
+ * The scenario and variant selectors sit between the flow and the run pickers because that is the
+ * order in which they narrow: a flow, then which state of it, then which proposal of that state,
+ * then which two captures (mocking spec §7; variants spec §5). Each appears only once a flow has
+ * more than one value on that axis — a control with a single option is furniture.
+ *
+ * A variant run is badged on the picker, and a promoted one says so, because "same revision, one of
+ * these is a proposal" is the fact that explains every finding below it (D24). Reading it off the
+ * run's own row rather than off the loaded diff means it is right even before the diff arrives.
  */
 
 import { SCENARIO_NONE, type RunMeta, type RunSummary } from '../../../types.js';
-import { ALL_SCENARIOS, runLabel, scenarioLabel, scenariosOf } from '../derive.js';
+import { isKept, VARIANT_NONE, variantOf } from '../../variant.js';
+import {
+  ALL_SCENARIOS,
+  ALL_VARIANTS,
+  isEphemeralRun,
+  runLabel,
+  scenarioLabel,
+  scenariosOf,
+  variantLabel,
+  variantsOf,
+} from '../derive.js';
 import type { Action, AppState } from '../state.js';
 import { visibleRuns } from '../state.js';
 
@@ -36,10 +50,13 @@ function RunPicker(props: {
   meta?: RunMeta | null;
   /** True when the scenario filter is off, so the run's own scenario is worth naming. */
   showScenario: boolean;
+  /** True when the variant filter is off, so the run's own variant is worth naming. */
+  showVariant: boolean;
   onChange: (runId: string) => void;
 }) {
   const run = props.runs.find((r) => r.runId === props.value) ?? null;
   const mockOnly = props.meta?.network === 'mock';
+  const variant = run === null ? VARIANT_NONE : variantOf(run);
   return (
     <div class="run-pick">
       <label for={`pick-${props.label}`}>{props.label}</label>
@@ -81,6 +98,28 @@ function RunPicker(props: {
           {run.scenario}
         </span>
       ) : null}
+      {props.showVariant && variant !== VARIANT_NONE ? (
+        <span
+          class="badge variant"
+          title={
+            `captured under variant ${variant}: a proposal applied to the rendered page, not a` +
+            ' code change. ' +
+            (run !== null && isEphemeralRun(run)
+              ? 'Exploratory — retained in the variant bucket, so it never evicts capture history.'
+              : 'Promoted with --keep into the permanent timeline.')
+          }
+        >
+          {variant}
+        </span>
+      ) : null}
+      {run && isKept(run) ? (
+        <span
+          class="badge kept"
+          title="promoted into the permanent timeline with --keep, so retention treats it as an ordinary run"
+        >
+          kept
+        </span>
+      ) : null}
       {run?.revision.dirty ? (
         <span class="badge dirty" title="replayed against an uncommitted working tree">
           dirty
@@ -108,8 +147,10 @@ function RunPicker(props: {
 export function Header({ state, dispatch }: HeaderProps) {
   const { pendingRun } = state;
   const scenarios = scenariosOf(state.runs);
+  const variants = variantsOf(state.runs);
   const runs = visibleRuns(state);
   const filtered = state.scenario !== ALL_SCENARIOS;
+  const variantFiltered = state.variant !== ALL_VARIANTS;
 
   // `network` lives on RunMeta, not on the timeline row, so the mock badge can only be shown for
   // the pair whose diff is loaded — and only while the pickers still name that pair. A stale badge
@@ -163,12 +204,35 @@ export function Header({ state, dispatch }: HeaderProps) {
         </div>
       ) : null}
 
+      {variants.length > 1 ? (
+        <div class="field">
+          <label for="variant-select">variant</label>
+          <select
+            id="variant-select"
+            value={state.variant}
+            title="narrow the run pickers to one proposed UI change (variants spec §5)"
+            onChange={(event: Event) => {
+              const variant = (event.currentTarget as HTMLSelectElement).value;
+              dispatch({ type: 'select-variant', variant });
+            }}
+          >
+            <option value={ALL_VARIANTS}>all variants</option>
+            {variants.map((name) => (
+              <option key={name} value={name}>
+                {variantLabel(name)}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
       <RunPicker
         label="base"
         value={state.base}
         runs={runs}
         meta={baseMeta}
         showScenario={!filtered}
+        showVariant={!variantFiltered}
         onChange={(base) => dispatch({ type: 'select-base', base })}
       />
       <RunPicker
@@ -177,6 +241,7 @@ export function Header({ state, dispatch }: HeaderProps) {
         runs={runs}
         meta={headMeta}
         showScenario={!filtered}
+        showVariant={!variantFiltered}
         onChange={(head) => dispatch({ type: 'select-head', head })}
       />
 

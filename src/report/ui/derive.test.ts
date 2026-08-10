@@ -3,21 +3,29 @@ import { describe, expect, it } from 'vitest';
 import type { Finding, FlowDiffEntry } from '../../types.js';
 import {
   ALL_SCENARIOS,
+  ALL_VARIANTS,
   alignFlowDiff,
   buildFilmstrip,
   findingsForStep,
   groupBySeverity,
+  isEphemeralRun,
+  isHighSeverityWarning,
   isMockOnly,
   pairBanners,
   pairLabels,
   runIndex,
   runLabel,
   runsForScenario,
+  runsForVariant,
   scenarioLabel,
   scenarioNoteRows,
   scenariosOf,
   sortFindings,
   topSeverity,
+  variantBanners,
+  variantLabel,
+  variantNoteRows,
+  variantsOf,
   viewportsOf,
   visibleCells,
 } from './derive.js';
@@ -26,8 +34,11 @@ import {
   makeFinding,
   makePairScenarios,
   makeRun,
+  makeRunMeta,
   makeStepAttribution,
   makeStepDiff,
+  makeStepVariantAttribution,
+  makeVariantHit,
   makeViewportDiff,
 } from './test-fixtures.js';
 
@@ -498,5 +509,191 @@ describe('scenarioNoteRows', () => {
     expect(scenarioNoteRows('head', several)[0]?.text).toBe(
       '3 requests matched no rule and were aborted — this step rendered without them',
     );
+  });
+});
+
+/* ------------------------------------------------------------------ variants (§5, §7) */
+
+describe('variantsOf', () => {
+  it('lists `none` first and the rest alphabetically, like the scenario axis', () => {
+    expect(
+      variantsOf([
+        makeRun('0001', {}, { variant: 'sidebar-upsell' }),
+        makeRun('0002'),
+        makeRun('0003', {}, { variant: 'denser-forecast' }),
+      ]),
+    ).toEqual(['none', 'denser-forecast', 'sidebar-upsell']);
+  });
+
+  /** A store with no variants must offer nothing, so the selector never appears at all. */
+  it('reports only `none` for a timeline written before variants existed', () => {
+    expect(variantsOf([makeRun('0001'), makeRun('0002')])).toEqual(['none']);
+    expect(variantsOf([])).toEqual([]);
+  });
+});
+
+describe('runsForVariant', () => {
+  const runs = [
+    makeRun('0001'),
+    makeRun('0002', {}, { variant: 'denser-forecast' }),
+    makeRun('0003', {}, { variant: 'denser-forecast', kept: true }),
+  ];
+
+  it('narrows to one proposal, and `none` selects the runs captured without one', () => {
+    expect(runsForVariant(runs, 'denser-forecast').map((run) => run.runId)).toEqual(['0002', '0003']);
+    expect(runsForVariant(runs, 'none').map((run) => run.runId)).toEqual(['0001']);
+  });
+
+  /**
+   * The report is not the CLI timeline: `vdiff runs` hides unpromoted proposals so they cannot
+   * crowd out regression history (D24), but a proposal that cannot be selected in the report cannot
+   * be looked at, which is the only reason to have run one.
+   */
+  it('offers unpromoted variant runs by default rather than hiding them as `vdiff runs` does', () => {
+    expect(runsForVariant(runs, ALL_VARIANTS).map((run) => run.runId)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+    ]);
+    expect(runsForVariant(runs, null)).toHaveLength(3);
+  });
+
+  it('still knows which of them the CLI would have hidden', () => {
+    expect(runs.map(isEphemeralRun)).toEqual([false, true, false]);
+  });
+});
+
+describe('variantLabel', () => {
+  it('renders the reserved name as an absence, not as a name', () => {
+    expect(variantLabel('none')).toBe('no variant');
+    expect(variantLabel('denser-forecast')).toBe('denser-forecast');
+  });
+});
+
+describe('variantBanners', () => {
+  const revision = { sha: 'abc1234', ref: 'main', dirty: false };
+
+  it('says nothing for a pair with no variant on either side', () => {
+    expect(variantBanners(null)).toEqual([]);
+    expect(variantBanners(makeDiff({}))).toEqual([]);
+  });
+
+  /**
+   * The decision this asserts (D24): the proposal comparison is the normal case, so it is stated at
+   * `note` severity. A `med` here would put a warning stripe on the one thing a variant run exists
+   * to produce, and a reader who learns to ignore that stripe will also ignore the two below.
+   */
+  it('states the proposal pair calmly, at `note` severity', () => {
+    const rows = variantBanners(
+      makeDiff({
+        baseMeta: makeRunMeta('0003', { revision }),
+        headMeta: makeRunMeta('0007', { revision, variant: 'denser-forecast' }),
+      }),
+    );
+    expect(rows).toEqual([
+      {
+        label: 'variant-proposal',
+        severity: 'note',
+        message:
+          "proposal: variant 'denser-forecast' against the unmodified page at the same revision",
+      },
+    ]);
+  });
+
+  it('raises a cross-variant pair, which compares two proposals rather than two revisions', () => {
+    const rows = variantBanners(
+      makeDiff({
+        baseMeta: makeRunMeta('0003', { revision, variant: 'denser-forecast' }),
+        headMeta: makeRunMeta('0007', { revision, variant: 'sidebar-upsell' }),
+      }),
+    );
+    expect(rows[0]?.severity).toBe('med');
+    expect(rows[0]?.message).toBe(
+      "cross-variant: base ran 'denser-forecast', head ran 'sidebar-upsell' —" +
+        ' this compares two proposals, not two revisions',
+    );
+  });
+
+  it('raises a proposal pair that also spans revisions, which mixes two changes', () => {
+    const rows = variantBanners(
+      makeDiff({
+        baseMeta: makeRunMeta('0003', { revision }),
+        headMeta: makeRunMeta('0007', {
+          revision: { sha: 'def5678', ref: 'main', dirty: false },
+          variant: 'denser-forecast',
+        }),
+      }),
+    );
+    expect(rows[0]?.label).toBe('variant-across-revisions');
+    expect(rows[0]?.severity).toBe('med');
+    expect(rows[0]?.message).toContain('mixes the proposal with the code change between them');
+  });
+
+  it('leaves a same-variant pair across revisions alone — it is an ordinary regression', () => {
+    expect(
+      variantBanners(
+        makeDiff({
+          baseMeta: makeRunMeta('0003', { revision, variant: 'denser-forecast' }),
+          headMeta: makeRunMeta('0007', {
+            revision: { sha: 'def5678', ref: 'main', dirty: false },
+            variant: 'denser-forecast',
+          }),
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('variantNoteRows', () => {
+  const step = makeStepVariantAttribution('forecast', {
+    rules: [makeVariantHit('tighter-cards', { elements: 12, viewports: ['1280x800', '390x844'] })],
+  });
+
+  it('is empty when there is no attribution and when no rule touched this step', () => {
+    expect(variantNoteRows('head', undefined)).toEqual([]);
+    expect(variantNoteRows('head', makeStepVariantAttribution('forecast'))).toEqual([]);
+  });
+
+  it('prints the spec’s sentence, keyed and sided so both ends can coexist', () => {
+    expect(variantNoteRows('head', step)).toEqual([
+      {
+        key: 'head-tighter-cards-style',
+        side: 'head',
+        verb: 'style',
+        text: '12 elements modified by denser-forecast rule tighter-cards',
+        viewports: ['1280x800', '390x844'],
+      },
+    ]);
+    expect(variantNoteRows('base', step)[0]?.key).toBe('base-tighter-cards-style');
+  });
+
+  it('keys by rule *and* verb, so two verbs of one rule are two rows', () => {
+    const both = makeStepVariantAttribution('forecast', {
+      rules: [makeVariantHit('r'), makeVariantHit('r', { verb: 'hide' })],
+    });
+    expect(variantNoteRows('head', both).map((row) => row.key)).toEqual([
+      'head-r-style',
+      'head-r-hide',
+    ]);
+  });
+});
+
+describe('isHighSeverityWarning', () => {
+  /**
+   * All three variant warnings mean the screenshot is not the proposal its label claims — the same
+   * hazard `scenario-rule-unmatched` carries one axis over, and the loudest thing this tool says.
+   */
+  it('raises every variant warning, including the D22 revert', () => {
+    expect(isHighSeverityWarning('variant-rule-unmatched')).toBe(true);
+    expect(isHighSeverityWarning('variant-rule-reverted')).toBe(true);
+    expect(isHighSeverityWarning('variant-clone-unstyled')).toBe(true);
+  });
+
+  it('keeps the pre-existing severities exactly as they were', () => {
+    expect(isHighSeverityWarning('scenario-rule-unmatched')).toBe(true);
+    expect(isHighSeverityWarning('har-miss')).toBe(true);
+    expect(isHighSeverityWarning('dom-truncated')).toBe(false);
+    expect(isHighSeverityWarning('settle-timeout')).toBe(false);
+    expect(isHighSeverityWarning('har-recorded')).toBe(false);
   });
 });

@@ -16,7 +16,35 @@ export {
   worstUnsettled,
   type HarPlan,
   type RunContext,
+  type VariantRunOptions,
 } from './run.js';
+
+export {
+  VariantRuntime,
+  aggregateReport,
+  assertRunnableVariantName,
+  buildVariantRuntime,
+  isVariantFailure,
+  resolveVariant,
+  toRunWarning,
+  toRunnerError as variantToRunnerError,
+  variantFile,
+  variantReport,
+  type ResolveVariantOptions,
+  type VariantCapture,
+  type VariantElement,
+  type VariantPlan,
+  type VariantReport,
+  type VariantRuntimeOptions,
+} from './variant.js';
+
+export {
+  cloneHarPath,
+  extractCloneSources,
+  groupCloneRules,
+  type ExtractCloneSourcesOptions,
+  type SourceGroup,
+} from './variant-clone.js';
 
 export {
   MOCK_ONLY_SPEC,
@@ -85,6 +113,7 @@ export {
 export {
   harMatchFor,
   nextAnchor,
+  performStep,
   pngSize,
   replayViewport,
   selectorOf,

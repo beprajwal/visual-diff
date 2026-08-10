@@ -9,9 +9,16 @@
  * nothing and they are in fact seeing the recorded full response, has been actively misled by the
  * tool (mocking spec §8). A warning that said only "a rule did not match" would leave them
  * grepping the YAML.
+ *
+ * The three variant warnings (variants spec §7) are the same hazard one axis over, and are shown
+ * the same way. `variant-rule-unmatched` is the exact twin of the scenario one. `variant-rule-
+ * reverted` is the D22 warning, and it is the reason apply-once is a safe choice at all: without it
+ * an application that re-rendered after the rules were applied would hand back a screenshot of the
+ * *unvaried* UI labelled as a proposal, and nobody could see that from the picture.
  */
 
-import type { RunMeta, RunWarning, RunWarningKind } from '../../../types.js';
+import type { RunMeta, RunWarning } from '../../../types.js';
+import { isHighSeverityWarning } from '../derive.js';
 
 export interface WarningsProps {
   baseMeta: RunMeta | null;
@@ -20,17 +27,9 @@ export interface WarningsProps {
   diffWarnings: string[];
 }
 
-const HIGH: ReadonlySet<RunWarningKind> = new Set<RunWarningKind>([
-  'har-miss',
-  'unstable-git',
-  'console-error',
-  'scenario-rule-unmatched',
-  'mock-miss',
-]);
-
 function WarningRow({ side, warning }: { side: string; warning: RunWarning }) {
   return (
-    <div class={`warn${HIGH.has(warning.kind) ? ' high' : ''}`}>
+    <div class={`warn${isHighSeverityWarning(warning.kind) ? ' high' : ''}`}>
       <span class="badge">{side}</span>
       <span>
         <strong>{warning.kind}</strong> {warning.message}

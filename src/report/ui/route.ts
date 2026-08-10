@@ -7,10 +7,13 @@
  *
  * The scenario filter travels too (mocking spec §7): a link to "the empty state at these two
  * revisions" is exactly the kind of thing a reviewer pastes at an agent, and it would be a poor
- * link if it landed on the unfiltered timeline.
+ * link if it landed on the unfiltered timeline. The variant filter travels for a stronger reason
+ * still (variants spec §5): a proposal exists to be shown to somebody, and the link is how it is
+ * shown.
  */
 
 import type { PairId, RunId, ScenarioName, StepId, ViewportId } from '../../types.js';
+import type { VariantName } from '../variant.js';
 import { pairId, parsePairId } from './paths.js';
 
 export type ViewMode = 'side-by-side' | 'overlay' | 'swipe';
@@ -25,6 +28,8 @@ export interface RouteState {
   flow?: string;
   /** Scenario filter; `*` (ALL_SCENARIOS) is the default and is never written to the hash. */
   scenario?: ScenarioName;
+  /** Variant filter; `*` (ALL_VARIANTS) is the default and is never written to the hash. */
+  variant?: VariantName;
   base?: RunId;
   head?: RunId;
   step?: StepId;
@@ -54,6 +59,9 @@ export function parseHash(hash: string): RouteState {
   const scenario = params.get('scenario');
   if (scenario) route.scenario = scenario;
 
+  const variant = params.get('variant');
+  if (variant) route.variant = variant;
+
   const step = params.get('step');
   if (step) route.step = step;
 
@@ -77,6 +85,7 @@ export function formatHash(route: RouteState): string {
   const params = new URLSearchParams();
   if (route.flow) params.set('flow', route.flow);
   if (route.scenario && route.scenario !== '*') params.set('scenario', route.scenario);
+  if (route.variant && route.variant !== '*') params.set('variant', route.variant);
   if (route.base && route.head) params.set('pair', pairId(route.base, route.head));
   if (route.step) params.set('step', route.step);
   if (route.viewport) params.set('viewport', route.viewport);

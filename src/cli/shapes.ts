@@ -26,6 +26,7 @@ import type {
   HarnessTargets,
   InstallScope,
 } from '../adapters/index.js';
+import type { VariantPair } from './variant.js';
 
 /** `vdiff init` — what the scaffold wrote, and what it left alone. */
 export interface InitData {
@@ -57,15 +58,21 @@ export interface FlowCheckData {
   warnings: ValidationIssue[];
 }
 
-/** `vdiff runs <flow> [--scenario <name>]` — mirrors `RunsResponse` from the report API. */
+/** `vdiff runs <flow> [--scenario <name>] [--variants]` — mirrors the report API's `RunsResponse`. */
 export interface RunsData {
   flow: string;
   /** The `--scenario` filter that was applied, absent when the whole timeline was listed. */
   scenario?: ScenarioName;
+  /**
+   * True when `--variants` listed the variant runs instead of the regression timeline (D24).
+   * Absent rather than `false` on an ordinary listing, so the payload of `vdiff runs <flow>` is
+   * unchanged from what it has always been.
+   */
+  variants?: true;
   runs: RunSummary[];
 }
 
-/** `vdiff diff <flow> [base] [head] [--scenario <name>]` */
+/** `vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>]` */
 export interface DiffData {
   flow: string;
   pair: PairRef;
@@ -79,6 +86,13 @@ export interface DiffData {
    * `result.scenarios` so an agent reads one field rather than deriving two booleans.
    */
   labels: PairLabel[];
+  /**
+   * What this pair is once variants are in play (variants spec §5), absent when neither side ran
+   * one. Kept apart from `labels` deliberately: the common case here — `variant-proposal` — is not
+   * a caveat but the question a variant run exists to answer, and folding it into the list of
+   * pairings the tool refuses to let pass as regressions would say the opposite.
+   */
+  variantPair?: VariantPair;
   result: DiffResult;
 }
 

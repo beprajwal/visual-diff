@@ -34,11 +34,14 @@ import {
   type Viewport,
   type ViewportId,
 } from '../types.js';
-import { newContext, settle } from './browser.js';
+import { newContext, settle, type ContextOptions } from './browser.js';
 import { captureA11ySnapshot, collectArgs, collectDom, toDomSnapshot } from './capture.js';
 import { RunnerError, errorMessage, errorStack } from './errors.js';
 import type { ScenarioError } from '../mocking/index.js';
 import type { ScenarioRuntime } from './scenario.js';
+import { applyVariantInPage } from '../variant-apply/index.js';
+import { extractCloneSources } from './variant-clone.js';
+import { CLONE_ATTR, clearVariantClonesInPage, type VariantCapture, type VariantRuntime } from './variant.js';
 
 export interface ShotBytes {
   screenshot: Uint8Array;
@@ -80,6 +83,13 @@ export interface ViewportReplay {
   matchedRuleIds: string[];
   /** Rules that could not be applied. Any one of these fails the run (mocking spec §8). */
   ruleFailures: ScenarioError[];
+  /**
+   * One variant apply report per capture (variants spec §7, D22).
+   *
+   * Reported per capture rather than pre-digested because "this rule changed nothing" is only true
+   * when it changed nothing in *any* capture of *any* viewport, and only `run.ts` sees them all.
+   */
+  variantCaptures: VariantCapture[];
 }
 
 export interface ReplayOptions {
@@ -99,6 +109,18 @@ export interface ReplayOptions {
    * `nth` counts occurrences of a request, and viewports replay concurrently.
    */
   scenario?: ScenarioRuntime;
+  /**
+   * This viewport's variant state (variants spec §4, §9). One runtime per viewport for the same
+   * reason the scenario one is: the clone material and the applied records describe *this*
+   * viewport's DOM.
+   */
+  variant?: VariantRuntime;
+  /**
+   * A *fresh* scenario runtime for each clone-source context (D23, §9). Sharing this viewport's
+   * runtime would let clone-source traffic consume the target's `nth` counters, so the caller that
+   * built the runtime supplies a factory rather than the instance.
+   */
+  newScenarioRuntime?: () => ScenarioRuntime;
 }
 
 /**
@@ -238,7 +260,15 @@ async function checkExpectation(page: Page, expectation: Expectation, timeoutMs:
   }
 }
 
-async function performStep(page: Page, step: Step, timeoutMs: number): Promise<void> {
+/**
+ * Drive one flow step against a page.
+ *
+ * Exported because clone-source extraction replays the flow up to the source step in its own
+ * context (D23) and must do it with *these* verbs: a second implementation of `goto`/`click`/`fill`
+ * would be a second definition of what a step means, and the clone would descend from a page the
+ * flow never actually produces.
+ */
+export async function performStep(page: Page, step: Step, timeoutMs: number): Promise<void> {
   if (step.viewport !== undefined) {
     const [width, height] = step.viewport.split('x').map(Number);
     if (Number.isInteger(width) && Number.isInteger(height) && width && height) {
@@ -284,6 +314,29 @@ async function performStep(page: Page, step: Step, timeoutMs: number): Promise<v
   }
 }
 
+/**
+ * Apply the variant to the settled page and verify it survived (variants §9, D22).
+ *
+ * The application and its verification are **one in-page call**, placed after the settle gate and
+ * before masking and the screenshot (§9): masked regions still mask, the determinism knobs still
+ * hold, and the verification runs as late as it can — "to minimise the window in which a re-render
+ * can intervene".
+ *
+ * Exported because it *is* the runner's capture-time contract: the browser tests drive this rather
+ * than a hand-rolled sequence, so what they prove is what a run actually does.
+ */
+export async function applyVariantForCapture(
+  page: Page,
+  step: StepId,
+  runtime: VariantRuntime,
+): Promise<void> {
+  // The previous capture's clones, if this page has not navigated since — see
+  // `clearVariantClonesInPage` on why `clone` is the one verb that is not idempotent per capture.
+  // Separate from the pass itself, so application and verification stay the single call §9 asks for.
+  await page.evaluate(clearVariantClonesInPage, CLONE_ATTR);
+  runtime.record(step, await page.evaluate(applyVariantInPage, runtime.applyArgs()));
+}
+
 async function captureShot(
   page: Page,
   step: Step,
@@ -293,6 +346,8 @@ async function captureShot(
 ): Promise<ShotBytes> {
   const masks = step.mask ?? [];
   const gate = await settle(page, inFlight);
+
+  if (options.variant !== undefined) await applyVariantForCapture(page, step.id, options.variant);
 
   const screenshot = await page.screenshot({
     fullPage: true,
@@ -367,14 +422,25 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
    */
   const servedByDevServer = new Set<string>();
 
-  const contextOpts = {
+  /**
+   * The context every page of this viewport is opened with — the target's, and each clone source's.
+   *
+   * `onAppOriginServed` is deliberately *not* in here: it is the target's bookkeeping for which
+   * requests the dev server answered rather than the recording, and a clone source adding its own
+   * URLs to that set would misreport the target's HAR verdicts.
+   */
+  const baseContextOpts: Omit<ContextOptions, 'scenario'> = {
     viewport,
     network: options.network,
     baseUrl: options.baseUrl,
-    onAppOriginServed: (url: string) => servedByDevServer.add(url),
     ...(options.har === undefined ? {} : { har: options.har }),
-    ...(options.scenario === undefined ? {} : { scenario: options.scenario }),
     ...(options.deviceScaleFactor === undefined ? {} : { deviceScaleFactor: options.deviceScaleFactor }),
+  };
+
+  const contextOpts: ContextOptions = {
+    ...baseContextOpts,
+    onAppOriginServed: (url: string) => servedByDevServer.add(url),
+    ...(options.scenario === undefined ? {} : { scenario: options.scenario }),
   };
 
   const context: BrowserContext = await newContext(options.browser, contextOpts);
@@ -501,6 +567,31 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
   let blocked = false;
 
   try {
+    // Clone sources are resolved **before the first capture** (D23): a missing source fails fast
+    // rather than half way through a run that has already produced screenshots nobody can trust.
+    const variant = options.variant;
+    if (variant !== undefined) {
+      const cloneRules = variant.cloneRules();
+      if (cloneRules.length > 0) {
+        const sources = await extractCloneSources({
+          browser: options.browser,
+          variant: variant.variant,
+          rules: cloneRules,
+          flow,
+          context: baseContextOpts,
+          ...(options.newScenarioRuntime === undefined
+            ? {}
+            : { newScenarioRuntime: options.newScenarioRuntime }),
+          perform: (target, step) => performStep(target, step, timeoutMs),
+          timeoutMs,
+        });
+        for (const [ruleId, extracted] of sources) variant.attachCloneSource(ruleId, extracted);
+      }
+      // Resolve every rule now, so a rule the application layer refuses fails this viewport before
+      // a single screenshot has been taken rather than half way down the filmstrip.
+      variant.applyArgs();
+    }
+
     for (let index = 0; index < flow.steps.length; index += 1) {
       const step = flow.steps[index] as Step;
       currentStep = step.id;
@@ -608,6 +699,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     missedUrls,
     matchedRuleIds: [...(options.scenario?.matchedRuleIds() ?? [])],
     ruleFailures: [...(options.scenario?.ruleFailures() ?? [])],
+    variantCaptures: [...(options.variant?.reports() ?? [])],
   };
 }
 

@@ -33,7 +33,8 @@ import type {
 } from '../types.js';
 import { diffDirFor, pairId, readCachedDiff, writeDiff } from './cache.js';
 import { consoleFindings, networkFindings, structuralFindings } from './findings.js';
-import { labelPair, pairScenarios } from './pairing.js';
+import { labelPair, pairScenarios, pairVariants } from './pairing.js';
+import type { VariantAwareDiffResult } from './pairing.js';
 import { flowLevelChanges, isComparable, structuralFlowDiff } from '../flow/index.js';
 import { inflate } from './geometry.js';
 import { loadRunDir } from './loadRun.js';
@@ -198,9 +199,11 @@ export async function diffRuns(
     );
   }
 
-  // Where the two runs sit on the scenario axis (mocking spec §6). A cross-scenario or
-  // mock-vs-recorded pair is permitted and computed exactly like any other — the labelling is how
-  // the result refuses to let its findings be read as ordinary regressions.
+  // Where the two runs sit on the scenario and variant axes (mocking spec §6, variants spec §5). A
+  // cross-scenario, mock-vs-recorded or cross-variant pair is permitted and computed exactly like
+  // any other — the labelling is how the result refuses to let its findings be read as ordinary
+  // regressions. The proposal pair — a variant against the unmodified page at its own revision — is
+  // deliberately not among them: it is the question variants exist to answer.
   const labelling = labelPair(base.meta, head.meta);
   warnings.push(...labelling.flags.map((flag) => flag.message));
 
@@ -329,7 +332,7 @@ export async function diffRuns(
     }
   }
 
-  const result: DiffResult = {
+  const result: VariantAwareDiffResult = {
     engineVersion: options.engineVersion,
     flow: head.meta.flow,
     pair: { base: base.meta.runId, head: head.meta.runId },
@@ -337,6 +340,7 @@ export async function diffRuns(
     baseMeta: base.meta,
     headMeta: head.meta,
     scenarios: labelling.scenarios,
+    variants: labelling.variants,
     flowDiff,
     steps,
     summary: summarize(flowDiff, steps),
@@ -368,14 +372,16 @@ export async function computeDiff(request: DiffRequest): Promise<DiffResult> {
 
   if (options.force !== true) {
     // The whole options object, not just `engineVersion`: the ignore list and the region knobs
-    // change the engine's output without changing its version. The pair's scenario identity goes
-    // in for the same reason — it decides the labels and warnings the result carries (`cache.ts`).
+    // change the engine's output without changing its version. The pair's scenario and variant
+    // identities go in for the same reason — they decide the labels and warnings the result
+    // carries (`cache.ts`).
     const cached = await readCachedDiff(
       outDir,
       baseLoad.run.meta.runId,
       headLoad.run.meta.runId,
       options,
       pairScenarios(baseLoad.run.meta, headLoad.run.meta),
+      pairVariants(baseLoad.run.meta, headLoad.run.meta),
     );
     if (cached !== null) return cached;
   }

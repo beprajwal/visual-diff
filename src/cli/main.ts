@@ -44,6 +44,7 @@ import { run } from './commands/run.js';
 import { runs } from './commands/runs.js';
 import { scenarioCheck, scenarioList, scenarioNew } from './commands/scenario.js';
 import { serve } from './commands/serve.js';
+import { variantCheck, variantList, variantNew } from './commands/variant.js';
 
 export interface CliRuntime extends CommandContext {
   writer: Writer;
@@ -70,6 +71,12 @@ async function dispatch(
       return scenarioCheck(ctx, invocation.name);
     case 'scenario-list':
       return scenarioList(ctx);
+    case 'variant-new':
+      return variantNew(ctx, invocation.name);
+    case 'variant-check':
+      return variantCheck(ctx, invocation.name);
+    case 'variant-list':
+      return variantList(ctx);
     case 'run':
       return run(ctx, invocation);
     case 'runs':

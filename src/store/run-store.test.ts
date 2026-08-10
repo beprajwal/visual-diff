@@ -16,12 +16,15 @@ import {
   listRunSummaries,
   readRunMeta,
   readScenarioIndex,
+  readVariantIndex,
   reapAbandonedRuns,
   resolvePair,
   runExists,
   updateRunMeta,
 } from './run-store.js';
 import type { RunMetaInput } from './run-store.js';
+import { keepRun } from './retention.js';
+import { VARIANT_NONE } from './internal/variant.js';
 import { SCENARIO_NONE } from '../types.js';
 import type { RunId } from '../types.js';
 
@@ -478,6 +481,385 @@ describe('pair resolution across scenarios', () => {
       code: 'no-runs',
       message: 'flow "forecast" has no runs under scenario "slow-forecast" yet',
       hint: 'Capture one: vdiff run forecast --scenario slow-forecast',
+    });
+  });
+});
+
+/*
+ * Variant as the fourth axis of run identity (variants spec §5, D24). Everything the scenario axis
+ * established holds here — the run path never learns about it, ids stay monotonic — and one thing
+ * does not: a variant run is kept *out* of the regression timeline until `--keep` promotes it.
+ */
+describe('variant in run identity', () => {
+  async function seedVariant(
+    variant: string | undefined,
+    extra: Record<string, unknown> = {},
+    flow = 'forecast',
+  ): Promise<RunId> {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow,
+      steps: [{ id: 'cart' }],
+      meta: { ...(variant === undefined ? {} : { variant }), ...extra },
+    });
+    return run.runId;
+  }
+
+  it('records the variant in meta.json, never in the run path', async () => {
+    const runId = await seedVariant('denser-forecast');
+    const meta = (await readRunMeta(tmp, 'forecast', runId)) as { variant?: string };
+    expect(meta.variant).toBe('denser-forecast');
+    expect(paths.runDir(tmp, 'forecast', runId)).toBe(
+      path.join(tmp, '.visual-diff', 'runs', 'forecast', runId),
+    );
+    expect(await listDirNames(paths.flowRunsDir(tmp, 'forecast'))).toEqual([runId]);
+  });
+
+  it('keeps run ids monotonic per flow across variants, so 0002 is never ambiguous', async () => {
+    await seedVariant(undefined);
+    await seedVariant('denser-forecast');
+    await seedVariant('wider-forecast');
+    await seedVariant('denser-forecast');
+
+    expect(await listRunIds(tmp, 'forecast')).toEqual(['0000', '0001', '0002', '0003']);
+    expect([...(await readVariantIndex(tmp, 'forecast'))]).toEqual([
+      ['0000', VARIANT_NONE],
+      ['0001', 'denser-forecast'],
+      ['0002', 'wider-forecast'],
+      ['0003', 'denser-forecast'],
+    ]);
+  });
+
+  it('writes the reserved none for a run committed without one', async () => {
+    const draft = await beginRun(tmp, 'checkout');
+    await draft.writeFlowSnapshot('flow: checkout\nsteps: []\n');
+    const { variant: _omitted, ...withoutVariant } = makeRunMeta('checkout');
+    const committed = await draft.commit(withoutVariant as RunMetaInput);
+
+    expect((committed.meta as { variant?: string }).variant).toBe(VARIANT_NONE);
+    const onDisk = JSON.parse(
+      await fsp.readFile(paths.runMetaFile(tmp, 'checkout', committed.runId), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(onDisk.variant).toBe('none');
+    // No promotion flag on an unvaried run: it is already permanent, so the field could never be
+    // anything but false and would be noise in every meta.json the tool writes.
+    expect('kept' in onDisk).toBe(false);
+  });
+
+  it('writes the promotion flag on a variant run, so its bucket is legible on disk', async () => {
+    const runId = await seedVariant('denser-forecast');
+    const onDisk = JSON.parse(
+      await fsp.readFile(paths.runMetaFile(tmp, 'forecast', runId), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(onDisk.variant).toBe('denser-forecast');
+    expect(onDisk.kept).toBe(false);
+  });
+
+  it('reads a meta.json written before variants existed as none', async () => {
+    const runId = await seedVariant(undefined, {}, 'checkout');
+    const file = paths.runMetaFile(tmp, 'checkout', runId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.variant;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    expect(((await readRunMeta(tmp, 'checkout', runId)) as { variant?: string }).variant).toBe(
+      VARIANT_NONE,
+    );
+    expect((await listRunSummaries(tmp, 'checkout'))[0]?.variant).toBe(VARIANT_NONE);
+  });
+
+  it('never lets a meta patch move a run to another variant', async () => {
+    const runId = await seedVariant('denser-forecast');
+    const patched = (await updateRunMeta(tmp, 'forecast', runId, {
+      pinned: true,
+      variant: 'wider-forecast',
+    })) as { variant?: string; pinned: boolean };
+    expect(patched.variant).toBe('denser-forecast');
+    expect(patched.pinned).toBe(true);
+  });
+});
+
+describe('the timeline under variants', () => {
+  beforeEach(async () => {
+    // 0000 unvaried, 0001 denser, 0002 unvaried, 0003 denser (promoted), 0004 wider
+    for (const variant of [undefined, 'denser-forecast', undefined, 'denser-forecast', 'wider-forecast']) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: variant === undefined ? {} : { variant },
+      });
+    }
+    await keepRun(tmp, 'forecast', '0003');
+  });
+
+  it('excludes ephemeral variant runs by default — D24’s regression timeline', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast');
+    expect(rows.map((row) => row.runId)).toEqual(['0000', '0002', '0003']);
+  });
+
+  it('keeps a promoted run in that timeline, which is the whole of what --keep does', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast');
+    const promoted = rows.find((row) => row.runId === '0003');
+    expect(promoted?.variant).toBe('denser-forecast');
+    expect(promoted?.kept).toBe(true);
+  });
+
+  it('lists the variant runs under --variants, promoted or not', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { variants: 'only' });
+    expect(rows.map((row) => [row.runId, row.variant])).toEqual([
+      ['0001', 'denser-forecast'],
+      ['0003', 'denser-forecast'],
+      ['0004', 'wider-forecast'],
+    ]);
+  });
+
+  it('shows everything under include, which is the only way to see both at once', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { variants: 'include' });
+    expect(rows.map((row) => row.runId)).toEqual(['0000', '0001', '0002', '0003', '0004']);
+  });
+
+  it('narrows to one variant by name, whatever the filter would have said', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { variant: 'denser-forecast' });
+    expect(rows.map((row) => row.runId)).toEqual(['0001', '0003']);
+  });
+
+  it('filters the unvaried runs under the name they record, "none"', async () => {
+    const rows = await listRunSummaries(tmp, 'forecast', undefined, { variant: 'none' });
+    expect(rows.map((row) => row.runId)).toEqual(['0000', '0002']);
+  });
+
+  it('counts findings against the previous run of the same identity, both axes', async () => {
+    const asked: Array<[string, string]> = [];
+    await listRunSummaries(
+      tmp,
+      'forecast',
+      async (base, head) => {
+        asked.push([base, head]);
+        return null;
+      },
+      { variants: 'include' },
+    );
+    // 0002 follows 0000 (unvaried); 0003 follows 0001 (same variant), not 0002.
+    expect(asked).toEqual([
+      ['0000', '0002'],
+      ['0001', '0003'],
+    ]);
+  });
+
+  it('does not change what a surviving row says when the filter changes', async () => {
+    const counted = async (base: string, head: string): Promise<number | null> =>
+      base === '0001' && head === '0003' ? 7 : null;
+    const all = await listRunSummaries(tmp, 'forecast', counted, { variants: 'include' });
+    const only = await listRunSummaries(tmp, 'forecast', counted, { variants: 'only' });
+    expect(only).toEqual(all.filter((row) => row.variant !== VARIANT_NONE));
+    expect(only.find((row) => row.runId === '0003')?.findingsCount).toBe(7);
+  });
+});
+
+/*
+ * The pairing D24 changes on purpose.
+ *
+ * For a scenario the question is regression: same scenario, two revisions. For a variant it is the
+ * proposal — same revision, variant versus none — so applying the scenario rule unchanged would
+ * hunt for an earlier run of the same variant and, failing that, refuse. That is the one comparison
+ * the user is actually asking for, and refusing it would make the feature unusable by default.
+ */
+describe('pair resolution across variants', () => {
+  const AT = (sha: string) => ({ revision: { sha, ref: 'main', dirty: false } });
+
+  async function seed(meta: Record<string, unknown>): Promise<RunId> {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta,
+    });
+    return run.runId;
+  }
+
+  it('pairs a variant run against the unvaried run at its own revision', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000
+    await seed({ ...AT('rev-2') });                                  // 0001 the baseline
+    await seed({ ...AT('rev-2'), variant: 'denser-forecast' });      // 0002 the proposal
+
+    expect(await resolvePair(tmp, 'forecast', undefined, '0002')).toEqual({
+      flow: 'forecast',
+      base: '0001',
+      head: '0002',
+    });
+  });
+
+  it('takes the nearest baseline, even when it was captured after the proposal', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000 same revision, far away
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0001 proposal
+    await seed({ ...AT('rev-1'), variant: 'wider-forecast' });       // 0002 another proposal
+    await seed({ ...AT('rev-1') });                                  // 0003 baseline, captured last
+
+    expect(await resolvePair(tmp, 'forecast', undefined, '0002')).toEqual({
+      flow: 'forecast',
+      base: '0003',
+      head: '0002',
+    });
+  });
+
+  it('never reaches across revisions for a baseline, which would blame the code on the variant', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000 unvaried, wrong revision
+    await seed({ ...AT('rev-2'), variant: 'denser-forecast' });      // 0001
+
+    await expect(resolvePair(tmp, 'forecast', undefined, '0001')).rejects.toMatchObject({
+      code: 'no-baseline',
+      message:
+        'flow "forecast" has no unvaried run at revision rev-2 to compare variant "denser-forecast" run 0001 against',
+      hint: 'Capture the unmodified page at that revision: vdiff run forecast',
+    });
+  });
+
+  it('will not take a baseline from a different dirty tree at the same sha', async () => {
+    await seed({ revision: { sha: 'rev-1', ref: 'main', dirty: true, dirtyHash: 'sha256:a' } });
+    await seed({
+      revision: { sha: 'rev-1', ref: 'main', dirty: true, dirtyHash: 'sha256:b' },
+      variant: 'denser-forecast',
+    });
+
+    await expect(resolvePair(tmp, 'forecast', undefined, '0001')).rejects.toMatchObject({
+      code: 'no-baseline',
+      message:
+        'flow "forecast" has no unvaried run at revision rev-1 (dirty) to compare variant "denser-forecast" run 0001 against',
+    });
+  });
+
+  it('requires the baseline to share the head’s scenario as well as its revision', async () => {
+    await seed({ ...AT('rev-1') });                                                          // 0000
+    await seed({ ...AT('rev-1'), scenario: 'empty-forecast', variant: 'denser-forecast' });  // 0001
+
+    await expect(resolvePair(tmp, 'forecast', undefined, '0001')).rejects.toMatchObject({
+      code: 'no-baseline',
+      message:
+        'flow "forecast" has no unvaried run at revision rev-1 under scenario "empty-forecast" ' +
+        'to compare variant "denser-forecast" run 0001 against',
+      hint: 'Capture the unmodified page at that revision: vdiff run forecast --scenario empty-forecast',
+    });
+  });
+
+  it('does not let an ephemeral variant run become the default head', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000
+    await seed({ ...AT('rev-1') });                                  // 0001
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0002
+
+    // `vdiff diff <flow>` keeps meaning what it meant before variants existed.
+    expect(await resolvePair(tmp, 'forecast')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0001',
+    });
+  });
+
+  it('selects the head from one variant under --variant and pairs it with the baseline', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000 baseline
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0001
+    await seed({ ...AT('rev-1'), variant: 'wider-forecast' });       // 0002
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0003 newest denser
+
+    expect(await resolvePair(tmp, 'forecast', undefined, undefined, {
+      variant: 'denser-forecast',
+    })).toEqual({ flow: 'forecast', base: '0000', head: '0003' });
+  });
+
+  it('says which variant a head really ran when --variant excludes it', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0001
+    await seed({ ...AT('rev-1'), variant: 'wider-forecast' });       // 0002
+
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, '0002', { variant: 'denser-forecast' }),
+    ).rejects.toMatchObject({
+      code: 'variant-mismatch',
+      message: 'head run 0002 ran variant "wider-forecast", not "denser-forecast"',
+      hint: 'Runs under "denser-forecast": 0001',
+    });
+  });
+
+  it('does not variant-check an explicitly named base — crossing the axis is the point', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0001
+
+    expect(
+      await resolvePair(tmp, 'forecast', '0000', '0001', { variant: 'denser-forecast' }),
+    ).toEqual({ flow: 'forecast', base: '0000', head: '0001' });
+  });
+
+  it('reports a variant that has never been captured, with the command that would capture it', async () => {
+    await seed({ ...AT('rev-1') });
+
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, undefined, { variant: 'denser-forecast' }),
+    ).rejects.toMatchObject({
+      code: 'no-runs',
+      message: 'flow "forecast" has no runs under variant "denser-forecast" yet',
+      hint: 'Capture one: vdiff run forecast --variant denser-forecast',
+    });
+  });
+
+  it('names both axes in that hint when a scenario is in force too', async () => {
+    await seed({ ...AT('rev-1'), scenario: 'empty-forecast' });
+
+    await expect(
+      resolvePair(tmp, 'forecast', undefined, undefined, {
+        scenario: 'empty-forecast',
+        variant: 'denser-forecast',
+      }),
+    ).rejects.toMatchObject({
+      code: 'no-runs',
+      hint: 'Capture one: vdiff run forecast --scenario empty-forecast --variant denser-forecast',
+    });
+  });
+
+  it('explains a flow that has nothing but proposals rather than reporting no runs at all', async () => {
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });
+
+    await expect(resolvePair(tmp, 'forecast')).rejects.toMatchObject({
+      code: 'no-runs',
+      message:
+        'flow "forecast" has only ephemeral variant runs, none of which is in the regression timeline',
+      hint: 'List them: vdiff runs forecast --variants',
+    });
+  });
+
+  it('still resolves a fully named pair in a flow that has nothing but proposals', async () => {
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0000
+    await seed({ ...AT('rev-1'), variant: 'wider-forecast' });       // 0001
+
+    // The default head has nothing to pick from, but the user picked both ends themselves.
+    expect(await resolvePair(tmp, 'forecast', '0000', '0001')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0001',
+    });
+  });
+
+  it('leaves unvaried pairing exactly as it was, promoted runs included', async () => {
+    await seed({ ...AT('rev-1') });                                  // 0000
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast' });      // 0001
+    await seed({ ...AT('rev-2') });                                  // 0002
+    await keepRun(tmp, 'forecast', '0001');
+
+    // 0001 is in the timeline now, but it is not the head's identity, so it is not the base.
+    expect(await resolvePair(tmp, 'forecast')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0002',
+    });
+  });
+
+  it('pairs a promoted variant across revisions when both ends are named', async () => {
+    await seed({ ...AT('rev-1'), variant: 'denser-forecast', kept: true });   // 0000
+    await seed({ ...AT('rev-2'), variant: 'denser-forecast', kept: true });   // 0001
+
+    expect(await resolvePair(tmp, 'forecast', '0000', '0001')).toEqual({
+      flow: 'forecast',
+      base: '0000',
+      head: '0001',
     });
   });
 });

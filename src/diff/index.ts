@@ -33,11 +33,28 @@ export {
 } from './cache.js';
 
 /**
- * Scenario is a dimension of *which* runs are compared, not of what a finding looks like: this is
- * the whole of the diff engine's scenario awareness (mocking spec §6).
+ * Scenario and variant are dimensions of *which* runs are compared, not of what a finding looks
+ * like: this is the whole of the diff engine's awareness of either (mocking spec §6, variants §5).
  */
-export { isMockOnly, labelPair, pairLabels, pairScenarios, PAIR_LABEL_SEVERITY } from './pairing.js';
-export type { PairFlag, PairLabelling } from './pairing.js';
+export {
+  isMockOnly,
+  labelPair,
+  pairLabels,
+  pairScenarios,
+  pairVariants,
+  variantPairLabels,
+  PAIR_LABEL_SEVERITY,
+  VARIANTLESS_PAIR,
+  VARIANT_PAIR_LABELS,
+} from './pairing.js';
+export type {
+  AnyPairLabel,
+  PairFlag,
+  PairLabelling,
+  PairVariants,
+  VariantAwareDiffResult,
+  VariantPairLabel,
+} from './pairing.js';
 
 /**
  * Stage 1 (the structural flow diff) is implemented in `flow/`, because spec §5 assigns "structural

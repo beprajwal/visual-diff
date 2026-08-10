@@ -44,6 +44,7 @@ import type {
 
 import { runFailure } from './error.js';
 import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
+import type { VariantSpec } from './variant.js';
 
 /** Module edges, relative to this file. Mirrors the `index.ts` of each module (plan §1). */
 export const MODULE_SPECIFIERS = {
@@ -52,6 +53,12 @@ export const MODULE_SPECIFIERS = {
   flow: '../flow/index.js',
   /** Scenario parsing and validation (mocking spec §5, §8) — the flow module's sibling. */
   scenario: '../mocking/index.js',
+  /**
+   * The variant slice's edge (variants spec §4, §6, §7), bound exactly as `mocking` is: one module
+   * for the whole slice, re-exporting the language layer's parser alongside the file layout, so
+   * the CLI keeps constructing no path of its own.
+   */
+  variant: '../variant-apply/index.js',
   store: '../store/index.js',
   runner: '../runner/index.js',
   diff: '../diff/index.js',
@@ -107,6 +114,15 @@ type StoreModule = typeof import('../store/index.js');
  *    the store reads it back off the `DiffResult`, which is the file's own identity.
  *  - `ackFeedback` takes whole entries in the CLI (it just printed them) and ids in the store.
  */
+/**
+ * A filter with nothing in it is the absence of a filter. Passed on as `undefined` so the store
+ * never has to distinguish "narrow by nothing" from "do not narrow", which are the same request.
+ */
+function emptyToUndefined<T extends object>(filter: T | undefined): T | undefined {
+  if (filter === undefined) return undefined;
+  return Object.values(filter).some((value) => value !== undefined) ? filter : undefined;
+}
+
 export function toStorePort(module: StoreModule, config: Config): StorePort {
   const store = module.openStore(config);
   const root = store.root;
@@ -124,10 +140,12 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
     flowsDir: () => module.paths.flowsDir(root),
     flowFile: (flow) => module.paths.flowFile(root, flow),
     listFlows: () => store.listFlows(),
-    listRuns: (flow, scenario) =>
-      store.listRuns(flow, scenario === undefined ? undefined : { scenario }),
-    resolvePair: (flow, base, head, scenario) =>
-      store.resolvePair(flow, base, head, scenario === undefined ? undefined : { scenario }),
+    // The filter object is passed through untouched: `scenario` and `variant` are both attributes
+    // of a run, and narrowing on them is store work — findingsCount is measured against the
+    // previous run of the same identity, which a caller filtering the returned array cannot undo.
+    listRuns: (flow, filter) => store.listRuns(flow, emptyToUndefined(filter)),
+    resolvePair: (flow, base, head, filter) =>
+      store.resolvePair(flow, base, head, emptyToUndefined(filter)),
     runDir: (flow, runId) => store.runDir(flow, runId),
     diffFile: (pair) => module.paths.diffFindingsFile(root, pair.flow, pair.base, pair.head),
     readDiff: (pair) => store.readDiff(pair),
@@ -220,6 +238,38 @@ export function createPorts(): Ports {
       const fn = await loadExport<(root: string) => Promise<string[]>>(
         MODULE_SPECIFIERS.scenario,
         'listScenarios',
+      );
+      return await fn(config.root);
+    },
+
+    // The variant edge, bound exactly as the scenario one above.
+    async parseVariantFile(file: string): Promise<ValidationResult<VariantSpec>> {
+      const fn = await loadExport<
+        (file: string) => Promise<ValidationResult<VariantSpec>> | ValidationResult<VariantSpec>
+      >(MODULE_SPECIFIERS.variant, 'parseVariantFile');
+      return await fn(file);
+    },
+
+    async variantsDir(config: Config): Promise<string> {
+      const fn = await loadExport<(root: string) => string>(
+        MODULE_SPECIFIERS.variant,
+        'variantsDir',
+      );
+      return fn(config.root);
+    },
+
+    async variantFile(config: Config, name: string): Promise<string> {
+      const fn = await loadExport<(root: string, name: string) => string>(
+        MODULE_SPECIFIERS.variant,
+        'variantFile',
+      );
+      return fn(config.root, name);
+    },
+
+    async listVariants(config: Config): Promise<string[]> {
+      const fn = await loadExport<(root: string) => Promise<string[]>>(
+        MODULE_SPECIFIERS.variant,
+        'listVariants',
       );
       return await fn(config.root);
     },

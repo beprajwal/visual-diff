@@ -23,10 +23,18 @@ import type {
 } from '../../types.js';
 import type { RunAttribution, StepAttribution } from '../attribution.js';
 import {
+  variantOf,
+  type RunVariantAttribution,
+  type StepVariantAttribution,
+  type VariantName,
+} from '../variant.js';
+import {
   ALL_SCENARIOS,
+  ALL_VARIANTS,
   buildFilmstrip,
   runIndex,
   runsForScenario,
+  runsForVariant,
   viewportsOf,
   visibleCells,
 } from './derive.js';
@@ -59,6 +67,13 @@ export interface AppState {
    * it sounds — a reviewer who has never heard of scenarios would silently stop seeing runs.
    */
   scenario: ScenarioName;
+  /**
+   * The variant the run pickers are narrowed to, or {@link ALL_VARIANTS} (variants spec §5).
+   *
+   * The fourth axis of run identity, filtered exactly as the third is — and defaulting to "all" for
+   * the same reason: a reviewer who has never written a variant must not silently stop seeing runs.
+   */
+  variant: VariantName;
   base: RunId | null;
   head: RunId | null;
   /** True while the head tracks the newest run. False once the reviewer pins an older pair. */
@@ -68,6 +83,8 @@ export interface AppState {
   diff: DiffResult | null;
   /** Per-step scenario attribution for each end of the pair, keyed by run id (mocking spec §8). */
   attribution: Record<RunId, RunAttribution>;
+  /** Per-step variant attribution for each end of the pair, keyed by run id (variants spec §7). */
+  variantAttribution: Record<RunId, RunVariantAttribution>;
   backfill: BackfillRequired | null;
   /** The active pair's diff needs to be fetched. */
   diffStale: boolean;
@@ -95,6 +112,7 @@ export function initialState(route: RouteState = {}): AppState {
     flow: route.flow ?? null,
     runs: [],
     scenario: route.scenario ?? ALL_SCENARIOS,
+    variant: route.variant ?? ALL_VARIANTS,
     base: route.base ?? null,
     head: route.head ?? null,
     // A URL that names a pair is a deliberate pin until the run list proves it is the newest.
@@ -102,6 +120,7 @@ export function initialState(route: RouteState = {}): AppState {
     pendingRun: null,
     diff: null,
     attribution: {},
+    variantAttribution: {},
     backfill: null,
     diffStale: false,
     loadingDiff: false,
@@ -125,7 +144,9 @@ export type Action =
   | { type: 'select-flow'; flow: string }
   | { type: 'runs-loaded'; flow: string; runs: RunSummary[] }
   | { type: 'select-scenario'; scenario: ScenarioName }
+  | { type: 'select-variant'; variant: VariantName }
   | { type: 'attribution-loaded'; attribution: RunAttribution }
+  | { type: 'variant-attribution-loaded'; attribution: RunVariantAttribution }
   | { type: 'select-pair'; base: RunId; head: RunId }
   | { type: 'select-base'; base: RunId }
   | { type: 'select-head'; head: RunId }
@@ -187,9 +208,25 @@ export function isAdjacentPair(
   return b >= 0 && h >= 0 && h - b === 1;
 }
 
-/** The runs the pickers offer: those matching the active scenario filter (mocking spec §7). */
+/**
+ * The runs the pickers offer: those matching both identity filters (mocking spec §7; variants §5).
+ *
+ * One function rather than two applied at each call site, because "newest run" and "the run one
+ * step back" have to mean the same thing everywhere — and they mean *within what the pickers
+ * currently offer*. A `[` that walked past runs the picker does not list would be a reviewer
+ * jumping between states they did not ask to compare.
+ */
+export function narrowRuns(
+  runs: readonly RunSummary[],
+  scenario: ScenarioName,
+  variant: VariantName,
+): RunSummary[] {
+  return runsForVariant(runsForScenario(runs, scenario), variant);
+}
+
+/** The runs the pickers offer for the current filters. */
 export function visibleRuns(state: AppState): RunSummary[] {
-  return runsForScenario(state.runs, state.scenario);
+  return narrowRuns(state.runs, state.scenario, state.variant);
 }
 
 /**
@@ -203,6 +240,26 @@ export function attributionForRun(
   const run = runId === null ? undefined : state.attribution[runId];
   if (run === undefined) return {};
   const byStep: Record<StepId, StepAttribution> = {};
+  for (const step of run.steps) byStep[step.step] = step;
+  return byStep;
+}
+
+/**
+ * Per-step variant attribution for one end of the pair, indexed by step id (variants spec §7).
+ * An empty map when that run's attribution has not been fetched, or when it had no variant.
+ *
+ * Kept separate from {@link attributionForRun} rather than merged into one record, because a pair
+ * can carry both axes at once — "the denser layout, in the empty state" — and a reader has to be
+ * able to tell which rules made this screen look like this: the ones that changed the responses, or
+ * the ones that changed the rendered page.
+ */
+export function variantAttributionForRun(
+  state: AppState,
+  runId: RunId | null,
+): Record<StepId, StepVariantAttribution> {
+  const run = runId === null ? undefined : state.variantAttribution[runId];
+  if (run === undefined) return {};
+  const byStep: Record<StepId, StepVariantAttribution> = {};
   for (const step of run.steps) byStep[step.step] = step;
   return byStep;
 }
@@ -228,7 +285,7 @@ function withPair(state: AppState, base: RunId, head: RunId): AppState {
   // "Newest" is newest *within the active scenario filter*: a reviewer looking at the empty state
   // is following the newest empty-state run, and a run of another scenario landing must not
   // demote them to "pinned" (mocking spec §7).
-  const newest = newestRunId(runsForScenario(state.runs, state.scenario));
+  const newest = newestRunId(narrowRuns(state.runs, state.scenario, state.variant));
   const following = newest === null || head === newest;
   return {
     ...state,
@@ -246,7 +303,7 @@ function withPair(state: AppState, base: RunId, head: RunId): AppState {
 function shiftHead(state: AppState, delta: number): AppState {
   // Stepping moves through the *visible* runs, so `[` and `]` under a scenario filter walk that
   // scenario's history instead of skipping in and out of other scenarios' runs.
-  const runs = runsForScenario(state.runs, state.scenario);
+  const runs = narrowRuns(state.runs, state.scenario, state.variant);
   const index = runIndex(runs, state.head);
   if (index < 0) return state;
   const nextIndex = index + delta;
@@ -255,6 +312,56 @@ function shiftHead(state: AppState, delta: number): AppState {
   // The base follows one behind, which is the pair a reviewer stepping through iterations wants.
   const base = runs[nextIndex - 1] ?? next;
   return withPair(state, base.runId, next.runId);
+}
+
+/**
+ * Applies a change to one of the two identity filters (mocking spec §7; variants spec §5).
+ *
+ * Changing a filter re-defaults the pair unless the current one survives it. Keeping a pair whose
+ * runs are no longer offered would leave the pickers showing a value they do not list — and quietly
+ * re-selecting a different pair when the filter *does* still contain the current one would throw
+ * away a deliberate choice.
+ */
+function applyFilter(
+  state: AppState,
+  filter: { scenario?: ScenarioName; variant?: VariantName },
+): AppState {
+  const next: AppState = {
+    ...state,
+    scenario: filter.scenario ?? state.scenario,
+    variant: filter.variant ?? state.variant,
+    pendingRun: null,
+  };
+  const visible = narrowRuns(next.runs, next.scenario, next.variant);
+  const known = (id: RunId | null): boolean => runIndex(visible, id) >= 0;
+  if (known(state.base) && known(state.head)) {
+    return { ...next, following: state.head === newestRunId(visible), diffStale: true };
+  }
+  const pair = defaultPair(visible);
+  if (!pair) {
+    return {
+      ...next,
+      base: null,
+      head: null,
+      diff: null,
+      backfill: null,
+      diffStale: false,
+      following: true,
+      selectedFinding: null,
+      feedback: null,
+    };
+  }
+  return {
+    ...next,
+    base: pair.base,
+    head: pair.head,
+    following: true,
+    diff: null,
+    backfill: null,
+    diffStale: true,
+    selectedFinding: null,
+    feedback: null,
+  };
 }
 
 function shiftStep(state: AppState, delta: number): AppState {
@@ -297,10 +404,13 @@ export function reduce(state: AppState, action: Action): AppState {
         ...state,
         flow: action.flow,
         runs: [],
-        // The filter is not carried across flows: `empty-forecast` may simply not exist in the
-        // next one, and an empty picker would look like a store with no runs in it.
+        // Neither filter is carried across flows: `empty-forecast` — or `denser-forecast` — may
+        // simply not exist in the next one, and an empty picker would look like a store with no
+        // runs in it.
         scenario: ALL_SCENARIOS,
+        variant: ALL_VARIANTS,
         attribution: {},
+        variantAttribution: {},
         base: null,
         head: null,
         following: true,
@@ -317,7 +427,7 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'runs-loaded': {
       if (action.flow !== state.flow) return state;
       const runs = sortRuns(action.runs);
-      const visible = runsForScenario(runs, state.scenario);
+      const visible = narrowRuns(runs, state.scenario, state.variant);
       const known = (id: RunId | null): boolean => runIndex(visible, id) >= 0;
       if (known(state.base) && known(state.head)) {
         const newest = newestRunId(visible);
@@ -330,51 +440,34 @@ export function reduce(state: AppState, action: Action): AppState {
       return { ...state, runs, base: pair.base, head: pair.head, following: true, diffStale: true };
     }
 
-    /**
-     * Changing the filter re-defaults the pair unless the current one survives it. Keeping a pair
-     * whose runs are no longer offered would leave the pickers showing a value they do not list —
-     * and quietly re-selecting a different pair when the filter *does* still contain the current
-     * one would throw away a deliberate choice.
+    case 'select-scenario':
+      return action.scenario === state.scenario
+        ? state
+        : applyFilter(state, { scenario: action.scenario });
+
+    /*
+     * The variant filter behaves identically to the scenario one, deliberately: they are the third
+     * and fourth axes of the same identity (variants spec §5), not a hierarchy, and a reviewer who
+     * has learned what one picker does has learned what the other does.
      */
-    case 'select-scenario': {
-      if (action.scenario === state.scenario) return state;
-      const next: AppState = { ...state, scenario: action.scenario, pendingRun: null };
-      const visible = runsForScenario(state.runs, action.scenario);
-      const known = (id: RunId | null): boolean => runIndex(visible, id) >= 0;
-      if (known(state.base) && known(state.head)) {
-        return { ...next, following: state.head === newestRunId(visible), diffStale: true };
-      }
-      const pair = defaultPair(visible);
-      if (!pair) {
-        return {
-          ...next,
-          base: null,
-          head: null,
-          diff: null,
-          backfill: null,
-          diffStale: false,
-          following: true,
-          selectedFinding: null,
-          feedback: null,
-        };
-      }
-      return {
-        ...next,
-        base: pair.base,
-        head: pair.head,
-        following: true,
-        diff: null,
-        backfill: null,
-        diffStale: true,
-        selectedFinding: null,
-        feedback: null,
-      };
-    }
+    case 'select-variant':
+      return action.variant === state.variant
+        ? state
+        : applyFilter(state, { variant: action.variant });
 
     case 'attribution-loaded':
       return {
         ...state,
         attribution: { ...state.attribution, [action.attribution.runId]: action.attribution },
+      };
+
+    case 'variant-attribution-loaded':
+      return {
+        ...state,
+        variantAttribution: {
+          ...state.variantAttribution,
+          [action.attribution.runId]: action.attribution,
+        },
       };
 
     case 'select-pair':
@@ -385,7 +478,7 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'select-head': {
       if (state.base !== null) return withPair(state, state.base, action.head);
-      const visible = runsForScenario(state.runs, state.scenario);
+      const visible = narrowRuns(state.runs, state.scenario, state.variant);
       const index = runIndex(visible, action.head);
       const base = index > 0 ? visible[index - 1] : undefined;
       return withPair(state, base?.runId ?? action.head, action.head);
@@ -400,7 +493,7 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'jump-to-pending': {
       const pending = state.pendingRun;
       if (!pending) return state;
-      const visible = runsForScenario(state.runs, state.scenario);
+      const visible = narrowRuns(state.runs, state.scenario, state.variant);
       const index = runIndex(visible, pending.runId);
       const base = index > 0 ? visible[index - 1] : undefined;
       return {
@@ -530,12 +623,12 @@ function reduceServerEvent(state: AppState, event: ServerEvent): AppState {
       const previousRuns = state.runs;
       const runs = upsertRun(previousRuns, event.run);
 
-      // A run of a scenario the reviewer filtered out joins the timeline but changes nothing on
-      // screen: neither a jump nor a badge. Badging it would be an invitation to a pair the
+      // A run the reviewer has filtered out on either axis joins the timeline but changes nothing
+      // on screen: neither a jump nor a badge. Badging it would be an invitation to a pair the
       // pickers do not even offer.
       if (
-        state.scenario !== ALL_SCENARIOS &&
-        event.run.scenario !== state.scenario
+        (state.scenario !== ALL_SCENARIOS && event.run.scenario !== state.scenario) ||
+        (state.variant !== ALL_VARIANTS && variantOf(event.run) !== state.variant)
       ) {
         return { ...state, runs };
       }
@@ -552,7 +645,7 @@ function reduceServerEvent(state: AppState, event: ServerEvent): AppState {
       // Following: advance to the new head. The base advances too when the reviewer was looking at
       // an adjacent pair (the N-1 vs N default); an explicitly chosen base stays put.
       const previousHead = state.head;
-      const previousVisible = runsForScenario(previousRuns, state.scenario);
+      const previousVisible = narrowRuns(previousRuns, state.scenario, state.variant);
       const base =
         previousHead !== null && isAdjacentPair(previousVisible, state.base, previousHead)
           ? previousHead
@@ -604,6 +697,7 @@ export function routeOf(state: AppState): RouteState {
   const route: RouteState = { view: state.view, findingsOnly: state.findingsOnly };
   if (state.flow) route.flow = state.flow;
   if (state.scenario !== ALL_SCENARIOS) route.scenario = state.scenario;
+  if (state.variant !== ALL_VARIANTS) route.variant = state.variant;
   if (state.base) route.base = state.base;
   if (state.head) route.head = state.head;
   if (state.step) route.step = state.step;
