@@ -38,6 +38,8 @@ import type { PairId, RunId, StepId, ViewportId } from '../types.js';
 
 export const VISUAL_DIFF_DIRNAME = '.visual-diff';
 export const CONFIG_FILENAME = 'config.yaml';
+/** Title pins and ignore list for ingested runs (e2e spec D26, §5). Optional; absent is normal. */
+export const E2E_MAP_FILENAME = 'e2e-map.yaml';
 export const META_FILENAME = 'meta.json';
 export const FLOW_SNAPSHOT_FILENAME = 'flow.snapshot.yaml';
 export const STEP_RESULT_FILENAME = 'step.json';
@@ -109,6 +111,10 @@ export function vdiffDir(root: string): string {
 
 export function configFile(root: string): string {
   return path.join(vdiffDir(root), CONFIG_FILENAME);
+}
+
+export function e2eMapFile(root: string): string {
+  return path.join(vdiffDir(root), E2E_MAP_FILENAME);
 }
 
 export function serveInfoFile(root: string): string {

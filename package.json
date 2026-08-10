@@ -67,6 +67,7 @@
   ],
   "dependencies": {
     "chokidar": "^4.0.3",
+    "jpeg-js": "^0.4.4",
     "pixelmatch": "^6.0.0",
     "playwright-core": "^1.49.0",
     "pngjs": "^7.0.0",

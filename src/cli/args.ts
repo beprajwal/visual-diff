@@ -22,6 +22,7 @@ import {
   type ScenarioName,
   type ViewportId,
 } from '../types.js';
+import { E2E_SOURCE_FORMATS, isE2eSourceFormat, type E2eSourceFormat } from './e2e.js';
 import { VARIANT_NONE, type VariantName } from './variant.js';
 
 export type Invocation =
@@ -53,6 +54,27 @@ export type Invocation =
       json: boolean;
     }
   | {
+      /**
+       * `vdiff e2e --from trace <path|glob> [--flow <name>]` — ingest artifacts a test suite already
+       * produced (e2e spec §6). Nothing is run: this reads files that exist (D25).
+       */
+      kind: 'e2e-ingest';
+      from: E2eSourceFormat;
+      /** Path or glob, exactly as typed. The ingestion module expands it, not the CLI. */
+      pattern: string;
+      /** Override the flow name derived from the test title (D26). */
+      flow?: string;
+      json: boolean;
+    }
+  | {
+      /** `vdiff e2e list --from trace <path|glob>` — what would be ingested. Writes nothing (§6). */
+      kind: 'e2e-list';
+      from: E2eSourceFormat;
+      pattern: string;
+      flow?: string;
+      json: boolean;
+    }
+  | {
       kind: 'runs';
       flow: string;
       scenario?: ScenarioName;
@@ -62,6 +84,12 @@ export type Invocation =
        * them; this is how you go and look at them.
        */
       variants: boolean;
+      /**
+       * List the ingested runs instead of the replay timeline (e2e spec §6, D27). Same shape as
+       * `variants` and for the same reason: e2e runs are a separate timeline with its own retention
+       * bucket (§7), so the default excludes them and this is how you go and look at them.
+       */
+      e2e: boolean;
       json: boolean;
     }
   | {
@@ -73,6 +101,13 @@ export type Invocation =
       scenario?: ScenarioName;
       /** Restrict run selection to this variant; `none` selects runs captured without one. */
       variant?: VariantName;
+      /**
+       * Resolve the default pair over the ingested timeline instead of the replay one (D27).
+       *
+       * It narrows *both* ends, exactly as `--scenario` does: e2e pairs with e2e. Naming two runs
+       * outright still crosses the axis if that is what was asked for, and the pair is then flagged.
+       */
+      e2e: boolean;
       json: boolean;
     }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
@@ -181,17 +216,35 @@ export const COMMANDS: Record<string, CommandSpec> = {
     minPositionals: 1,
     maxPositionals: 1,
   },
+  e2e: {
+    usage:
+      'vdiff e2e --from trace <path|glob> [--flow <name>] | vdiff e2e list --from trace <path|glob>',
+    summary: "ingest a test suite's Playwright traces as runs",
+    // `list` is a leading positional rather than a flag, matching `flow`/`scenario`/`variant`, so
+    // the arity check moves into the case below and each form keeps its own message.
+    flags: flags({ from: { type: 'string' }, flow: { type: 'string' } }),
+    minPositionals: 1,
+    maxPositionals: 2,
+  },
   runs: {
-    usage: 'vdiff runs <flow> [--scenario <name>] [--variants]',
+    usage: 'vdiff runs <flow> [--scenario <name>] [--variants] [--e2e]',
     summary: 'timeline: SHA, dirty, scenario, status, findings count',
-    flags: flags({ scenario: { type: 'string' }, variants: { type: 'boolean' } }),
+    flags: flags({
+      scenario: { type: 'string' },
+      variants: { type: 'boolean' },
+      e2e: { type: 'boolean' },
+    }),
     minPositionals: 1,
     maxPositionals: 1,
   },
   diff: {
-    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>]',
+    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>] [--e2e]',
     summary: 'compute and print summary (defaults: N-1 vs N)',
-    flags: flags({ scenario: { type: 'string' }, variant: { type: 'string' } }),
+    flags: flags({
+      scenario: { type: 'string' },
+      variant: { type: 'string' },
+      e2e: { type: 'boolean' },
+    }),
     minPositionals: 1,
     maxPositionals: 3,
   },
@@ -269,6 +322,10 @@ export function commandLabel(invocation: Invocation): string {
       return 'variant check';
     case 'variant-list':
       return 'variant list';
+    case 'e2e-ingest':
+      return 'e2e';
+    case 'e2e-list':
+      return 'e2e list';
     default:
       return invocation.kind;
   }
@@ -288,6 +345,16 @@ const RUN_ID_RE = /^\d{1,8}$/;
  * illegal as the other would be a difference nobody could explain.
  */
 const SPEC_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
+/**
+ * A flow name is a *directory* name under `runs/`, so `--flow` is checked against the same shape the
+ * store accepts rather than passed through.
+ *
+ * Only `vdiff e2e --flow` validates here, and deliberately so: everywhere else the flow name comes
+ * from a file the user already created, and a name the store will refuse fails when that file is
+ * read, naming the file. `--flow` has no file behind it — it invents a name on the command line —
+ * so an unusable one has to be caught before ingestion writes anything under it.
+ */
+const FLOW_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 
 /**
  * How a name is being used, which decides whether the reserved name `none` is legal.
@@ -715,26 +782,112 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       return { ok: true, value: invocation };
     }
 
+    case 'e2e': {
+      // `list` is recognised as a subcommand whenever it is the first positional. A trace archive
+      // named exactly `list` is unreachable this way; that is the same trade `flow`, `scenario` and
+      // `variant` already make, and `vdiff e2e list ./list` still reaches it.
+      const listing = positionals[0] === 'list';
+      const label = listing ? 'e2e list' : 'e2e';
+      const pattern = listing ? positionals[1] : positionals[0];
+
+      if (!listing && positionals.length > 1) {
+        return fail(
+          'e2e',
+          'unexpected-argument',
+          `'e2e' takes one path or glob, got ${positionals.length}`,
+          spec.usage,
+        );
+      }
+
+      const rawFrom = values['from'];
+      if (typeof rawFrom !== 'string') {
+        return fail(
+          label,
+          'missing-flag-value',
+          `'${label}' requires --from <format>, naming the artifact format to read`,
+          `supported formats: ${E2E_SOURCE_FORMATS.join(', ')}`,
+        );
+      }
+      if (!isE2eSourceFormat(rawFrom)) {
+        return fail(
+          label,
+          'unknown-e2e-source',
+          `unknown artifact format '${rawFrom}'`,
+          `supported formats: ${E2E_SOURCE_FORMATS.join(', ')}`,
+        );
+      }
+      if (pattern === undefined || pattern === '') {
+        return fail(
+          label,
+          'missing-argument',
+          `'${label}' requires a path or glob naming the archives to read`,
+          spec.usage,
+        );
+      }
+
+      const invocation: Extract<Invocation, { kind: 'e2e-ingest' | 'e2e-list' }> = listing
+        ? { kind: 'e2e-list', from: rawFrom, pattern, json }
+        : { kind: 'e2e-ingest', from: rawFrom, pattern, json };
+
+      const rawFlow = values['flow'];
+      if (typeof rawFlow === 'string') {
+        if (rawFlow === '' || !FLOW_NAME_RE.test(rawFlow) || rawFlow.includes('..')) {
+          return fail(
+            label,
+            'invalid-flow-name',
+            `invalid flow name '${rawFlow}'`,
+            'use letters, digits, dot, dash or underscore, e.g. checkout',
+          );
+        }
+        invocation.flow = rawFlow;
+      }
+      return { ok: true, value: invocation };
+    }
+
     case 'runs': {
+      const wantsE2e = bool(values, 'e2e');
+      const wantsVariants = bool(values, 'variants');
+      // Scenarios and variants both operate *during capture*, and an e2e capture already happened
+      // (§2, explicit non-goals). Combining them is not a filter that matches nothing, it is a
+      // request for something that cannot exist, so it is refused rather than silently emptied.
+      if (wantsE2e && wantsVariants) {
+        return fail(
+          'runs',
+          'conflicting-flags',
+          "'--e2e' and '--variants' list two timelines that cannot overlap: a variant is applied during capture, and an e2e run was captured by the test suite",
+          spec.usage,
+        );
+      }
       const invocation: Extract<Invocation, { kind: 'runs' }> = {
         kind: 'runs',
         flow: positionals[0] as string,
-        variants: bool(values, 'variants'),
+        variants: wantsVariants,
+        e2e: wantsE2e,
         json,
       };
       const scenario = values['scenario'];
       if (typeof scenario === 'string') {
         const invalid = checkScenarioName('runs', scenario, 'filter');
         if (invalid !== null) return invalid;
+        if (wantsE2e && scenario !== SCENARIO_NONE) {
+          return fail(
+            'runs',
+            'conflicting-flags',
+            `'--e2e' and '--scenario ${scenario}' cannot combine: a scenario shapes responses during capture, and an e2e run was captured by the test suite`,
+            spec.usage,
+          );
+        }
         invocation.scenario = scenario;
       }
       return { ok: true, value: invocation };
     }
 
     case 'diff': {
+      const wantsE2e = bool(values, 'e2e');
       const invocation: Extract<Invocation, { kind: 'diff' }> = {
         kind: 'diff',
         flow: positionals[0] as string,
+        e2e: wantsE2e,
         json,
       };
       const base = positionals[1];
@@ -745,12 +898,30 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       if (typeof scenario === 'string') {
         const invalid = checkScenarioName('diff', scenario, 'filter');
         if (invalid !== null) return invalid;
+        if (wantsE2e && scenario !== SCENARIO_NONE) {
+          return fail(
+            'diff',
+            'conflicting-flags',
+            `'--e2e' and '--scenario ${scenario}' cannot combine: a scenario shapes responses during capture, and an e2e run was captured by the test suite`,
+            spec.usage,
+          );
+        }
         invocation.scenario = scenario;
       }
       const variant = values['variant'];
       if (typeof variant === 'string') {
         const invalid = checkVariantName('diff', variant, 'filter');
         if (invalid !== null) return invalid;
+        // Same refusal as `runs --e2e --variants`, and for the same reason (§2): a variant is
+        // applied to the rendered page during capture, and an e2e capture already happened.
+        if (wantsE2e && variant !== VARIANT_NONE) {
+          return fail(
+            'diff',
+            'conflicting-flags',
+            `'--e2e' and '--variant ${variant}' cannot combine: a variant is applied during capture, and an e2e run was captured by the test suite`,
+            spec.usage,
+          );
+        }
         invocation.variant = variant;
       }
       return { ok: true, value: invocation };

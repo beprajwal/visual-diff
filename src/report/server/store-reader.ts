@@ -24,6 +24,7 @@ import {
   type RunSummary,
 } from '../../types.js';
 import { summarizeStep, type RunAttribution, type StepAttribution } from '../attribution.js';
+import { e2eOriginOf, sourceOf, type E2eOrigin, type RunSource } from '../e2e.js';
 import {
   summarizeVariantRun,
   VARIANT_NONE,
@@ -65,6 +66,16 @@ export function pairDirName(base: RunId, head: RunId): string {
  */
 export type VariantRunSummary = RunSummary & { variant: VariantName; kept: boolean };
 
+/**
+ * The same row, carrying the source axis too (e2e spec §7).
+ *
+ * `source` is always materialised — never `undefined` — for exactly the reason `variant` is: the
+ * page must never have to distinguish "replayed" from "this store predates e2e mode", because they
+ * are the same thing. `e2e` is present only for an ingested run that recorded something about where
+ * it came from, so a replay row is the object it has always been.
+ */
+export type E2eRunSummary = VariantRunSummary & { source: RunSource; e2e?: E2eOrigin };
+
 /** The variant a run was captured under, read tolerantly off a `meta.json` of any vintage. */
 function variantOfMeta(meta: RunMeta): VariantName {
   const raw = (meta as { variant?: unknown }).variant;
@@ -76,18 +87,23 @@ function variantOfMeta(meta: RunMeta): VariantName {
 /**
  * Project a stored RunMeta onto the timeline row the report renders.
  *
- * `scenario` and `variant` are both defaulted rather than required, because a `meta.json` on disk
- * may predate either field (mocking spec §6; variants spec §5). Reading them as `none` here is what
- * keeps those runs in the timeline instead of silently dropping — or, worse, badging as proposals —
- * every run recorded before this slice.
+ * `scenario`, `variant` and `source` are all defaulted rather than required, because a `meta.json`
+ * on disk may predate any of the three (mocking spec §6; variants spec §5; e2e spec §7). Reading
+ * them as `none`/`replay` here is what keeps those runs in the timeline instead of silently
+ * dropping — or, worse, badging as proposals or as ingested — every run recorded before this slice.
  */
-export function toRunSummary(meta: RunMeta, findingsCount: number | null): VariantRunSummary {
+export function toRunSummary(meta: RunMeta, findingsCount: number | null): E2eRunSummary {
+  const origin = e2eOriginOf(meta);
   return {
     runId: meta.runId,
     flow: meta.flow,
     scenario: meta.scenario ?? SCENARIO_NONE,
     variant: variantOfMeta(meta),
     kept: (meta as { kept?: unknown }).kept === true,
+    source: sourceOf(meta),
+    // Spread rather than assigned, so the key is simply absent on a replay run and `exactOptional`
+    // stays satisfiable without an `E2eOrigin | undefined` the page would have to test for.
+    ...(origin === null ? {} : { e2e: origin }),
     revision: meta.revision,
     mode: meta.mode,
     status: meta.status,

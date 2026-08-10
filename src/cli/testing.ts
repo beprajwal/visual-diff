@@ -38,8 +38,20 @@ import type {
   ManagedFile,
 } from '../adapters/index.js';
 
-import type { HarnessInfo, Ports, RunFilter, ServeHandle, StorePort } from './ports.js';
-import { VARIANT_NONE, variantOf, type VariantName, type VariantSpec } from './variant.js';
+import type {
+  E2eArchivePlan,
+  E2eIngestPlan,
+  E2eIngestReport,
+  E2eIngestedRun,
+  HarnessInfo,
+  Ports,
+  RunFilter,
+  ServeHandle,
+  StorePort,
+  TimelineFilter,
+} from './ports.js';
+import { sourceOf, type RunSource } from './e2e.js';
+import { isKept, VARIANT_NONE, variantOf, type VariantName, type VariantSpec } from './variant.js';
 
 /**
  * The registry as the CLI sees it. Deliberately mirrors one row of the real one; the real table is
@@ -271,8 +283,8 @@ export function fakePairScenarios(overrides: Partial<PairScenarios> = {}): PairS
  * optional, so the default fixture is what a `meta.json` written before variants existed looks
  * like — no key at all — and a test that cares passes one explicitly.
  */
-export type FakeRunMeta = RunMeta & { variant?: VariantName };
-export type FakeRunSummary = RunSummary & { variant?: VariantName };
+export type FakeRunMeta = RunMeta & { variant?: VariantName; source?: RunSource; e2e?: object };
+export type FakeRunSummary = RunSummary & { variant?: VariantName; source?: RunSource };
 
 export function fakeRunMeta(overrides: Partial<FakeRunMeta> = {}): FakeRunMeta {
   return {
@@ -451,13 +463,139 @@ export interface TestStoreState {
  * against the *recorded* value — so `{ variant: 'none' }` selects the runs that had none, exactly
  * as it does for a scenario.
  */
+/**
+ * Whether a run in a bucket survives that bucket's switch.
+ *
+ * `inBucket` is the run's membership, `filter` the request. Omitting the switch is `exclude`, which
+ * is what the store does and therefore what a double has to do for the commands written against it
+ * to be exercised honestly.
+ */
+function passesBucket(inBucket: boolean, filter: TimelineFilter | undefined): boolean {
+  switch (filter ?? 'exclude') {
+    case 'include':
+      return true;
+    case 'only':
+      return inBucket;
+    default:
+      return !inBucket;
+  }
+}
+
 function narrow(runs: readonly RunSummary[], filter?: RunFilter): RunSummary[] {
   if (filter === undefined) return [...runs];
   return runs.filter((run) => {
     if (filter.scenario !== undefined && run.scenario !== filter.scenario) return false;
-    if (filter.variant !== undefined && variantOf(run) !== filter.variant) return false;
-    return true;
+    // The bucket switches, defaulted to `exclude` exactly as the store defaults them — so a fake
+    // seeded with an ingested run keeps it out of the plain timeline, which is the behaviour the
+    // `runs` and `diff` commands are written against.
+    if (!passesBucket(sourceOf(run) === 'e2e', filter.e2e)) return false;
+    // Naming a variant overrides the bucket switch, exactly as the real store does: asking for a
+    // proposal by name is an unambiguous request to see it, promoted or not.
+    if (filter.variant !== undefined) return variantOf(run) === filter.variant;
+    return passesBucket(variantOf(run) !== VARIANT_NONE && !isKept(run), filter.variants);
   });
+}
+
+/* ------------------------------------------------------------------ the e2e edge (§6) */
+
+/** One archive a fake plan holds. Defaults describe a healthy trace: titled, with shots, new. */
+export function fakeArchivePlan(overrides: Partial<E2eArchivePlan> = {}): E2eArchivePlan {
+  return {
+    path: '/project/test-results/weather-forecast-chromium/trace.zip',
+    hash: 'sha256:aaaa',
+    flow: 'weather-shows-the-forecast',
+    title: 'weather.spec.ts:12 › weather › shows the forecast',
+    steps: ['open-the-dashboard', 'run-the-search'],
+    shots: 5,
+    traceVersion: 8,
+    origin: {
+      traceHash: 'sha256:aaaa',
+      title: 'weather.spec.ts:12 › weather › shows the forecast',
+      traceVersion: 8,
+      browser: 'chromium',
+      playwrightVersion: '1.62.1',
+      platform: 'darwin',
+    },
+    alreadyIngested: false,
+    runId: null,
+    notices: [],
+    ...overrides,
+  };
+}
+
+export function fakeIngestPlan(overrides: Partial<E2eIngestPlan> = {}): E2eIngestPlan {
+  return {
+    from: 'trace',
+    pattern: 'test-results/**/trace.zip',
+    archives: [fakeArchivePlan()],
+    unmatchedMapEntries: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+export function fakeIngestedRun(overrides: Partial<E2eIngestedRun> = {}): E2eIngestedRun {
+  const archive = fakeArchivePlan();
+  return {
+    path: archive.path,
+    hash: archive.hash,
+    flow: archive.flow,
+    runId: '0001',
+    reused: false,
+    steps: archive.steps,
+    shots: archive.shots,
+    notices: [],
+    ...overrides,
+  };
+}
+
+export function fakeIngestReport(overrides: Partial<E2eIngestReport> = {}): E2eIngestReport {
+  return {
+    from: 'trace',
+    pattern: 'test-results/**/trace.zip',
+    runs: [fakeIngestedRun()],
+    unmatchedMapEntries: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+export interface TestE2eState {
+  plan: E2eIngestPlan;
+  report: E2eIngestReport;
+  /** Every request the CLI made, in order — `plan` twice means it planned before ingesting. */
+  calls: Array<{ call: 'plan' | 'ingest'; from: string; pattern: string; cwd: string; flow?: string }>;
+}
+
+/**
+ * An in-memory stand-in for the ingestion edge.
+ *
+ * It returns whatever plan and report it was seeded with, and records what it was asked. That is
+ * enough for every CLI-side decision — the refusals, the envelope, the human table — because none of
+ * them depends on a real archive; the archive reading is tested against real fixture zips in the
+ * ingestion module's own suite.
+ */
+export function createTestE2e(seed: Partial<TestE2eState> = {}): {
+  state: TestE2eState;
+  planE2eIngest: Ports['planE2eIngest'];
+  ingestE2eTraces: Ports['ingestE2eTraces'];
+} {
+  const state: TestE2eState = {
+    plan: seed.plan ?? fakeIngestPlan(),
+    report: seed.report ?? fakeIngestReport(),
+    calls: seed.calls ?? [],
+  };
+  return {
+    state,
+    planE2eIngest: async (_config, request) => {
+      state.calls.push({ call: 'plan', ...request });
+      return state.plan;
+    },
+    ingestE2eTraces: async (_config, request) => {
+      state.calls.push({ call: 'ingest', ...request });
+      return state.report;
+    },
+  };
 }
 
 export function createTestStore(state: Partial<TestStoreState> = {}): StorePort & {
@@ -538,7 +676,10 @@ export const TEST_VARIANTS: VariantName[] = [];
 export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
   const store = createTestStore();
   const adapters = createTestInstall();
+  const e2e = createTestE2e();
   return {
+    planE2eIngest: e2e.planE2eIngest,
+    ingestE2eTraces: e2e.ingestE2eTraces,
     loadConfig: async (cwd: string) => fakeConfig(cwd),
     parseFlowFile: async () => ({ ok: true, value: fakeFlowSpec(), warnings: [] }),
     parseScenarioFile: async () => ({ ok: true, value: fakeScenarioSpec(), warnings: [] }),

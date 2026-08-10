@@ -120,6 +120,13 @@ published package must not make an `npx` user download browsers before the CLI c
 `vdiff install-browser` fetches Chromium on demand, and the two packages share one browser
 registry, so a browser installed either way is found by both.
 
+`jpeg-js` is there for one reason: a Playwright trace stores its screenshots as JPEG, and every
+other layer of this tool reads a shot as `screenshot.png` — the store names the file, the diff
+engine decodes it with `pngjs`, the report serves it. `vdiff e2e` converts each frame once at
+ingest (`src/e2e/image.ts`), which needs a JPEG decoder; Node ships none and `pngjs` only encodes
+PNG. It is pure JavaScript with no dependencies of its own and no install script, so it does not
+reintroduce the postinstall `playwright` was dropped for.
+
 The skills live in `skills/` as plain markdown — `manifest.json` naming the ids, one
 `<id>/SKILL.md` each. `npm run build:skills` copies that tree to `dist/skills/` so it ships with the
 CLI, and fails the build if the manifest names a skill that is not on disk. A harness plugin is only

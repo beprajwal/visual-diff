@@ -43,12 +43,14 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       kind: 'runs',
       flow: 'checkout',
       variants: false,
+      e2e: false,
       json: false,
     });
 
-    expect(ok(['diff', 'checkout'])).toEqual({ kind: 'diff', flow: 'checkout', json: false });
+    expect(ok(['diff', 'checkout'])).toEqual({ kind: 'diff', flow: 'checkout', e2e: false, json: false });
     expect(ok(['diff', 'checkout', '0003', '0007'])).toEqual({
       kind: 'diff',
+      e2e: false,
       flow: 'checkout',
       base: '0003',
       head: '0007',
@@ -176,9 +178,11 @@ describe('parseArgs — the documented surface (spec §9)', () => {
             ? [command, '0007', '--json']
             : command === 'install'
               ? ['install', 'claude-code', '--json']
-              : ['run', 'runs', 'diff'].includes(command)
-                ? [command, 'checkout', '--json']
-                : [command, '--json'];
+              : command === 'e2e'
+                ? ['e2e', '--from', 'trace', 'trace.zip', '--json']
+                : ['run', 'runs', 'diff'].includes(command)
+                  ? [command, 'checkout', '--json']
+                  : [command, '--json'];
       expect(ok(argv).json, `${command} should accept --json`).toBe(true);
     }
   });
@@ -338,7 +342,7 @@ describe('commandLabel', () => {
   it('renders the two-word flow subcommands as they are typed', () => {
     expect(commandLabel({ kind: 'flow-new', name: 'x', json: false })).toBe('flow new');
     expect(commandLabel({ kind: 'flow-check', name: 'x', json: false })).toBe('flow check');
-    expect(commandLabel({ kind: 'runs', flow: 'x', variants: false, json: false })).toBe('runs');
+    expect(commandLabel({ kind: 'runs', flow: 'x', variants: false, e2e: false, json: false })).toBe('runs');
   });
 });
 
@@ -381,10 +385,12 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
       flow: 'forecast',
       scenario: 'empty-forecast',
       variants: false,
+      e2e: false,
       json: false,
     });
     expect(ok(['diff', 'forecast', '0003', '0007', '--scenario', 'empty-forecast'])).toEqual({
       kind: 'diff',
+      e2e: false,
       flow: 'forecast',
       base: '0003',
       head: '0007',
@@ -427,11 +433,13 @@ describe('parseArgs — scenarios (mocking spec §7)', () => {
       kind: 'runs',
       flow: 'forecast',
       variants: false,
+      e2e: false,
       scenario: 'none',
       json: false,
     });
     expect(ok(['diff', 'forecast', '--scenario', 'none'])).toEqual({
       kind: 'diff',
+      e2e: false,
       flow: 'forecast',
       scenario: 'none',
       json: false,
@@ -530,10 +538,12 @@ describe('parseArgs — variants (variants spec §6)', () => {
       kind: 'runs',
       flow: 'forecast',
       variants: true,
+      e2e: false,
       json: false,
     });
     expect(ok(['diff', 'forecast', '0003', '0007', '--variant', 'denser-forecast'])).toEqual({
       kind: 'diff',
+      e2e: false,
       flow: 'forecast',
       base: '0003',
       head: '0007',
@@ -594,6 +604,7 @@ describe('parseArgs — variants (variants spec §6)', () => {
   it('accepts `none` as a diff filter, because it is the value the store records', () => {
     expect(ok(['diff', 'forecast', '--variant', 'none'])).toEqual({
       kind: 'diff',
+      e2e: false,
       flow: 'forecast',
       variant: 'none',
       json: false,
@@ -641,5 +652,181 @@ describe('parseArgs — variants (variants spec §6)', () => {
   it('routes `vdiff variant --help` to the help topic', () => {
     expect(ok(['variant', '--help'])).toEqual({ kind: 'help', topic: 'variant', json: false });
     expect(ok(['help', 'variant'])).toEqual({ kind: 'help', topic: 'variant', json: false });
+  });
+});
+
+/* ------------------------------------------------------------------ e2e (e2e spec §6, §8) */
+
+describe('parseArgs — e2e (e2e spec §6)', () => {
+  it('parses the two forms the spec documents', () => {
+    expect(ok(['e2e', '--from', 'trace', 'test-results/**/trace.zip'])).toEqual({
+      kind: 'e2e-ingest',
+      from: 'trace',
+      pattern: 'test-results/**/trace.zip',
+      json: false,
+    });
+    expect(ok(['e2e', 'list', '--from', 'trace', 'test-results/**/trace.zip'])).toEqual({
+      kind: 'e2e-list',
+      from: 'trace',
+      pattern: 'test-results/**/trace.zip',
+      json: false,
+    });
+  });
+
+  it('carries --flow, the override for the name derived from the test title (D26)', () => {
+    expect(ok(['e2e', '--from', 'trace', 'trace.zip', '--flow', 'weather'])).toEqual({
+      kind: 'e2e-ingest',
+      from: 'trace',
+      pattern: 'trace.zip',
+      flow: 'weather',
+      json: false,
+    });
+    expect('flow' in ok(['e2e', '--from', 'trace', 'trace.zip'])).toBe(false);
+  });
+
+  it('labels the two forms as they are typed, for the --json envelope', () => {
+    expect(
+      commandLabel({ kind: 'e2e-ingest', from: 'trace', pattern: 'a.zip', json: false }),
+    ).toBe('e2e');
+    expect(commandLabel({ kind: 'e2e-list', from: 'trace', pattern: 'a.zip', json: false })).toBe(
+      'e2e list',
+    );
+  });
+
+  /**
+   * `--from` is required rather than defaulted to `trace`. One reader ships today and the
+   * ingestion layer is deliberately format-agnostic (§2), so a command line that never named its
+   * format would silently change meaning the day a second reader is added.
+   */
+  it('requires --from, listing the formats this build can read', () => {
+    expect(err(['e2e', 'trace.zip'])).toEqual({
+      code: 'missing-flag-value',
+      message: "'e2e' requires --from <format>, naming the artifact format to read",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'supported formats: trace',
+    });
+    expect(err(['e2e', 'list', 'trace.zip']).message).toBe(
+      "'e2e list' requires --from <format>, naming the artifact format to read",
+    );
+  });
+
+  it('names the supported formats when given one it does not have', () => {
+    expect(err(['e2e', '--from', 'cypress', 'out/**/*.json'])).toEqual({
+      code: 'unknown-e2e-source',
+      message: "unknown artifact format 'cypress'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'supported formats: trace',
+    });
+  });
+
+  it('requires the path, including after `list`', () => {
+    expect(err(['e2e', 'list', '--from', 'trace'])).toEqual({
+      code: 'missing-argument',
+      message: "'e2e list' requires a path or glob naming the archives to read",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['e2e']?.usage,
+    });
+    expect(err(['e2e', '--from', 'trace'])).toMatchObject({ code: 'missing-argument' });
+  });
+
+  it('refuses a second path on the ingest form, which would silently drop one', () => {
+    expect(err(['e2e', '--from', 'trace', 'a.zip', 'b.zip'])).toEqual({
+      code: 'unexpected-argument',
+      message: "'e2e' takes one path or glob, got 2",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['e2e']?.usage,
+    });
+  });
+
+  /** `--flow` becomes a directory under `runs/`, and it is the one flow name typed on a command line. */
+  it('rejects a flow name that could not be a directory', () => {
+    expect(err(['e2e', '--from', 'trace', 'a.zip', '--flow', '../etc/passwd'])).toEqual({
+      code: 'invalid-flow-name',
+      message: "invalid flow name '../etc/passwd'",
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: 'use letters, digits, dot, dash or underscore, e.g. checkout',
+    });
+    expect(err(['e2e', '--from', 'trace', 'a.zip', '--flow', 'a/b']).code).toBe(
+      'invalid-flow-name',
+    );
+  });
+
+  it('routes `vdiff e2e --help` to the help topic', () => {
+    expect(ok(['e2e', '--help'])).toEqual({ kind: 'help', topic: 'e2e', json: false });
+  });
+});
+
+describe('parseArgs — the --e2e timeline switch (e2e spec §6, D27)', () => {
+  it('carries --e2e onto runs and diff', () => {
+    expect(ok(['runs', 'weather', '--e2e'])).toEqual({
+      kind: 'runs',
+      flow: 'weather',
+      variants: false,
+      e2e: true,
+      json: false,
+    });
+    expect(ok(['diff', 'weather', '--e2e'])).toEqual({
+      kind: 'diff',
+      flow: 'weather',
+      e2e: true,
+      json: false,
+    });
+  });
+
+  /**
+   * §2, explicit non-goals: "No scenarios or variants over e2e runs. Both operate during capture,
+   * and e2e capture already happened." So these are not filters that match nothing — they are
+   * requests for something that cannot exist, and are refused rather than silently emptied.
+   */
+  it('refuses --e2e with --variants, naming why they cannot overlap', () => {
+    expect(err(['runs', 'weather', '--e2e', '--variants'])).toEqual({
+      code: 'conflicting-flags',
+      message:
+        "'--e2e' and '--variants' list two timelines that cannot overlap: a variant is applied" +
+        ' during capture, and an e2e run was captured by the test suite',
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['runs']?.usage,
+    });
+  });
+
+  it('refuses --e2e with a named scenario, on runs and on diff', () => {
+    expect(err(['runs', 'weather', '--e2e', '--scenario', 'empty-forecast'])).toEqual({
+      code: 'conflicting-flags',
+      message:
+        "'--e2e' and '--scenario empty-forecast' cannot combine: a scenario shapes responses" +
+        ' during capture, and an e2e run was captured by the test suite',
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['runs']?.usage,
+    });
+    expect(err(['diff', 'weather', '--e2e', '--scenario', 'empty-forecast']).code).toBe(
+      'conflicting-flags',
+    );
+  });
+
+  it('refuses --e2e with a named variant on diff', () => {
+    expect(err(['diff', 'weather', '--e2e', '--variant', 'denser-forecast'])).toEqual({
+      code: 'conflicting-flags',
+      message:
+        "'--e2e' and '--variant denser-forecast' cannot combine: a variant is applied during" +
+        ' capture, and an e2e run was captured by the test suite',
+      exitCode: EXIT.CONFIG_ERROR,
+      hint: COMMANDS['diff']?.usage,
+    });
+  });
+
+  /**
+   * `none` is the value the store records for a run captured without a scenario or a variant, and
+   * every ingested run is one of those. Refusing it would forbid the one combination that is
+   * exactly true of an e2e run.
+   */
+  it('accepts `none` alongside --e2e, because that is what an ingested run records', () => {
+    expect(ok(['runs', 'weather', '--e2e', '--scenario', 'none'])).toMatchObject({
+      e2e: true,
+      scenario: 'none',
+    });
+    expect(ok(['diff', 'weather', '--e2e', '--variant', 'none'])).toMatchObject({
+      e2e: true,
+      variant: 'none',
+    });
   });
 });

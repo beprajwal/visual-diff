@@ -10,6 +10,8 @@
 
 import { SCENARIO_NONE, STYLE_PROPS } from '../types.js';
 import { beginRun, type RunMetaInput } from './run-store.js';
+import { SOURCE_E2E, SOURCE_REPLAY, UNKNOWN_REVISION } from './internal/e2e.js';
+import type { E2eRunInfo, MaybeE2e } from './internal/e2e.js';
 import { sha256 } from './internal/hash.js';
 import { VARIANT_NONE, type MaybeVariant } from './internal/variant.js';
 import type {
@@ -124,7 +126,7 @@ export function makeFlowSnapshot(flow: string, steps: Step[], viewports: Viewpor
 
 export function makeRunMeta(
   flow: string,
-  overrides: Partial<RunMeta> & MaybeVariant = {},
+  overrides: Partial<RunMeta> & MaybeVariant & MaybeE2e = {},
 ): RunMetaInput {
   const base: RunMetaInput = {
     flow,
@@ -132,6 +134,8 @@ export function makeRunMeta(
     scenario: SCENARIO_NONE,
     /** Likewise: a fixture that says nothing about variants captured the unmodified page (§5). */
     variant: VARIANT_NONE,
+    /** And a fixture that says nothing about its source is a replay, as every pre-e2e run is. */
+    source: SOURCE_REPLAY,
     flowHash: sha256(flow),
     revision: { sha: '9f8e7d6', ref: 'main', dirty: false },
     mode: 'attach',
@@ -150,6 +154,30 @@ export function makeRunMeta(
     warnings: [],
   };
   return { ...base, ...overrides };
+}
+
+/**
+ * An ingested run (e2e spec §7): source `e2e`, an e2e block carrying the identity the ingest is
+ * keyed by, and `revision: unknown` — which is what a trace really yields, since no Playwright
+ * trace archive carries git metadata at any format version.
+ */
+export function makeE2eRunMeta(
+  flow: string,
+  e2e: Partial<E2eRunInfo> = {},
+  overrides: Partial<RunMeta> & MaybeE2e = {},
+): RunMetaInput {
+  const title = e2e.testTitle ?? `${flow}.spec.ts:12 \u203A ${flow} \u203A ingested`;
+  return makeRunMeta(flow, {
+    source: SOURCE_E2E,
+    revision: UNKNOWN_REVISION,
+    e2e: {
+      traceHash: sha256(`${flow}:${title}`),
+      testTitle: title,
+      titleKey: `${flow}.spec.ts \u203A ${flow} \u203A ingested`,
+      ...e2e,
+    },
+    ...overrides,
+  });
 }
 
 /** A 1x1 PNG. Small, valid, and byte-stable — enough for path and retention tests. */
@@ -176,7 +204,7 @@ export interface WriteFixtureRunOptions {
   flow: string;
   steps: FixtureStep[];
   viewports?: ViewportId[];
-  meta?: Partial<RunMeta> & MaybeVariant;
+  meta?: Partial<RunMeta> & MaybeVariant & MaybeE2e;
 }
 
 /** Build and commit a complete run directory through the real writer. */

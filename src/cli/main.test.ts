@@ -23,12 +23,17 @@ import { runCli, type CliRuntime } from './main.js';
 import { createBufferWriter, type BufferWriter } from './output.js';
 import type { Ports } from './ports.js';
 import {
+  createTestE2e,
   createTestInstall,
   createTestPorts,
   createTestStore,
   emptyDiffSummary,
+  fakeArchivePlan,
   fakeDiffResult,
   fakeFeedbackEntry,
+  fakeIngestPlan,
+  fakeIngestReport,
+  fakeIngestedRun,
   fakePairScenarios,
   fakeRunMeta,
   fakeRunResult,
@@ -1869,5 +1874,333 @@ describe('vdiff run / runs / diff under a variant (variants spec §5)', () => {
       base: '0002',
       head: '0003',
     });
+  });
+});
+
+/* ------------------------------------------------------------------ e2e (e2e spec §6, §7, D27) */
+
+describe('vdiff e2e — the --json envelopes (e2e spec §6)', () => {
+  const e2eArgs = ['e2e', '--from', 'trace', 'test-results/**/trace.zip'];
+
+  function withPlan(
+    plan = fakeIngestPlan(),
+    report = fakeIngestReport(),
+  ): { ports: Ports; state: ReturnType<typeof createTestE2e>['state'] } {
+    const e2e = createTestE2e({ plan, report });
+    return {
+      ports: createTestPorts({
+        planE2eIngest: e2e.planE2eIngest,
+        ingestE2eTraces: e2e.ingestE2eTraces,
+      }),
+      state: e2e.state,
+    };
+  }
+
+  it('e2e: emits the ingestion report plus the reused count, and exits 0', async () => {
+    const { ports } = withPlan(
+      fakeIngestPlan(),
+      fakeIngestReport({
+        runs: [
+          fakeIngestedRun({ runId: '0001' }),
+          fakeIngestedRun({ runId: '0002', reused: true, path: '/t/b.zip' }),
+        ],
+      }),
+    );
+    const h = harness({ ports });
+
+    expect(await runCli([...e2eArgs, '--json'], h)).toBe(EXIT.OK);
+    const result = envelope<{
+      from: string;
+      pattern: string;
+      reused: number;
+      runs: Array<{ runId: string; reused: boolean }>;
+    }>(h);
+    expect(result.ok).toBe(true);
+    expect(result.command).toBe('e2e');
+    expect(result.data).toMatchObject({
+      from: 'trace',
+      pattern: 'test-results/**/trace.zip',
+      reused: 1,
+      unmatchedMapEntries: [],
+    });
+    expect(result.data?.runs.map((run) => run.runId)).toEqual(['0001', '0002']);
+  });
+
+  it('e2e list: emits the plan, and never calls the ingestion at all (§6)', async () => {
+    const { ports, state } = withPlan();
+    const h = harness({ ports });
+
+    expect(await runCli(['e2e', 'list', '--from', 'trace', 'a.zip', '--json'], h)).toBe(EXIT.OK);
+    const result = envelope<{ archives: Array<{ flow: string; alreadyIngested: boolean }> }>(h);
+    expect(result.command).toBe('e2e list');
+    expect(result.data?.archives).toHaveLength(1);
+    expect(result.data?.archives[0]).toMatchObject({ alreadyIngested: false });
+    expect(state.calls.map((call) => call.call)).toEqual(['plan']);
+  });
+
+  it('e2e: exits 2 in a JSON envelope when the pattern matched nothing', async () => {
+    const { ports } = withPlan(fakeIngestPlan({ archives: [] }));
+    const h = harness({ ports });
+
+    expect(await runCli([...e2eArgs, '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    const result = envelope<unknown>(h);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatchObject({
+      code: 'e2e-no-archives',
+      message: "no trace archives matched 'test-results/**/trace.zip'",
+      exitCode: EXIT.CONFIG_ERROR,
+    });
+  });
+
+  it('e2e: exits 2 rather than writing a run with nothing to diff (§8)', async () => {
+    const { ports, state } = withPlan(
+      fakeIngestPlan({ archives: [fakeArchivePlan({ path: '/t/quiet.zip', shots: 0 })] }),
+    );
+    const h = harness({ ports });
+
+    expect(await runCli([...e2eArgs, '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    expect(envelope<unknown>(h).error).toMatchObject({
+      code: 'e2e-no-screenshots',
+      message: '/t/quiet.zip contains no screenshots, so there is nothing to diff',
+    });
+    expect(state.calls.map((call) => call.call)).toEqual(['plan']);
+  });
+
+  it('e2e: carries the stale-map warning in the envelope, not only on stderr (§8)', async () => {
+    const { ports } = withPlan(
+      fakeIngestPlan(),
+      fakeIngestReport({ unmatchedMapEntries: ['weather › shows the forecast'] }),
+    );
+    const h = harness({ ports });
+
+    await runCli([...e2eArgs, '--json'], h);
+    expect(envelope<unknown>(h).warnings).toEqual([
+      'e2e-map.yaml pins a title no trace in this batch carries: weather › shows the forecast' +
+        ' — the pinned step ids are not being applied',
+    ]);
+  });
+
+  it('e2e: writes the human table to stdout and the warning to stderr', async () => {
+    const { ports } = withPlan(
+      fakeIngestPlan(),
+      fakeIngestReport({ unmatchedMapEntries: ['weather › shows the forecast'] }),
+    );
+    const h = harness({ ports });
+
+    await runCli(e2eArgs, h);
+    expect(h.writer.stdout()).toContain('ingested 1 trace archive: 1 new, 0 already present');
+    expect(h.writer.stderr()).toContain('warning: e2e-map.yaml pins a title');
+  });
+});
+
+describe('vdiff runs --e2e (e2e spec §6, D27)', () => {
+  const ingested = (runId: string, patch: Record<string, unknown> = {}) =>
+    fakeRunSummary({ runId, source: 'e2e', ...patch });
+
+  const timeline = () =>
+    createTestStore({
+      runs: {
+        weather: [
+          fakeRunSummary({ runId: '0001' }),
+          ingested('0002'),
+          ingested('0003'),
+          fakeRunSummary({ runId: '0004' }),
+        ],
+      },
+    });
+
+  it('keeps ingested runs off the default timeline and says how many were held back', async () => {
+    const h = harness({ ports: createTestPorts({ openStore: async () => timeline() }) });
+
+    expect(await runCli(['runs', 'weather', '--json'], h)).toBe(EXIT.OK);
+    const data = envelope<{ runs: Array<{ runId: string }>; e2e?: true }>(h).data;
+    expect(data?.runs.map((run) => run.runId)).toEqual(['0001', '0004']);
+    // Absent rather than false, so an ordinary listing's payload is the object it has always been.
+    expect(data?.e2e).toBeUndefined();
+  });
+
+  it('names the flag that shows what it is hiding', async () => {
+    const h = harness({ ports: createTestPorts({ openStore: async () => timeline() }) });
+    await runCli(['runs', 'weather'], h);
+    expect(h.writer.stdout()).toContain('2 e2e runs not shown — `vdiff runs weather --e2e`');
+  });
+
+  it('lists exactly the ingested runs under --e2e, with a SOURCE column', async () => {
+    const h = harness({ ports: createTestPorts({ openStore: async () => timeline() }) });
+
+    expect(await runCli(['runs', 'weather', '--e2e', '--json'], h)).toBe(EXIT.OK);
+    const data = envelope<{ runs: Array<{ runId: string }>; e2e?: true }>(h).data;
+    expect(data?.runs.map((run) => run.runId)).toEqual(['0002', '0003']);
+    expect(data?.e2e).toBe(true);
+
+    const plain = harness({ ports: createTestPorts({ openStore: async () => timeline() }) });
+    await runCli(['runs', 'weather', '--e2e'], plain);
+    expect(plain.writer.stdout()).toContain('SOURCE');
+    expect(plain.writer.stdout()).toContain('e2e');
+  });
+
+  it('shows no SOURCE column on an ordinary timeline, where every row would read the same', async () => {
+    const store = createTestStore({ runs: { weather: [fakeRunSummary({ runId: '0001' })] } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+    await runCli(['runs', 'weather'], h);
+    expect(h.writer.stdout()).not.toContain('SOURCE');
+  });
+
+  it('tells the reader how to make one when a flow has no ingested runs', async () => {
+    const store = createTestStore({ runs: { weather: [fakeRunSummary({ runId: '0001' })] } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+    await runCli(['runs', 'weather', '--e2e'], h);
+    expect(h.writer.stdout()).toContain(
+      "no e2e runs for flow 'weather' — `vdiff e2e --from trace <path>`",
+    );
+  });
+
+  it('asks the store for every bucket, so the counts it prints are real', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const store = createTestStore({ runs: { weather: [fakeRunSummary({ runId: '0001' })] } });
+    const wrapped = {
+      ...store,
+      listRuns: async (flow: string, filter?: Record<string, unknown>) => {
+        seen.push(filter);
+        return store.listRuns(flow, filter as never);
+      },
+    };
+    const h = harness({ ports: createTestPorts({ openStore: async () => wrapped }) });
+
+    await runCli(['runs', 'weather'], h);
+    expect(seen[0]).toEqual({ variants: 'include', e2e: 'include' });
+  });
+});
+
+describe('vdiff diff and the source axis (e2e spec §4, D27)', () => {
+  const e2eMeta = (runId: string) => fakeRunMeta({ runId, source: 'e2e' });
+
+  it('resolves the default pair over the ingested timeline under --e2e', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const store = createTestStore({
+      runs: {
+        weather: [
+          fakeRunSummary({ runId: '0001' }),
+          fakeRunSummary({ runId: '0002', source: 'e2e' }),
+          fakeRunSummary({ runId: '0003', source: 'e2e' }),
+        ],
+      },
+    });
+    const wrapped = {
+      ...store,
+      resolvePair: async (
+        flow: string,
+        base?: string,
+        head?: string,
+        filter?: Record<string, unknown>,
+      ) => {
+        seen.push(filter);
+        return store.resolvePair(flow, base, head, filter as never);
+      },
+    };
+    const h = harness({ ports: createTestPorts({ openStore: async () => wrapped }) });
+
+    await runCli(['diff', 'weather', '--e2e', '--json'], h);
+    expect(seen[0]).toEqual({ e2e: 'only' });
+    expect(envelope<{ pair: { base: string; head: string } }>(h).data?.pair).toMatchObject({
+      base: '0002',
+      head: '0003',
+    });
+  });
+
+  it('leaves the bucket to the store when nobody named a run, so the default is unchanged', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const store = createTestStore({ runs: { weather: [fakeRunSummary({ runId: '0001' })] } });
+    const wrapped = {
+      ...store,
+      resolvePair: async (
+        flow: string,
+        base?: string,
+        head?: string,
+        filter?: Record<string, unknown>,
+      ) => {
+        seen.push(filter);
+        return store.resolvePair(flow, base, head, filter as never);
+      },
+    };
+    const h = harness({ ports: createTestPorts({ openStore: async () => wrapped }) });
+
+    await runCli(['diff', 'weather'], h);
+    expect(seen[0]).toEqual({});
+  });
+
+  /**
+   * D27 permits the mixed pair and flags it; it does not forbid it. Naming two runs outright is
+   * how a reader reaches one, so the bucket filter has to stand aside when they do.
+   */
+  it('stands the bucket filter aside when runs are named outright', async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const store = createTestStore({ runs: { weather: [fakeRunSummary({ runId: '0001' })] } });
+    const wrapped = {
+      ...store,
+      resolvePair: async (
+        flow: string,
+        base?: string,
+        head?: string,
+        filter?: Record<string, unknown>,
+      ) => {
+        seen.push(filter);
+        return store.resolvePair(flow, base, head, filter as never);
+      },
+    };
+    const h = harness({ ports: createTestPorts({ openStore: async () => wrapped }) });
+
+    await runCli(['diff', 'weather', '0001', '0002'], h);
+    expect(seen[0]).toEqual({ e2e: 'include' });
+  });
+
+  it('states that an e2e pair is a pixel comparison, without warning about it', async () => {
+    const result = fakeDiffResult({ baseMeta: e2eMeta('0003'), headMeta: e2eMeta('0007') });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    expect(await runCli(['diff', 'weather', '0003', '0007'], h)).toBe(EXIT.OK);
+    const stdout = h.writer.stdout();
+    // "reduced detail" was the old wording, and it implied an element-level explanation survived on
+    // such a pair. None does: a trace snapshot has no box metrics, so nothing attributes (§4).
+    expect(stdout).toContain(
+      'e2e pair: e2e diff — pixel comparison only: a Playwright trace records DOM structure but no' +
+        ' computed styles and no box metrics, so no finding from this pair can name the element or' +
+        ' the property behind a change',
+    );
+    expect(stdout).not.toContain('reduced detail');
+    expect(stdout).toContain('steps may share one screenshot');
+    expect(stdout).toContain('viewport-only and lossy');
+    // The normal case for e2e mode is stated, never marked: a `!` on the ordinary result is how a
+    // channel that carries real warnings gets ignored.
+    expect(stdout).not.toContain('! e2e pair');
+    expect(h.writer.stderr()).toBe('');
+  });
+
+  it('flags a mixed pair at high severity, in the summary and as a warning', async () => {
+    const result = fakeDiffResult({ baseMeta: fakeRunMeta({ runId: '0003' }), headMeta: e2eMeta('0007') });
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
+
+    expect(await runCli(['diff', 'weather', '0003', '0007', '--json'], h)).toBe(EXIT.OK);
+    const value = envelope<{ sourcePair: { label: string; degraded: boolean } }>(h);
+    expect(value.data?.sourcePair).toEqual({
+      base: 'replay',
+      head: 'e2e',
+      label: 'e2e-vs-replay',
+      degraded: true,
+    });
+    expect(value.warnings?.[0]).toBe(
+      "e2e-vs-replay: head was ingested from a test suite's trace and base was replayed by this" +
+        ' tool — the two were captured by different machinery, so most findings below describe the' +
+        ' capture, not the application',
+    );
+  });
+
+  it('carries no sourcePair and no source line at all for two replays', async () => {
+    const h = harness({ ports: createTestPorts({ computeDiff: async () => fakeDiffResult() }) });
+
+    await runCli(['diff', 'checkout', '0003', '0007', '--json'], h);
+    const value = envelope<{ sourcePair?: unknown }>(h);
+    expect(value.data && 'sourcePair' in value.data).toBe(false);
+    expect(value.warnings).toBeUndefined();
   });
 });

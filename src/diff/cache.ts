@@ -32,6 +32,13 @@
  * `proposal` depends on the two runs' *revisions*, so two runs at one pair of ids can change from a
  * proposal pair to a cross-variant one without either run id or either variant name moving. A key
  * blind to that would serve the proposal's findings for a comparison that is no longer one.
+ *
+ * The source axis goes in with the strongest claim of the three (e2e spec §5, §7). It decides the
+ * `e2e-vs-replay` label and the `fidelity` block *and* — alone among the three — it changes what
+ * the engine computes, because an ingested pair is diffed under the noise-tolerant thresholds of
+ * `e2e-noise.ts`. Those thresholds arrive in the fingerprint by the front door, as the resolved
+ * `minRegionArea` and `antialiasTolerance` the engine actually ran with, so a project that retunes
+ * its `e2e:` block invalidates exactly the diffs that tuning changes.
  */
 
 import { createHash } from 'node:crypto';
@@ -39,8 +46,13 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { SCENARIO_NONE } from '../types.js';
-import { VARIANTLESS_PAIR } from './pairing.js';
-import type { PairVariants, VariantAwareDiffResult } from './pairing.js';
+import { REPLAY_PAIR, VARIANTLESS_PAIR } from './pairing.js';
+import type {
+  PairSources,
+  PairVariants,
+  SourceAwareDiffResult,
+  VariantAwareDiffResult,
+} from './pairing.js';
 import type {
   DiffEngineOptions,
   DiffResult,
@@ -106,6 +118,7 @@ export function diffConfigFingerprint(
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
   variants: PairVariants = VARIANTLESS_PAIR,
+  sources: PairSources = REPLAY_PAIR,
 ): string {
   const canonical = JSON.stringify({
     antialiasTolerance: options.antialiasTolerance,
@@ -118,6 +131,14 @@ export function diffConfigFingerprint(
       crossScenario: scenarios.crossScenario,
       head: scenarios.head,
       mockVsRecorded: scenarios.mockVsRecorded,
+    },
+    sources: {
+      base: sources.base,
+      crossSource: sources.crossSource,
+      // The level, not the whole block: `missing` is a restatement of it, and a message the report
+      // renders is not something a cached result should be re-keyed on.
+      fidelity: sources.fidelity.level,
+      head: sources.head,
     },
     variants: {
       base: variants.base,
@@ -136,11 +157,13 @@ export function diffCacheKey(
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
   variants: PairVariants = VARIANTLESS_PAIR,
+  sources: PairSources = REPLAY_PAIR,
 ): string {
   return `${pairId(base, head)}@${options.engineVersion}#${diffConfigFingerprint(
     options,
     scenarios,
     variants,
+    sources,
   )}`;
 }
 
@@ -158,9 +181,10 @@ export function isCacheHit(
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
   variants: PairVariants = VARIANTLESS_PAIR,
+  sources: PairSources = REPLAY_PAIR,
 ): boolean {
   if (typeof cached.cacheKey !== 'string' || cached.cacheKey === '') return false;
-  return cached.cacheKey === diffCacheKey(base, head, options, scenarios, variants);
+  return cached.cacheKey === diffCacheKey(base, head, options, scenarios, variants, sources);
 }
 
 export async function readCachedDiff(
@@ -170,11 +194,12 @@ export async function readCachedDiff(
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
   variants: PairVariants = VARIANTLESS_PAIR,
+  sources: PairSources = REPLAY_PAIR,
 ): Promise<DiffResult | null> {
   try {
     const raw = await readFile(path.join(outDir, 'findings.json'), 'utf8');
     const parsed = JSON.parse(raw) as CachedDiffResult;
-    return isCacheHit(parsed, base, head, options, scenarios, variants) ? parsed : null;
+    return isCacheHit(parsed, base, head, options, scenarios, variants, sources) ? parsed : null;
   } catch {
     return null;
   }
@@ -189,9 +214,9 @@ export async function readCachedDiff(
  * only in the bytes written here would be erased by that round trip, turning every subsequent read
  * into a miss.
  *
- * The scenario and variant identities come off the result, which is the one place they cannot
- * disagree with the findings being stored: `diffRuns` puts the very blocks it labelled the pair
- * with there.
+ * The scenario, variant and source identities come off the result, which is the one place they
+ * cannot disagree with the findings being stored: `diffRuns` puts the very blocks it labelled the
+ * pair with there.
  */
 export async function writeDiff(
   outDir: string,
@@ -205,6 +230,7 @@ export async function writeDiff(
     options,
     result.scenarios ?? SCENARIOLESS_PAIR,
     (result as VariantAwareDiffResult).variants ?? VARIANTLESS_PAIR,
+    (result as SourceAwareDiffResult).sources ?? REPLAY_PAIR,
   );
 
   await mkdir(outDir, { recursive: true });

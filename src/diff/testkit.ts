@@ -29,6 +29,8 @@ import type {
 } from '../types.js';
 import { VARIANT_NONE } from '../store/internal/variant.js';
 import type { MaybeVariant, VariantRunMeta } from '../store/internal/variant.js';
+import { SOURCE_REPLAY } from '../store/internal/e2e.js';
+import type { MaybeE2e, RunSource } from '../store/internal/e2e.js';
 import { createImage, encodePng } from './pixel.js';
 
 export type Rgba = [number, number, number, number];
@@ -100,12 +102,19 @@ export interface FixtureRun {
   flow?: string;
   viewports?: ViewportId[];
   steps: FixtureStep[];
-  meta?: Partial<RunMeta> & MaybeVariant;
+  meta?: Partial<RunMeta> & MaybeVariant & MaybeE2e;
 }
 
 const EPOCH = '2026-08-08T10:00:00.000Z';
 
-function metaFor(run: FixtureRun, viewports: ViewportId[]): VariantRunMeta {
+/**
+ * `source` is typed loosely on purpose: the §8 case "a run records a source this version does not
+ * know" has to be constructible from a fixture, and it is a string on disk.
+ */
+function metaFor(
+  run: FixtureRun,
+  viewports: ViewportId[],
+): VariantRunMeta & { source: RunSource | string } {
   return {
     runId: run.runId,
     flow: run.flow ?? 'checkout',
@@ -113,6 +122,9 @@ function metaFor(run: FixtureRun, viewports: ViewportId[]): VariantRunMeta {
     scenario: SCENARIO_NONE,
     // Likewise on the variant axis: nothing said means the unmodified page (variants §5).
     variant: VARIANT_NONE,
+    // And on the source axis: nothing said means a run vdiff captured itself (e2e §7). A fixture
+    // sets `meta: { source: 'e2e' }` to stand in for one ingested from a trace.
+    source: SOURCE_REPLAY,
     flowHash: 'sha256:fixture',
     revision: { sha: `sha-${run.runId}`, ref: 'main', dirty: false },
     mode: 'attach',

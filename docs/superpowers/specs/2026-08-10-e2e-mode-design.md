@@ -77,22 +77,66 @@ so they do not silently become folklore.
 ## 4. What a trace yields, and what it does not
 
 A Playwright trace archive contains action boundaries, DOM snapshots, screenshots and network
-activity. That covers most of what slice 1 captures — with one material gap.
+activity. That covers some of what slice 1 captures — with three gaps, one of them decisive.
 
 | slice 1 capture | from a trace |
 |---|---|
-| screenshot | yes |
-| DOM structure | yes, from the snapshot |
+| screenshot | yes — viewport-only, JPEG, downscaled, from a throttled screencast |
+| DOM structure | yes, from the snapshot: tags, attributes, text |
+| **element box metrics (rects)** | **no** — a snapshot serialises attributes, never geometry |
 | **computed-style subset** | **no** |
 | accessibility tree | no |
 | console | partially, when the trace records it |
 | network | yes |
 
-**Consequence, stated plainly because it would otherwise be discovered as a disappointment:** the
-layered diff (D5) degrades for e2e runs. Pixel regions and DOM attribution still work — "this region
-changed, this element is responsible" — but property-level findings do not. An e2e diff will not say
-"padding 8px → 12px". `findings.json` marks these runs so the report can explain the reduced detail
-rather than appear to have missed something.
+**An e2e pair is a pixel comparison. It produces no DOM-attributed findings at all.**
+
+Stated first and plainly, because an earlier version of this section claimed the opposite — that
+"pixel regions and DOM attribution still work, this region changed and this element is responsible"
+— and that claim is provably false at every trace version under every configuration.
+
+Why, so that nobody re-adds it: **stage 4 of the layered diff (D5) attributes a changed region to an
+element by hit-testing the region's rectangle against the elements' rectangles.** A trace snapshot
+carries no rectangles. Ingestion therefore gives every node the rect `{0,0,0,0}`
+(`e2e/to-shots.ts`, `UNAVAILABLE_RECT`) — the only honest value, since inventing plausible geometry
+would attribute regions to the wrong elements. A zero rect intersects nothing, so no region resolves
+to a node, so no node change ever reaches a finding. The changes are computed and then discarded.
+
+What that costs, measured on two ingested runs whose DOMs genuinely differ (a heading reading
+"Saved locations" against one reading "Your places"): the diff produced 17 findings, every one of
+them `content` / "visual change" with no element, no property changes, and the reasons
+`['pixels-only', 'e2e-degraded']`. The rename is real, and is visible only as anonymous changed
+pixels.
+
+So, for a pair of ingested runs:
+
+| layer | on an e2e pair |
+|---|---|
+| pixel regions | yes — which parts of the screenshot changed |
+| page-size changes | yes — computed from the images, not from the DOM |
+| element attribution | **no** — no finding names an element or a selector |
+| structural findings (added/removed) | **no** — they can only surface through attribution |
+| property-level findings | **no** — no computed styles to compare |
+| accessibility findings | **no** — no accessibility tree in the archive |
+
+**Decision (2026-08-11).** Rather than emit region-less DOM findings — findings a reviewer could
+neither locate on the screenshot nor check — an e2e diff reports pixels and says so everywhere a
+user can see it: on the result (`sources.fidelity`, whose `attribution` is `none` and whose `note`
+is one sentence saying "pixel comparison"), on every finding (`reasons` carries `pixels-only` and
+`e2e-degraded`), on each finding row in the report ("no element: this pair is a pixel comparison"),
+in the findings rail (element attribution, structural, style and accessibility layers each listed as
+unavailable with the reason), and in one line of `vdiff diff` output. Truth in labelling over a
+richer-looking result. The words "reduced detail" are avoided deliberately: they imply some
+element-level explanation survived, and none does.
+
+**A mixed pair (e2e versus replay) is different, and is described differently.** The replayed side
+does have box metrics, so a region can still be attributed — but only through that side, and no
+property comparison is possible in either direction. Its sentence says exactly that. It remains
+flagged at high severity on top (D27).
+
+Restoring element-level findings for e2e pairs means restoring the *input*: rehydrating each
+snapshot in a browser to measure it, which is out of scope here and is recorded in §10. It cannot be
+achieved by loosening what the diff filters out.
 
 ## 5. Noise handling
 
@@ -107,9 +151,19 @@ Provisional defaults, overridable per project under `e2e:` in config:
 | minimum region area | 64 | larger |
 | antialias tolerance | standard | higher |
 
-Masking matters more here than anywhere else in the tool, so `e2e-map.yaml` also accepts an `ignore`
-list applied to ingested runs — clocks, ids and animated regions, which no amount of threshold
-tuning handles correctly.
+**Proposed, measured, and refused (2026-08-11): an `ignore` list in `e2e-map.yaml`.** This section
+originally specified one, reasoning that masking matters more here than anywhere else — clocks, ids
+and animated regions are not handled correctly by any threshold. It cannot be built, for the same
+reason §4 gives: a selector-based mask must resolve a selector to a rectangle, and a trace snapshot
+carries no geometry, so every element ingests with the rect `{0,0,0,0}`. Measured on one pair: a
+mask that suppressed a finding on a replayed run (1 → 0) suppressed nothing on the same pair ingested
+(1 → 1).
+
+The shipped behaviour is therefore an **exit-2 refusal** naming the key, not a silent no-op — a mask
+the user believes is protecting them, which quietly protects nothing, is precisely the failure this
+project keeps designing against. The alternatives that do work on an ingested pair are
+`e2e.minRegionArea` and `e2e.antialiasTolerance` above, and masking at capture time in the suite
+itself, where geometry still exists.
 
 A rejected alternative worth recording: capturing each shot twice and treating pixels that differ
 between the pair as inherently unstable, masking them automatically. It self-calibrates instead of
@@ -162,8 +216,10 @@ happens to be checked out locally.
 2. **Ingestion is idempotent** — the same archive twice yields one run.
 3. **Title mapping**: normalization, collision disambiguation, `e2e-map.yaml` overrides, and the
    removed-and-added behaviour when a title changes between traces.
-4. **Degraded-diff labelling** — e2e findings are marked as lacking property-level detail, and the
-   report explains it rather than appearing incomplete.
+4. **Pixel-only labelling** — an e2e pair's findings carry no element and no property changes, are
+   marked `pixels-only` and `e2e-degraded`, and every sentence the CLI and report print about such a
+   pair says "pixel comparison" rather than implying an element-level one. A test asserts the
+   absence of attribution directly, so a future change cannot appear to restore it silently.
 5. **Pairing** — e2e pairs with e2e by default; e2e-versus-replay is flagged at high severity.
 6. **Retention isolation** — ingesting many traces never evicts replay runs.
 7. **Noise defaults** applied only to e2e runs, and overridable from config.
@@ -177,6 +233,10 @@ happens to be checked out locally.
 - Which Playwright trace format versions to support, and the policy when a newer one appears.
 - Whether console entries present in some traces are worth surfacing as `console` findings, given
   they will be inconsistently available.
+- Whether to recover element geometry — and with it attribution, and with that structural findings —
+  by rehydrating each snapshot in a headless browser and measuring it. It is the only route to
+  element-level e2e findings (§4), it costs a browser launch per ingest, and it is deliberately not
+  in this slice. Nothing short of it changes what an e2e pair can report.
 
 ## 11. Roadmap position
 

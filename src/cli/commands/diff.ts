@@ -11,6 +11,13 @@
  *     reopening a pair never recomputes (spec §8). Only an engine-version change forces the work.
  *
  * Defaults are N-1 vs N; the store resolves them, because which runs exist is store knowledge.
+ *
+ * E2E mode adds a third behaviour, and it is a *default*, not a filter (D27). An ingested run is on
+ * its own timeline, so the pair this command resolves when nobody named one never crosses the source
+ * axis: with `--e2e` it is resolved over the ingested runs, without it over the replay runs.
+ * Crossing is still reachable — naming two runs outright is an explicit request and is honoured —
+ * and the resulting pair is flagged at high severity, exactly as `mock-vs-recorded` is, because
+ * almost every finding in a mixed pair describes the capture rather than the application.
  */
 
 import {
@@ -24,6 +31,7 @@ import {
 } from '../../types.js';
 import type { Invocation } from '../args.js';
 import type { CommandContext, CommandResult } from '../command.js';
+import { classifySourcePair, describeSourcePair, E2E_DEGRADED_SENTENCES } from '../e2e.js';
 import { percent, table } from '../output.js';
 import type { RunFilter } from '../ports.js';
 import type { DiffData } from '../shapes.js';
@@ -71,6 +79,17 @@ export async function diff(
   const filter: RunFilter = {};
   if (invocation.scenario !== undefined) filter.scenario = invocation.scenario;
   if (invocation.variant !== undefined) filter.variant = invocation.variant;
+  // The source axis constrains which runs a *default* pair may be resolved over, and only that.
+  //
+  //  - `--e2e` asks for the ingested timeline: `only`.
+  //  - No flag and no run named: the store's own default, `exclude`, which is the replay timeline
+  //    and therefore exactly what `vdiff diff <flow>` meant before this slice. Left unset rather
+  //    than restated, so there is one place that decides it.
+  //  - A run named outright is an explicit request for that run whatever it was captured by, so the
+  //    bucket filter stands aside and a mixed pair is allowed to happen — the pairing D27 permits
+  //    and flags rather than forbidding.
+  if (invocation.e2e) filter.e2e = 'only';
+  else if (invocation.base !== undefined || invocation.head !== undefined) filter.e2e = 'include';
   const pair = await store.resolvePair(
     invocation.flow,
     invocation.base,
@@ -109,6 +128,10 @@ export async function diff(
   // Derived from the two runs' meta rather than from a field on the stored diff, so a pair computed
   // before variants existed classifies correctly instead of reading as "no variant information".
   const variantPair = classifyVariantPair(result.baseMeta, result.headMeta);
+  // Same derivation, same reason: read off the two runs' meta rather than off a field on the stored
+  // diff, so a pair computed before this slice classifies as replay-vs-replay instead of as "no
+  // source information".
+  const sourcePair = classifySourcePair(result.baseMeta, result.headMeta);
   const scenarioCell =
     result.scenarios === undefined ||
     (result.scenarios.base === SCENARIO_NONE && result.scenarios.head === SCENARIO_NONE)
@@ -142,6 +165,24 @@ export async function diff(
   if (variantSentence !== null) {
     human.push('');
     human.push(variantPair.label === 'variant-proposal' ? variantSentence : `! ${variantSentence}`);
+  }
+
+  // The source axis, above the step table for the same reason the scenario labels are: a reader who
+  // stops at the summary must already have been told that these findings are not a regression
+  // between two revisions. `e2e-vs-replay` keeps the `!` marker; `e2e-pair` does not, because for an
+  // e2e run that comparison *is* the question and marking the normal case teaches readers to skip
+  // the line that also carries the mixed one.
+  const sourceSentence = describeSourcePair(sourcePair);
+  if (sourceSentence !== null) {
+    human.push('');
+    human.push(sourcePair.label === 'e2e-vs-replay' ? `! ${sourceSentence}` : sourceSentence);
+  }
+
+  // The reduced detail is spelled out rather than left to be discovered as a disappointment (§4).
+  // It is printed whenever *either* side was ingested, including the mixed pair, because the
+  // property-level findings are missing from that comparison too.
+  if (sourcePair.degraded) {
+    for (const sentence of E2E_DEGRADED_SENTENCES.slice(1)) human.push(`  ${sentence}`);
   }
 
   const stepRows: string[][] = [];
@@ -207,12 +248,21 @@ export async function diff(
   if (variantSentence !== null && variantPair.label !== 'variant-proposal') {
     warnings.push(variantSentence);
   }
+  // `e2e-vs-replay` is flagged at high severity (D27), so it travels as a CLI warning exactly as
+  // `mock-vs-recorded` does. `e2e-pair` deliberately does not: it is the normal case for e2e mode,
+  // and a warning on the normal case is noise an agent learns to filter out.
+  if (sourceSentence !== null && sourcePair.label === 'e2e-vs-replay') {
+    warnings.push(sourceSentence);
+  }
 
   const data: DiffData = { flow: pair.flow, pair, path, cached: reusable, labels, result };
   // Only when a variant is in play, so an ordinary pair's envelope is the object it has always been.
   if (variantPair.base !== VARIANT_NONE || variantPair.head !== VARIANT_NONE) {
     data.variantPair = variantPair;
   }
+  // Likewise: absent for a replay-vs-replay pair, which is every pair a project that has never
+  // ingested a trace can produce.
+  if (sourcePair.label !== null) data.sourcePair = sourcePair;
 
   return {
     data,

@@ -17,7 +17,7 @@ import * as reportModule from '../report/index.js';
 import * as runnerModule from '../runner/index.js';
 import * as storeModule from '../store/index.js';
 
-import { MODULE_SPECIFIERS, createPorts, toStorePort } from './deps.js';
+import { MODULE_SPECIFIERS, createPorts, toResolvePairOptions, toStorePort } from './deps.js';
 import type { Ports } from './ports.js';
 import { fakeConfig, fakeFeedbackEntry } from './testing.js';
 
@@ -42,6 +42,7 @@ describe('module edges', () => {
       '../flow/index.js',
       '../mocking/index.js',
       '../variant-apply/index.js',
+      '../e2e/index.js',
       '../store/index.js',
       '../runner/index.js',
       '../diff/index.js',
@@ -100,12 +101,53 @@ describe('module edges', () => {
     });
   });
 
+  /*
+   * The source axis is the one field of `RunFilter` the two sides of this edge spell differently:
+   * `vdiff runs` and `listRunSummaries` take a three-valued timeline filter, while `resolvePair`
+   * takes the timeline itself and reads `undefined` as "no timeline was named" (e2e spec D27).
+   *
+   * Passing the filter through untouched compiles — excess properties survive on a non-literal —
+   * and the store then ignores `e2e` and falls back to `replay`, so `vdiff diff <flow> --e2e` would
+   * quietly resolve the *replay* pair. That failure is invisible to the typechecker, which is
+   * exactly why it is asserted here rather than left to the shape of the call.
+   */
+  describe('resolvePair filter translation', () => {
+    it('turns --e2e into the ingested timeline, not an ignored key', () => {
+      expect(toResolvePairOptions({ e2e: 'only' })).toEqual({ source: 'e2e' });
+    });
+
+    it('leaves the timeline unrestricted when both are allowed, so a named run is taken at its word', () => {
+      expect(toResolvePairOptions({ e2e: 'include' })).toBeUndefined();
+    });
+
+    it('reads an explicit exclude as the replay timeline', () => {
+      expect(toResolvePairOptions({ e2e: 'exclude' })).toEqual({ source: 'replay' });
+    });
+
+    it('carries scenario and variant across unchanged', () => {
+      expect(toResolvePairOptions({ scenario: 'empty', variant: 'wider-gap', e2e: 'only' })).toEqual(
+        { scenario: 'empty', variant: 'wider-gap', source: 'e2e' },
+      );
+    });
+
+    it('never hands the store the listing vocabulary it does not read', () => {
+      const options = toResolvePairOptions({ variants: 'only', e2e: 'only' });
+      expect(Object.keys(options ?? {}).sort()).toEqual(['source']);
+    });
+
+    it('treats an empty filter and no filter alike', () => {
+      expect(toResolvePairOptions({})).toBeUndefined();
+      expect(toResolvePairOptions(undefined)).toBeUndefined();
+    });
+  });
+
   it('createPorts produces every port the CLI declares', () => {
     const ports = createPorts();
     expect(Object.keys(ports).sort()).toEqual([
       'adapterFiles',
       'adapterTargets',
       'computeDiff',
+      'ingestE2eTraces',
       'installAdapter',
       'listAdapters',
       'listScenarios',
@@ -115,6 +157,7 @@ describe('module edges', () => {
       'parseFlowFile',
       'parseScenarioFile',
       'parseVariantFile',
+      'planE2eIngest',
       'readInstalledVersion',
       'runFlow',
       'scenarioFile',

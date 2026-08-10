@@ -18,7 +18,10 @@ import { isKept, VARIANT_NONE, variantOf } from '../../variant.js';
 import {
   ALL_SCENARIOS,
   ALL_VARIANTS,
+  e2eOriginLine,
+  e2eRevisionNote,
   isEphemeralRun,
+  isIngestedRun,
   runLabel,
   scenarioLabel,
   scenariosOf,
@@ -57,6 +60,11 @@ function RunPicker(props: {
   const run = props.runs.find((r) => r.runId === props.value) ?? null;
   const mockOnly = props.meta?.network === 'mock';
   const variant = run === null ? VARIANT_NONE : variantOf(run);
+  // Provenance is read off the run's own row rather than off the loaded diff, for the same reason
+  // the variant badge is: it must be right before the diff arrives, and it is the fact that explains
+  // why the findings below carry less detail than usual.
+  const originLine = e2eOriginLine(props.meta ?? run);
+  const revisionNote = e2eRevisionNote(run);
   return (
     <div class="run-pick">
       <label for={`pick-${props.label}`}>{props.label}</label>
@@ -112,6 +120,25 @@ function RunPicker(props: {
           {variant}
         </span>
       ) : null}
+      {run && isIngestedRun(run) ? (
+        <span
+          class="badge e2e"
+          title={
+            'ingested from a test suite trace, not replayed by this tool: no frozen clock, no' +
+            ' settle gate, viewport-only lossy screenshots, no computed styles and no element box' +
+            ' metrics — so a diff of two such runs compares pixels only, naming neither the element' +
+            ' nor the property behind a change.' +
+            (originLine === null ? '' : ` ${originLine}`)
+          }
+        >
+          e2e
+        </span>
+      ) : null}
+      {revisionNote === null ? null : (
+        <span class="badge unknown-revision" title={revisionNote}>
+          revision unknown
+        </span>
+      )}
       {run && isKept(run) ? (
         <span
           class="badge kept"

@@ -19,7 +19,14 @@ import { VariantNotes } from './components/VariantNotes.js';
 import { ViewportTabs } from './components/ViewportTabs.js';
 import { Warnings } from './components/Warnings.js';
 import { createClient, type ApiClient } from './client.js';
-import { buildFilmstrip, findingsForStep, viewportDiffOf, viewportsOf, visibleCells } from './derive.js';
+import {
+  buildFilmstrip,
+  degradedLayerNotes,
+  findingsForStep,
+  viewportDiffOf,
+  viewportsOf,
+  visibleCells,
+} from './derive.js';
 import { KEY_BINDINGS, resolveKey } from './keys.js';
 import { formatHash, parseHash } from './route.js';
 import { pairId, screenshotPath } from './paths.js';
@@ -476,6 +483,7 @@ export function App({ client }: AppProps) {
           <RightRail
             findings={findings}
             selectedFinding={state.selectedFinding}
+            unavailable={degradedLayerNotes(state.diff)}
             cropUrl={cropUrl}
             onSelect={(finding) => dispatch({ type: 'select-finding', findingId: finding.id })}
             onComment={openFindingFeedback}

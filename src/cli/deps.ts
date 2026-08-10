@@ -43,7 +43,16 @@ import type {
 } from '../adapters/index.js';
 
 import { runFailure } from './error.js';
-import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
+import type {
+  E2eIngestPlan,
+  E2eIngestReport,
+  E2eIngestRequest,
+  HarnessInfo,
+  Ports,
+  RunFilter,
+  ServeHandle,
+  StorePort,
+} from './ports.js';
 import type { VariantSpec } from './variant.js';
 
 /** Module edges, relative to this file. Mirrors the `index.ts` of each module (plan §1). */
@@ -59,6 +68,15 @@ export const MODULE_SPECIFIERS = {
    * the CLI keeps constructing no path of its own.
    */
   variant: '../variant-apply/index.js',
+  /**
+   * The e2e ingestion slice (e2e spec §6). One module for the whole slice, exactly as `mocking` and
+   * `variant` are: the trace reader, the title→flow mapping (D26) and the run writer behind a single
+   * edge, so the CLI parses a trace archive no more than it parses a HAR.
+   *
+   * Loaded on first use like every other edge here, which matters more for this one than for most:
+   * a trace reader pulls in a zip reader and a JPEG header parser, and `vdiff runs` must not.
+   */
+  e2e: '../e2e/index.js',
   store: '../store/index.js',
   runner: '../runner/index.js',
   diff: '../diff/index.js',
@@ -123,6 +141,45 @@ function emptyToUndefined<T extends object>(filter: T | undefined): T | undefine
   return Object.values(filter).some((value) => value !== undefined) ? filter : undefined;
 }
 
+/**
+ * The store's own `ResolvePairOptions`, taken off the method rather than restated, so a field
+ * renamed in the store is a red typecheck here instead of an option silently dropped on the floor.
+ */
+type ResolvePairFilter = NonNullable<
+  Parameters<ReturnType<StoreModule['openStore']>['resolvePair']>[3]
+>;
+
+/**
+ * The one place `RunFilter` is not a pass-through: the source axis is named differently on the two
+ * sides of this edge, and on purpose.
+ *
+ * A *timeline listing* asks a three-valued question — show the replay timeline, show the ingested
+ * one, show both — so `vdiff runs` and the store's `listRunSummaries` both speak
+ * `exclude | include | only`. **Resolving a pair is a different question**: `resolvePair` restricts
+ * both ends to one timeline (D27), so it takes the timeline itself, `source: 'replay' | 'e2e'`, and
+ * reads `undefined` as "the caller named no timeline" — which is what lets a run named outright be
+ * taken at its word and an explicit cross-source pair happen at all.
+ *
+ * Passing the listing vocabulary straight through, as every other field of `RunFilter` is passed,
+ * type-checks (excess properties survive on a non-literal) and is silently ignored by the store,
+ * which then defaults to `replay`: `vdiff diff <flow> --e2e` would resolve over the replay timeline
+ * and answer a question nobody asked. Hence the explicit translation, and hence a test on it.
+ *
+ * `include` maps to `undefined` rather than to a source, because "both timelines are allowed" is
+ * exactly the absence of a restriction — the same value the default carries.
+ */
+export function toResolvePairOptions(
+  filter: RunFilter | undefined,
+): ResolvePairFilter | undefined {
+  if (filter === undefined) return undefined;
+  const options: ResolvePairFilter = {};
+  if (filter.scenario !== undefined) options.scenario = filter.scenario;
+  if (filter.variant !== undefined) options.variant = filter.variant;
+  if (filter.e2e === 'only') options.source = 'e2e';
+  else if (filter.e2e === 'exclude') options.source = 'replay';
+  return emptyToUndefined(options);
+}
+
 export function toStorePort(module: StoreModule, config: Config): StorePort {
   const store = module.openStore(config);
   const root = store.root;
@@ -145,7 +202,7 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
     // previous run of the same identity, which a caller filtering the returned array cannot undo.
     listRuns: (flow, filter) => store.listRuns(flow, emptyToUndefined(filter)),
     resolvePair: (flow, base, head, filter) =>
-      store.resolvePair(flow, base, head, emptyToUndefined(filter)),
+      store.resolvePair(flow, base, head, toResolvePairOptions(filter)),
     runDir: (flow, runId) => store.runDir(flow, runId),
     diffFile: (pair) => module.paths.diffFindingsFile(root, pair.flow, pair.base, pair.head),
     readDiff: (pair) => store.readDiff(pair),
@@ -272,6 +329,23 @@ export function createPorts(): Ports {
         'listVariants',
       );
       return await fn(config.root);
+    },
+
+    // The e2e edge (e2e spec §6). Both calls take the loaded config because ingestion writes into
+    // the store at `config.dir` — `vdiff e2e` outside a project must fail as a config error, not as
+    // an ingestion that silently created a store somewhere else.
+    async planE2eIngest(config: Config, request: E2eIngestRequest): Promise<E2eIngestPlan> {
+      const fn = await loadExport<
+        (config: Config, request: E2eIngestRequest) => Promise<E2eIngestPlan>
+      >(MODULE_SPECIFIERS.e2e, 'planIngest');
+      return await fn(config, request);
+    },
+
+    async ingestE2eTraces(config: Config, request: E2eIngestRequest): Promise<E2eIngestReport> {
+      const fn = await loadExport<
+        (config: Config, request: E2eIngestRequest) => Promise<E2eIngestReport>
+      >(MODULE_SPECIFIERS.e2e, 'ingestTraces');
+      return await fn(config, request);
     },
 
     async openStore(config: Config): Promise<StorePort> {

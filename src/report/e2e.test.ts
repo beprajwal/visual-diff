@@ -1,0 +1,327 @@
+/**
+ * The source axis (e2e spec §4, §7, §8, D27).
+ *
+ * Every sentence this module produces is asserted verbatim rather than merely checked for being
+ * non-null. They are the user interface of the feature: a reader looking at an e2e diff has to be
+ * told *why* there are no property-level findings, and "some explanation was rendered" is not a test
+ * of whether the explanation is the right one.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import type { Revision } from '../types.js';
+
+import {
+  classifySourcePair,
+  describeDegradedDiff,
+  describeE2eOrigin,
+  describeE2eRevision,
+  describeSourcePair,
+  e2eDegradedSentences,
+  e2eOriginOf,
+  isE2eRun,
+  isE2eWarningKind,
+  isHighSeverityE2eWarningKind,
+  isPixelsOnlyFinding,
+  isRunSource,
+  showSource,
+  sourceOf,
+  E2E_DEGRADED_SENTENCES,
+  E2E_MISSING_LAYERS,
+  E2E_MIXED_ATTRIBUTION_SENTENCE,
+  E2E_PIXELS_ONLY_SENTENCE,
+  PIXELS_ONLY_FINDING_NOTE,
+  E2E_WARNING_KINDS,
+  RUN_SOURCES,
+  SOURCE_E2E,
+  SOURCE_REPLAY,
+} from './e2e.js';
+
+const revision = (overrides: Partial<Revision> = {}): Revision => ({
+  sha: '9f8e7d6c5b4a',
+  ref: 'main',
+  dirty: false,
+  ...overrides,
+});
+
+describe('sourceOf', () => {
+  it('reads a run written before this slice as a replay, because that is what it was', () => {
+    expect(sourceOf({ runId: '0007' })).toBe(SOURCE_REPLAY);
+    expect(sourceOf({})).toBe(SOURCE_REPLAY);
+  });
+
+  it('reads an ingested run as e2e', () => {
+    expect(sourceOf({ source: 'e2e' })).toBe(SOURCE_E2E);
+    expect(isE2eRun({ source: 'e2e' })).toBe(true);
+    expect(isE2eRun({ source: 'replay' })).toBe(false);
+  });
+
+  it('survives null, undefined and a value it does not recognise', () => {
+    expect(sourceOf(null)).toBe(SOURCE_REPLAY);
+    expect(sourceOf(undefined)).toBe(SOURCE_REPLAY);
+    // A run written by a newer build is still a run. Describing it conservatively beats refusing to
+    // list it, which is what throwing here would amount to.
+    expect(sourceOf({ source: 'cypress' })).toBe(SOURCE_REPLAY);
+    expect(sourceOf({ source: 7 })).toBe(SOURCE_REPLAY);
+  });
+
+  it('names both sources, replay first', () => {
+    expect(RUN_SOURCES).toEqual(['replay', 'e2e']);
+    expect(isRunSource('replay')).toBe(true);
+    expect(isRunSource('e2e')).toBe(true);
+    expect(isRunSource('trace')).toBe(false);
+    expect(showSource(SOURCE_E2E)).toBe('e2e');
+    expect(showSource(SOURCE_REPLAY)).toBe('replay');
+  });
+});
+
+describe('e2eOriginOf', () => {
+  it('returns null for a replay run, so a caller gets "nothing to say" rather than empty fields', () => {
+    expect(e2eOriginOf({ runId: '0007' })).toBeNull();
+    expect(e2eOriginOf({ e2e: null })).toBeNull();
+    expect(e2eOriginOf({ e2e: 'yes' })).toBeNull();
+    expect(e2eOriginOf(null)).toBeNull();
+  });
+
+  it('keeps only the fields that are actually there', () => {
+    expect(
+      e2eOriginOf({
+        e2e: {
+          traceHash: 'sha256:abc',
+          title: 'weather.spec.ts:12 › weather › shows the forecast',
+          browser: 'chromium',
+          traceVersion: 8,
+          project: '   ',
+          retry: Number.NaN,
+        },
+      }),
+    ).toEqual({
+      traceHash: 'sha256:abc',
+      title: 'weather.spec.ts:12 › weather › shows the forecast',
+      browser: 'chromium',
+      traceVersion: 8,
+    });
+  });
+
+  it('returns null when the block holds nothing usable', () => {
+    expect(e2eOriginOf({ e2e: { title: '', retry: 'two' } })).toBeNull();
+  });
+
+  it('reads the block ingestion actually writes: testTitle, archive, and a nested suite', () => {
+    // This is the shape `store/internal/e2e.ts` validates at commit and therefore the only shape a
+    // real `meta.json` has. A reader that understood only the flat spelling would show nothing at
+    // all for every ingested run — which is how a badge silently stops meaning anything.
+    expect(
+      e2eOriginOf({
+        e2e: {
+          traceHash: 'sha256:abc',
+          testTitle: 'weather.spec.ts:14 › weather dashboard › shows the forecast',
+          titleKey: 'weather.spec.ts › weather dashboard › shows the forecast',
+          archive: '/tmp/traces/dashboard-baseline.zip',
+          suite: {
+            browser: 'chromium',
+            channel: 'chrome',
+            playwrightVersion: '1.62.1',
+            platform: 'darwin',
+            traceVersion: 8,
+          },
+        },
+      }),
+    ).toEqual({
+      traceHash: 'sha256:abc',
+      tracePath: '/tmp/traces/dashboard-baseline.zip',
+      title: 'weather.spec.ts:14 › weather dashboard › shows the forecast',
+      browser: 'chromium',
+      channel: 'chrome',
+      playwrightVersion: '1.62.1',
+      platform: 'darwin',
+      traceVersion: 8,
+    });
+  });
+
+  it('prefers a flat field over its nested alias, so an explicit value always wins', () => {
+    expect(
+      e2eOriginOf({
+        e2e: { title: 'flat', testTitle: 'nested', browser: 'firefox', suite: { browser: 'chromium' } },
+      }),
+    ).toEqual({ title: 'flat', browser: 'firefox' });
+  });
+});
+
+describe('describeE2eOrigin', () => {
+  it('names every field that is present, in a fixed order', () => {
+    expect(
+      describeE2eOrigin({
+        title: 'weather.spec.ts:12 › weather › shows the forecast',
+        browser: 'chromium',
+        channel: 'chrome',
+        project: 'desktop',
+        retry: 2,
+        playwrightVersion: '1.62.1',
+        traceVersion: 8,
+      }),
+    ).toBe(
+      'test weather.spec.ts:12 › weather › shows the forecast · chromium (chrome) ·' +
+        ' project desktop · retry 2 · Playwright 1.62.1 · trace v8',
+    );
+  });
+
+  it('says only what it knows — a library-only trace carries no test title, and that is ordinary', () => {
+    expect(describeE2eOrigin({ browser: 'chromium', traceVersion: 8 })).toBe('chromium · trace v8');
+  });
+
+  it('is null when there is nothing to say', () => {
+    expect(describeE2eOrigin(null)).toBeNull();
+    expect(describeE2eOrigin({ traceHash: 'sha256:abc' })).toBeNull();
+  });
+});
+
+describe('describeE2eRevision', () => {
+  it('explains an unknown revision rather than leaving it blank (§7, §8)', () => {
+    expect(describeE2eRevision(revision({ sha: '' }))).toBe(
+      'revision unknown: a Playwright trace records no git metadata, so this run is not attributed' +
+        ' to a commit rather than being attributed to the wrong one',
+    );
+    expect(describeE2eRevision(null)).not.toBeNull();
+  });
+
+  it('says nothing when the revision is known', () => {
+    expect(describeE2eRevision(revision())).toBeNull();
+  });
+});
+
+describe('classifySourcePair', () => {
+  it('carries no label for two replays — every pair slice 1 could produce', () => {
+    expect(classifySourcePair({}, {})).toEqual({
+      base: 'replay',
+      head: 'replay',
+      label: null,
+      degraded: false,
+    });
+    expect(describeSourcePair(classifySourcePair({}, {}))).toBeNull();
+  });
+
+  it('labels two ingested runs as an e2e pair — degraded, but not confounded', () => {
+    const pair = classifySourcePair({ source: 'e2e' }, { source: 'e2e' });
+    expect(pair).toEqual({ base: 'e2e', head: 'e2e', label: 'e2e-pair', degraded: true });
+  });
+
+  it('labels a mixed pair as e2e-vs-replay, whichever side was ingested', () => {
+    expect(classifySourcePair({ source: 'e2e' }, {}).label).toBe('e2e-vs-replay');
+    expect(classifySourcePair({}, { source: 'e2e' }).label).toBe('e2e-vs-replay');
+    expect(classifySourcePair({}, { source: 'e2e' }).degraded).toBe(true);
+  });
+});
+
+describe('describeSourcePair', () => {
+  it('names which side was ingested, so the sentence is actionable', () => {
+    expect(describeSourcePair(classifySourcePair({ source: 'e2e' }, {}))).toBe(
+      "e2e-vs-replay: base was ingested from a test suite's trace and head was replayed by this" +
+        ' tool — the two were captured by different machinery, so most findings below describe the' +
+        ' capture, not the application',
+    );
+    expect(describeSourcePair(classifySourcePair({}, { source: 'e2e' }))).toBe(
+      "e2e-vs-replay: head was ingested from a test suite's trace and base was replayed by this" +
+        ' tool — the two were captured by different machinery, so most findings below describe the' +
+        ' capture, not the application',
+    );
+  });
+
+  it('states that an e2e pair is a pixel comparison, instead of warning about it', () => {
+    expect(describeSourcePair(classifySourcePair({ source: 'e2e' }, { source: 'e2e' }))).toBe(
+      'e2e pair: e2e diff — pixel comparison only: a Playwright trace records DOM structure but no' +
+        ' computed styles and no box metrics, so no finding from this pair can name the element or' +
+        ' the property behind a change — a renamed heading appears as a changed region and nothing' +
+        ' more',
+    );
+  });
+});
+
+describe('what an e2e diff can report (§4)', () => {
+  it('states all three things a reader would otherwise read as a defect', () => {
+    expect(E2E_DEGRADED_SENTENCES).toHaveLength(3);
+    expect(E2E_DEGRADED_SENTENCES[0]).toContain('pixel comparison only');
+    // Several steps legitimately resolve to the same screencast frame; presenting that as a fault
+    // would be the report inventing a problem that is not there.
+    expect(E2E_DEGRADED_SENTENCES[1]).toContain('steps may share one screenshot');
+    expect(E2E_DEGRADED_SENTENCES[2]).toContain('viewport-only and lossy');
+  });
+
+  /**
+   * The claim this slice exists to stop: that an e2e pair still says which element is responsible
+   * for a region. It never did — a trace snapshot has no box metrics — so no sentence may promise
+   * it, and the word chosen to avoid promising it is asserted rather than left to a reviewer's eye.
+   */
+  it('never promises element-level detail on a pair of ingested runs', () => {
+    for (const sentence of e2eDegradedSentences(
+      classifySourcePair({ source: 'e2e' }, { source: 'e2e' }),
+    )) {
+      expect(sentence).not.toContain('element is responsible');
+      expect(sentence).not.toContain('reduced detail');
+    }
+    expect(E2E_PIXELS_ONLY_SENTENCE).toContain(
+      'no finding from this pair can name the element or the property behind a change',
+    );
+  });
+
+  it('tells a mixed pair the different truth: element names came from the replayed run', () => {
+    const mixed = e2eDegradedSentences(classifySourcePair({}, { source: 'e2e' }));
+    expect(mixed[0]).toBe(E2E_MIXED_ATTRIBUTION_SENTENCE);
+    expect(mixed[0]).toContain('any element named below was located in the replayed run only');
+    // And the two lines beneath it are true of either pair, so they are shared verbatim.
+    expect(mixed.slice(1)).toEqual(E2E_DEGRADED_SENTENCES.slice(1));
+    expect(e2eDegradedSentences(classifySourcePair({}, {}))).toEqual([]);
+  });
+
+  it('names the three layers a trace does not carry, geometry among them', () => {
+    expect(E2E_MISSING_LAYERS).toEqual([
+      'computed-style subset',
+      'accessibility tree',
+      'element box metrics',
+    ]);
+  });
+
+  it('summarises to one line for output with room for one', () => {
+    expect(describeDegradedDiff()).toBe(`e2e diff — ${E2E_DEGRADED_SENTENCES[0]}`);
+    expect(describeDegradedDiff()).not.toContain('reduced detail');
+  });
+});
+
+describe('a finding that explains nothing beyond its pixels (§4)', () => {
+  const pixelFinding = { reasons: ['pixels-only', 'e2e-degraded'] };
+
+  it('recognises the finding an e2e pair actually produces', () => {
+    expect(isPixelsOnlyFinding(pixelFinding)).toBe(true);
+    expect(PIXELS_ONLY_FINDING_NOTE).toContain('no element: this pair is a pixel comparison');
+    expect(PIXELS_ONLY_FINDING_NOTE).toContain('carries no box metrics');
+  });
+
+  it('says nothing about a finding that did name an element', () => {
+    expect(isPixelsOnlyFinding({ ...pixelFinding, element: { selector: 'h1' } })).toBe(false);
+  });
+
+  /** A canvas repaint on a replay pair is `pixels-only` too, and has a different cause entirely. */
+  it('says nothing about an unattributed region on a replay pair', () => {
+    expect(isPixelsOnlyFinding({ reasons: ['pixels-only'] })).toBe(false);
+    expect(isPixelsOnlyFinding({ reasons: [] })).toBe(false);
+    expect(isPixelsOnlyFinding(null)).toBe(false);
+  });
+});
+
+describe('run warnings (§8)', () => {
+  it('recognises the kinds ingestion raises', () => {
+    expect(E2E_WARNING_KINDS).toEqual([
+      'e2e-map-unmatched',
+      'e2e-step-title-duplicate',
+      'e2e-revision-unknown',
+    ]);
+    for (const kind of E2E_WARNING_KINDS) expect(isE2eWarningKind(kind)).toBe(true);
+    expect(isE2eWarningKind('har-miss')).toBe(false);
+  });
+
+  it('promotes only the stale map entry, because only it means the diff aligns on the wrong step', () => {
+    expect(isHighSeverityE2eWarningKind('e2e-map-unmatched')).toBe(true);
+    expect(isHighSeverityE2eWarningKind('e2e-step-title-duplicate')).toBe(false);
+    expect(isHighSeverityE2eWarningKind('e2e-revision-unknown')).toBe(false);
+  });
+});
