@@ -41,6 +41,7 @@ describe('module edges', () => {
       '../store/index.js',
       '../flow/index.js',
       '../mocking/index.js',
+      '../variant-apply/index.js',
       '../store/index.js',
       '../runner/index.js',
       '../diff/index.js',
@@ -108,15 +109,19 @@ describe('module edges', () => {
       'installAdapter',
       'listAdapters',
       'listScenarios',
+      'listVariants',
       'loadConfig',
       'openStore',
       'parseFlowFile',
       'parseScenarioFile',
+      'parseVariantFile',
       'readInstalledVersion',
       'runFlow',
       'scenarioFile',
       'scenariosDir',
       'serveReport',
+      'variantFile',
+      'variantsDir',
     ]);
   });
 
@@ -139,6 +144,26 @@ describe('module edges', () => {
     expect(scenariosDir('/project')).toBe('/project/.visual-diff/scenarios');
     expect(scenarioFile('/project', 'empty-forecast')).toBe(
       '/project/.visual-diff/scenarios/empty-forecast.yaml',
+    );
+  });
+
+  /**
+   * The variant edge, checked the same way and for the same reason (variants spec §4, §6). The
+   * four names mirror the scenario edge exactly: a variant is the second axis of run identity and
+   * has the same lifecycle as the first, so a difference between these two lists would be a bug in
+   * one of them rather than a design.
+   */
+  it('exports the four variant functions the CLI binds (variants spec §4, §6)', async () => {
+    const variant = (await import('../variant-apply/index.js')) as Record<string, unknown>;
+    for (const name of ['parseVariantFile', 'variantsDir', 'variantFile', 'listVariants']) {
+      expect(typeof variant[name], `variant-apply/index.ts must export ${name}`).toBe('function');
+    }
+
+    const variantsDir = variant['variantsDir'] as (root: string) => string;
+    const variantFile = variant['variantFile'] as (root: string, name: string) => string;
+    expect(variantsDir('/project')).toBe('/project/.visual-diff/variants');
+    expect(variantFile('/project', 'denser-forecast')).toBe(
+      '/project/.visual-diff/variants/denser-forecast.yaml',
     );
   });
 

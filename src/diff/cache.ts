@@ -26,6 +26,12 @@
  * an unlabelled ordinary regression — precisely the stale-forever failure this file exists to
  * prevent, one axis over. So the pair's scenario identity is folded into the same digest: the run
  * *ids* are in the key verbatim, and everything else that can move the output is fingerprinted.
+ *
+ * The variant axis is folded in for exactly the same reason (variants spec §5). It is not a
+ * duplicate of the scenario argument: variant identity decides `proposal` and `cross-variant`, and
+ * `proposal` depends on the two runs' *revisions*, so two runs at one pair of ids can change from a
+ * proposal pair to a cross-variant one without either run id or either variant name moving. A key
+ * blind to that would serve the proposal's findings for a comparison that is no longer one.
  */
 
 import { createHash } from 'node:crypto';
@@ -33,6 +39,8 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { SCENARIO_NONE } from '../types.js';
+import { VARIANTLESS_PAIR } from './pairing.js';
+import type { PairVariants, VariantAwareDiffResult } from './pairing.js';
 import type {
   DiffEngineOptions,
   DiffResult,
@@ -97,6 +105,7 @@ export function diffDirFor(vdiffDir: string, flow: string, base: RunId, head: Ru
 export function diffConfigFingerprint(
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
+  variants: PairVariants = VARIANTLESS_PAIR,
 ): string {
   const canonical = JSON.stringify({
     antialiasTolerance: options.antialiasTolerance,
@@ -110,6 +119,12 @@ export function diffConfigFingerprint(
       head: scenarios.head,
       mockVsRecorded: scenarios.mockVsRecorded,
     },
+    variants: {
+      base: variants.base,
+      crossVariant: variants.crossVariant,
+      head: variants.head,
+      proposal: variants.proposal,
+    },
   });
   return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
 }
@@ -120,8 +135,13 @@ export function diffCacheKey(
   head: RunId,
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
+  variants: PairVariants = VARIANTLESS_PAIR,
 ): string {
-  return `${pairId(base, head)}@${options.engineVersion}#${diffConfigFingerprint(options, scenarios)}`;
+  return `${pairId(base, head)}@${options.engineVersion}#${diffConfigFingerprint(
+    options,
+    scenarios,
+    variants,
+  )}`;
 }
 
 /**
@@ -137,9 +157,10 @@ export function isCacheHit(
   head: RunId,
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
+  variants: PairVariants = VARIANTLESS_PAIR,
 ): boolean {
   if (typeof cached.cacheKey !== 'string' || cached.cacheKey === '') return false;
-  return cached.cacheKey === diffCacheKey(base, head, options, scenarios);
+  return cached.cacheKey === diffCacheKey(base, head, options, scenarios, variants);
 }
 
 export async function readCachedDiff(
@@ -148,11 +169,12 @@ export async function readCachedDiff(
   head: RunId,
   options: DiffCacheOptions,
   scenarios: PairScenarios = SCENARIOLESS_PAIR,
+  variants: PairVariants = VARIANTLESS_PAIR,
 ): Promise<DiffResult | null> {
   try {
     const raw = await readFile(path.join(outDir, 'findings.json'), 'utf8');
     const parsed = JSON.parse(raw) as CachedDiffResult;
-    return isCacheHit(parsed, base, head, options, scenarios) ? parsed : null;
+    return isCacheHit(parsed, base, head, options, scenarios, variants) ? parsed : null;
   } catch {
     return null;
   }
@@ -167,8 +189,9 @@ export async function readCachedDiff(
  * only in the bytes written here would be erased by that round trip, turning every subsequent read
  * into a miss.
  *
- * The scenario identity comes off the result, which is the one place it cannot disagree with the
- * findings being stored: `diffRuns` puts the very block it labelled the pair with there.
+ * The scenario and variant identities come off the result, which is the one place they cannot
+ * disagree with the findings being stored: `diffRuns` puts the very blocks it labelled the pair
+ * with there.
  */
 export async function writeDiff(
   outDir: string,
@@ -181,6 +204,7 @@ export async function writeDiff(
     result.pair.head,
     options,
     result.scenarios ?? SCENARIOLESS_PAIR,
+    (result as VariantAwareDiffResult).variants ?? VARIANTLESS_PAIR,
   );
 
   await mkdir(outDir, { recursive: true });

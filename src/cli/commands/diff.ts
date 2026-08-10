@@ -25,7 +25,9 @@ import {
 import type { Invocation } from '../args.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { percent, table } from '../output.js';
+import type { RunFilter } from '../ports.js';
 import type { DiffData } from '../shapes.js';
+import { classifyVariantPair, describeVariantPair, VARIANT_NONE } from '../variant.js';
 
 type DiffInvocation = Extract<Invocation, { kind: 'diff' }>;
 
@@ -66,11 +68,14 @@ export async function diff(
 ): Promise<CommandResult<DiffData>> {
   const config = await ctx.ports.loadConfig(ctx.cwd);
   const store = await ctx.ports.openStore(config);
+  const filter: RunFilter = {};
+  if (invocation.scenario !== undefined) filter.scenario = invocation.scenario;
+  if (invocation.variant !== undefined) filter.variant = invocation.variant;
   const pair = await store.resolvePair(
     invocation.flow,
     invocation.base,
     invocation.head,
-    invocation.scenario,
+    filter,
   );
 
   const options: DiffEngineOptions = {
@@ -101,6 +106,9 @@ export async function diff(
 
   const summary = result.summary;
   const labels = pairLabels(result.scenarios);
+  // Derived from the two runs' meta rather than from a field on the stored diff, so a pair computed
+  // before variants existed classifies correctly instead of reading as "no variant information".
+  const variantPair = classifyVariantPair(result.baseMeta, result.headMeta);
   const scenarioCell =
     result.scenarios === undefined ||
     (result.scenarios.base === SCENARIO_NONE && result.scenarios.head === SCENARIO_NONE)
@@ -124,6 +132,16 @@ export async function diff(
     const scenarios = result.scenarios;
     human.push('');
     for (const label of labels) human.push(`! ${describeLabel(label, scenarios)}`);
+  }
+
+  // The proposal comparison gets a plain statement, not a `!` line: for a variant run, "same
+  // revision, variant versus none" *is* the question being asked (D24), and prefixing the normal
+  // case with a warning marker is how a channel that carries real warnings gets ignored. The two
+  // pairings that genuinely need a caveat keep the marker.
+  const variantSentence = describeVariantPair(variantPair);
+  if (variantSentence !== null) {
+    human.push('');
+    human.push(variantPair.label === 'variant-proposal' ? variantSentence : `! ${variantSentence}`);
   }
 
   const stepRows: string[][] = [];
@@ -184,9 +202,20 @@ export async function diff(
   if (result.scenarios !== undefined && result.scenarios.mockVsRecorded) {
     warnings.push(describeLabel('mock-vs-recorded', result.scenarios));
   }
+  // `variant-proposal` is deliberately absent from this list. It is the normal case for a variant
+  // run, and a warning on the normal case is noise an agent learns to filter out.
+  if (variantSentence !== null && variantPair.label !== 'variant-proposal') {
+    warnings.push(variantSentence);
+  }
+
+  const data: DiffData = { flow: pair.flow, pair, path, cached: reusable, labels, result };
+  // Only when a variant is in play, so an ordinary pair's envelope is the object it has always been.
+  if (variantPair.base !== VARIANT_NONE || variantPair.head !== VARIANT_NONE) {
+    data.variantPair = variantPair;
+  }
 
   return {
-    data: { flow: pair.flow, pair, path, cached: reusable, labels, result },
+    data,
     human,
     warnings,
     // No exitCode: findings never gate. This is the spec decision, not an oversight.

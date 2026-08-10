@@ -35,6 +35,7 @@ import {
   fakeRunSummary,
   fakeScenarioSpec,
   fakeServeInfo,
+  fakeVariantSpec,
 } from './testing.js';
 
 interface Harness extends CliRuntime {
@@ -964,6 +965,11 @@ describe('--json output purity (spec §11.6)', () => {
       { argv: ['scenario', 'check', 'nope', '--json'], runtime: { cwd } },
       { argv: ['scenario', 'list', '--json'] },
       { argv: ['scenario', 'nope', 'x', '--json'] },
+      { argv: ['runs', 'checkout', '--variants', '--json'] },
+      { argv: ['variant', 'new', 'denser-forecast', '--json'], runtime: { cwd } },
+      { argv: ['variant', 'check', 'nope', '--json'], runtime: { cwd } },
+      { argv: ['variant', 'list', '--json'] },
+      { argv: ['variant', 'nope', 'x', '--json'] },
       { argv: ['diff', 'checkout', '0003', '0007', '--json'] },
       { argv: ['serve', '--json'] },
       { argv: ['feedback', '--json'] },
@@ -1460,5 +1466,408 @@ describe('vdiff diff --scenario and the pair labels (mocking §6)', () => {
     await runCli(['diff', 'checkout', '0003', '0007'], human);
     expect(human.writer.stdout()).not.toContain('scenario');
     expect(human.writer.stdout()).toContain('checkout  0003..0007');
+  });
+});
+
+/* ------------------------------------------------------------------ variants (§6) */
+
+/**
+ * The three `variant` envelopes are pinned as whole objects, exactly like the three `scenario` ones
+ * and for the same reason: they are the agent-facing API across harnesses (variants spec §6, §8.9),
+ * so a shape change has to show up here rather than in someone's broken adapter.
+ */
+describe('vdiff variant — the --json envelopes', () => {
+  it('variant new: emits the written path relative to .visual-diff', async () => {
+    const cwd = await tempProject();
+    const h = harness({ cwd });
+
+    expect(await runCli(['variant', 'new', 'denser-forecast', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'variant new',
+      version: '0.1.0',
+      data: {
+        variant: 'denser-forecast',
+        path: 'variants/denser-forecast.yaml',
+      },
+    });
+
+    const written = await readFile(
+      join(cwd, '.visual-diff', 'variants', 'denser-forecast.yaml'),
+      'utf8',
+    );
+    expect(written).toContain('variant: denser-forecast');
+  });
+
+  it('variant check: emits the summary, including the verbs the variant uses', async () => {
+    const cwd = await tempProject();
+    await mkdir(join(cwd, '.visual-diff', 'variants'), { recursive: true });
+    await writeFile(join(cwd, '.visual-diff', 'variants', 'denser-forecast.yaml'), '', 'utf8');
+    const h = harness({ cwd });
+
+    expect(await runCli(['variant', 'check', 'denser-forecast', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'variant check',
+      version: '0.1.0',
+      data: {
+        variant: {
+          name: 'denser-forecast',
+          description: 'Tighter cards, air quality hidden, upsell promoted',
+          ruleCount: 3,
+          verbs: ['style', 'hide', 'clone'],
+          path: 'variants/denser-forecast.yaml',
+        },
+        warnings: [],
+      },
+    });
+  });
+
+  it('variant check: exits 2 with file, line and offending key (variants §7)', async () => {
+    const cwd = await tempProject();
+    await mkdir(join(cwd, '.visual-diff', 'variants'), { recursive: true });
+    await writeFile(join(cwd, '.visual-diff', 'variants', 'broken.yaml'), '', 'utf8');
+    const ports = createTestPorts({
+      parseVariantFile: async (file) => ({
+        ok: false,
+        issues: [
+          {
+            code: 'clone-source-ambiguous',
+            message: "rule 'promote-upsell' names both `step` and `url` as its clone source",
+            at: { file, line: 12, column: 7, key: 'rules[2].clone.from' },
+          },
+        ],
+      }),
+    });
+    const h = harness({ cwd, ports });
+
+    expect(await runCli(['variant', 'check', 'broken', '--json'], h)).toBe(EXIT.CONFIG_ERROR);
+    expect(envelope(h)).toEqual({
+      ok: false,
+      command: 'variant check',
+      version: '0.1.0',
+      error: {
+        code: 'variant-invalid',
+        message: "variant 'broken' is invalid: 1 issue",
+        exitCode: EXIT.CONFIG_ERROR,
+        issues: [
+          {
+            code: 'clone-source-ambiguous',
+            message: "rule 'promote-upsell' names both `step` and `url` as its clone source",
+            at: {
+              file: join(cwd, '.visual-diff', 'variants', 'broken.yaml'),
+              line: 12,
+              column: 7,
+              key: 'rules[2].clone.from',
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('variant list: emits every variant with its rule count and verbs', async () => {
+    const ports = createTestPorts({
+      listVariants: async () => ['denser-forecast', 'sidebar-upsell'],
+      parseVariantFile: async (file) =>
+        file.includes('sidebar-upsell')
+          ? {
+              ok: true,
+              value: fakeVariantSpec({
+                variant: 'sidebar-upsell',
+                description: 'The plan card, in the sidebar',
+                rules: [
+                  {
+                    id: 'promote',
+                    clone: {
+                      from: { step: 'pricing', match: '[data-test=plan-card]' },
+                      into: '[data-test=sidebar]',
+                      position: 'prepend',
+                      times: 1,
+                    },
+                  },
+                ],
+              }),
+              warnings: [],
+            }
+          : { ok: true, value: fakeVariantSpec(), warnings: [] },
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['variant', 'list', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'variant list',
+      version: '0.1.0',
+      data: {
+        variants: [
+          {
+            name: 'denser-forecast',
+            description: 'Tighter cards, air quality hidden, upsell promoted',
+            ruleCount: 3,
+            verbs: ['style', 'hide', 'clone'],
+            path: 'variants/denser-forecast.yaml',
+          },
+          {
+            name: 'sidebar-upsell',
+            description: 'The plan card, in the sidebar',
+            ruleCount: 1,
+            verbs: ['clone'],
+            path: 'variants/sidebar-upsell.yaml',
+          },
+        ],
+      },
+    });
+  });
+
+  it('variant list: reports an invalid file as a warning rather than dropping it', async () => {
+    const ports = createTestPorts({
+      listVariants: async () => ['broken'],
+      parseVariantFile: async (file) => ({
+        ok: false,
+        issues: [{ code: 'unknown-key', message: "unknown key 'html'", at: { file, line: 6 } }],
+      }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['variant', 'list', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'variant list',
+      version: '0.1.0',
+      data: { variants: [] },
+      warnings: ["variant 'broken' is invalid: 1 issue — vdiff variant check broken"],
+    });
+  });
+});
+
+/* ------------------------------------------------------------------ the variant timeline (§5) */
+
+describe('vdiff run / runs / diff under a variant (variants spec §5)', () => {
+  const withVariant = (runId: string, variant: string, patch: Record<string, unknown> = {}) =>
+    fakeRunSummary({ runId, variant, ...patch });
+
+  it('run: names the variant on the identifying line and points the next command at it', async () => {
+    const ports = createTestPorts({
+      runFlow: async () =>
+        fakeRunResult({ meta: fakeRunMeta({ variant: 'denser-forecast' }) }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['run', 'forecast', '--variant', 'denser-forecast'], h)).toBe(EXIT.OK);
+    const stdout = h.writer.stdout();
+    expect(stdout).toContain('variant denser-forecast');
+    expect(stdout).toContain('vdiff runs checkout --variants');
+    expect(stdout).toContain('next: vdiff diff checkout --variant denser-forecast');
+  });
+
+  it('run: passes --variant and --keep to the runner, and sends neither when unasked', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const ports = createTestPorts({
+      runFlow: async (options) => {
+        seen.push(options as unknown as Record<string, unknown>);
+        return fakeRunResult();
+      },
+    });
+
+    await runCli(['run', 'forecast', '--variant', 'denser-forecast', '--keep'], harness({ ports }));
+    await runCli(['run', 'forecast'], harness({ ports }));
+
+    expect(seen[0]).toMatchObject({ variant: 'denser-forecast', keep: true });
+    expect(seen[1]).not.toHaveProperty('variant');
+    expect(seen[1]).not.toHaveProperty('keep');
+  });
+
+  /**
+   * D24 in one assertion: an exploratory variant run must not appear on the regression timeline,
+   * and must not vanish without trace either — the reader is told how many were held back.
+   */
+  it('runs: hides ephemeral variant runs from the timeline and says how many', async () => {
+    const store = createTestStore({
+      runs: {
+        checkout: [
+          fakeRunSummary({ runId: '0001' }),
+          withVariant('0002', 'denser-forecast'),
+          withVariant('0003', 'denser-forecast'),
+        ],
+      },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    expect(await runCli(['runs', 'checkout', '--json'], h)).toBe(EXIT.OK);
+    const data = envelope<{ runs: Array<{ runId: string }>; variants?: true }>(h).data;
+    expect(data?.runs.map((run) => run.runId)).toEqual(['0001']);
+    expect(data?.variants).toBeUndefined();
+
+    const human = harness({ ports: createTestPorts({ openStore: async () => store }) });
+    await runCli(['runs', 'checkout'], human);
+    expect(human.writer.stdout()).toContain('2 variant runs not shown');
+    expect(human.writer.stdout()).toContain('vdiff runs checkout --variants');
+  });
+
+  it('runs: a promoted variant run stays on the timeline, flagged `kept`', async () => {
+    const store = createTestStore({
+      runs: {
+        checkout: [
+          fakeRunSummary({ runId: '0001' }),
+          withVariant('0002', 'denser-forecast'),
+          withVariant('0003', 'denser-forecast', { kept: true }),
+        ],
+      },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'checkout'], h);
+    const stdout = h.writer.stdout();
+    expect(stdout).toContain('VARIANT');
+    expect(stdout).toContain('kept');
+    expect(stdout).toContain('1 variant run not shown');
+  });
+
+  it('runs --variants: lists the proposals, with a VARIANT column and no hidden-run note', async () => {
+    const store = createTestStore({
+      runs: {
+        checkout: [
+          fakeRunSummary({ runId: '0001' }),
+          withVariant('0002', 'denser-forecast'),
+        ],
+      },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    expect(await runCli(['runs', 'checkout', '--variants', '--json'], h)).toBe(EXIT.OK);
+    const envelopeData = envelope<{ runs: Array<{ runId: string }>; variants?: true }>(h);
+    expect(envelopeData.data?.runs.map((run) => run.runId)).toEqual(['0002']);
+    expect(envelopeData.data?.variants).toBe(true);
+
+    const human = harness({ ports: createTestPorts({ openStore: async () => store }) });
+    await runCli(['runs', 'checkout', '--variants'], human);
+    expect(human.writer.stdout()).toContain('VARIANT');
+    expect(human.writer.stdout()).not.toContain('not shown');
+  });
+
+  it('runs --variants: says how to make one when a flow has no proposals', async () => {
+    const store = createTestStore({ runs: { checkout: [fakeRunSummary({ runId: '0001' })] } });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['runs', 'checkout', '--variants'], h);
+    expect(h.writer.stdout()).toContain(
+      "no variant runs for flow 'checkout' — `vdiff run checkout --variant <name>`",
+    );
+  });
+
+  /**
+   * The proposal comparison is stated, not warned about (D24): it is the question a variant run
+   * exists to answer, and a `!` on it would train a reader to ignore the marker that carries the
+   * cross-variant and across-revisions cases.
+   */
+  it('diff: states the proposal comparison plainly and raises no warning', async () => {
+    const revision = { sha: 'abc1234', ref: 'main', dirty: false };
+    const ports = createTestPorts({
+      computeDiff: async () =>
+        fakeDiffResult({
+          baseMeta: fakeRunMeta({ runId: '0003', revision }),
+          headMeta: fakeRunMeta({ runId: '0007', revision, variant: 'denser-forecast' }),
+        }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['diff', 'checkout', '0003', '0007', '--json'], h)).toBe(EXIT.OK);
+    const parsed = envelope<{ variantPair?: Record<string, unknown> }>(h);
+    expect(parsed.data?.variantPair).toEqual({
+      base: 'none',
+      head: 'denser-forecast',
+      sameRevision: true,
+      label: 'variant-proposal',
+    });
+    expect(parsed.warnings).toBeUndefined();
+
+    const human = harness({ ports });
+    await runCli(['diff', 'checkout', '0003', '0007'], human);
+    expect(human.writer.stdout()).toContain(
+      "proposal: variant 'denser-forecast' against the unmodified page at the same revision",
+    );
+    expect(human.writer.stdout()).not.toContain(
+      "! proposal: variant 'denser-forecast'",
+    );
+    expect(human.writer.stderr()).toBe('');
+  });
+
+  it('diff: warns on a cross-variant pair, which compares two proposals', async () => {
+    const revision = { sha: 'abc1234', ref: 'main', dirty: false };
+    const ports = createTestPorts({
+      computeDiff: async () =>
+        fakeDiffResult({
+          baseMeta: fakeRunMeta({ runId: '0003', revision, variant: 'denser-forecast' }),
+          headMeta: fakeRunMeta({ runId: '0007', revision, variant: 'sidebar-upsell' }),
+        }),
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['diff', 'checkout', '0003', '0007', '--json'], h)).toBe(EXIT.OK);
+    const parsed = envelope<{ variantPair?: Record<string, unknown> }>(h);
+    expect(parsed.data?.variantPair).toMatchObject({ label: 'cross-variant' });
+    expect(parsed.warnings).toEqual([
+      "cross-variant: base ran 'denser-forecast', head ran 'sidebar-upsell' —" +
+        ' this compares two proposals, not two revisions',
+    ]);
+  });
+
+  it('diff: warns when a variant pair spans two revisions, mixing proposal with code change', async () => {
+    const ports = createTestPorts({
+      computeDiff: async () =>
+        fakeDiffResult({
+          baseMeta: fakeRunMeta({
+            runId: '0003',
+            revision: { sha: 'aaaaaaa', ref: 'main', dirty: false },
+          }),
+          headMeta: fakeRunMeta({
+            runId: '0007',
+            revision: { sha: 'bbbbbbb', ref: 'main', dirty: false },
+            variant: 'denser-forecast',
+          }),
+        }),
+    });
+    const h = harness({ ports });
+
+    await runCli(['diff', 'checkout', '0003', '0007', '--json'], h);
+    const parsed = envelope<{ variantPair?: Record<string, unknown> }>(h);
+    expect(parsed.data?.variantPair).toMatchObject({
+      label: 'variant-across-revisions',
+      sameRevision: false,
+    });
+    expect(parsed.warnings).toEqual([
+      "variant 'denser-forecast' ran on one side only, and the two runs are at different" +
+        ' revisions — this mixes the proposal with the code change between them',
+    ]);
+  });
+
+  it('diff: an ordinary pair carries no variantPair and no variant line at all', async () => {
+    const h = harness();
+    expect(await runCli(['diff', 'checkout', '0003', '0007', '--json'], h)).toBe(EXIT.OK);
+    expect(envelope<{ variantPair?: unknown }>(h).data).not.toHaveProperty('variantPair');
+
+    const human = harness();
+    await runCli(['diff', 'checkout', '0003', '0007'], human);
+    expect(human.writer.stdout()).not.toContain('variant');
+  });
+
+  it('diff: narrows run selection to the named variant', async () => {
+    const store = createTestStore({
+      runs: {
+        checkout: [
+          fakeRunSummary({ runId: '0001' }),
+          withVariant('0002', 'denser-forecast'),
+          withVariant('0003', 'denser-forecast'),
+        ],
+      },
+    });
+    const h = harness({ ports: createTestPorts({ openStore: async () => store }) });
+
+    await runCli(['diff', 'checkout', '--variant', 'denser-forecast', '--json'], h);
+    expect(envelope<{ pair: { base: string; head: string } }>(h).data?.pair).toMatchObject({
+      base: '0002',
+      head: '0003',
+    });
   });
 });

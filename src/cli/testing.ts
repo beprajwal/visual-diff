@@ -38,7 +38,8 @@ import type {
   ManagedFile,
 } from '../adapters/index.js';
 
-import type { HarnessInfo, Ports, ServeHandle, StorePort } from './ports.js';
+import type { HarnessInfo, Ports, RunFilter, ServeHandle, StorePort } from './ports.js';
+import { VARIANT_NONE, variantOf, type VariantName, type VariantSpec } from './variant.js';
 
 /**
  * The registry as the CLI sees it. Deliberately mirrors one row of the real one; the real table is
@@ -229,6 +230,32 @@ export function fakeScenarioSpec(overrides: Partial<ScenarioSpec> = {}): Scenari
   };
 }
 
+/**
+ * A variant with one rule per verb the report and the CLI have to render, so a summary built from
+ * it exercises the whole vocabulary rather than the one verb that happened to be written first.
+ */
+export function fakeVariantSpec(overrides: Partial<VariantSpec> = {}): VariantSpec {
+  return {
+    version: 1,
+    variant: 'denser-forecast',
+    description: 'Tighter cards, air quality hidden, upsell promoted',
+    rules: [
+      { id: 'tighter-cards', match: '[data-test=forecast-card]', style: { padding: '8px' } },
+      { id: 'hide-air-quality', match: '[data-test=air-quality]', hide: true },
+      {
+        id: 'promote-upsell',
+        clone: {
+          from: { step: 'pricing', match: '[data-test=plan-card]:first-child' },
+          into: '[data-test=sidebar]',
+          position: 'prepend',
+          times: 1,
+        },
+      },
+    ],
+    ...overrides,
+  };
+}
+
 export function fakePairScenarios(overrides: Partial<PairScenarios> = {}): PairScenarios {
   return {
     base: SCENARIO_NONE,
@@ -239,7 +266,15 @@ export function fakePairScenarios(overrides: Partial<PairScenarios> = {}): PairS
   };
 }
 
-export function fakeRunMeta(overrides: Partial<RunMeta> = {}): RunMeta {
+/**
+ * `RunMeta` as this slice's tests need it: with the variant axis (variants spec §5) declared
+ * optional, so the default fixture is what a `meta.json` written before variants existed looks
+ * like — no key at all — and a test that cares passes one explicitly.
+ */
+export type FakeRunMeta = RunMeta & { variant?: VariantName };
+export type FakeRunSummary = RunSummary & { variant?: VariantName };
+
+export function fakeRunMeta(overrides: Partial<FakeRunMeta> = {}): FakeRunMeta {
   return {
     runId: '0007',
     flow: 'checkout',
@@ -271,7 +306,7 @@ export function fakeRunMeta(overrides: Partial<RunMeta> = {}): RunMeta {
   };
 }
 
-export function fakeRunSummary(overrides: Partial<RunSummary> = {}): RunSummary {
+export function fakeRunSummary(overrides: Partial<FakeRunSummary> = {}): FakeRunSummary {
   const meta = fakeRunMeta();
   return {
     runId: meta.runId,
@@ -411,6 +446,20 @@ export interface TestStoreState {
   calls: string[];
 }
 
+/**
+ * The store's narrowing, as the fake implements it: both axes of run identity, each compared
+ * against the *recorded* value — so `{ variant: 'none' }` selects the runs that had none, exactly
+ * as it does for a scenario.
+ */
+function narrow(runs: readonly RunSummary[], filter?: RunFilter): RunSummary[] {
+  if (filter === undefined) return [...runs];
+  return runs.filter((run) => {
+    if (filter.scenario !== undefined && run.scenario !== filter.scenario) return false;
+    if (filter.variant !== undefined && variantOf(run) !== filter.variant) return false;
+    return true;
+  });
+}
+
 export function createTestStore(state: Partial<TestStoreState> = {}): StorePort & {
   state: TestStoreState;
 } {
@@ -429,16 +478,11 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
     flowsDir: () => `${dir}/flows`,
     flowFile: (flow: string) => `${dir}/flows/${flow}.yaml`,
     listFlows: async () => Object.keys(store.runs),
-    listRuns: async (flow: string, scenario?: ScenarioName) => {
-      const all = store.runs[flow] ?? [];
-      return scenario === undefined ? all : all.filter((run) => run.scenario === scenario);
-    },
-    // Mirrors the real store: the scenario narrows *which* runs the N-1/N default is taken over,
-    // and an explicitly named run is honoured whatever it was captured under.
-    resolvePair: async (flow: string, base?: RunId, head?: RunId, scenario?: ScenarioName) => {
-      const all = store.runs[flow] ?? [];
-      const list =
-        scenario === undefined ? all : all.filter((summary) => summary.scenario === scenario);
+    listRuns: async (flow: string, filter?: RunFilter) => narrow(store.runs[flow] ?? [], filter),
+    // Mirrors the real store: the filter narrows *which* runs the N-1/N default is taken over, and
+    // an explicitly named run is honoured whatever it was captured under.
+    resolvePair: async (flow: string, base?: RunId, head?: RunId, filter?: RunFilter) => {
+      const list = narrow(store.runs[flow] ?? [], filter);
       const last = list[list.length - 1];
       const previous = list[list.length - 2];
       return {
@@ -488,6 +532,9 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
  */
 export const TEST_SCENARIOS: ScenarioName[] = [];
 
+/** The variant equivalent of {@link TEST_SCENARIOS}: a real empty answer, not a throwing stub. */
+export const TEST_VARIANTS: VariantName[] = [];
+
 export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
   const store = createTestStore();
   const adapters = createTestInstall();
@@ -499,6 +546,10 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
     scenarioFile: async (config: Config, name: ScenarioName) =>
       `${config.dir}/scenarios/${name}.yaml`,
     listScenarios: async () => [...TEST_SCENARIOS].sort(),
+    parseVariantFile: async () => ({ ok: true, value: fakeVariantSpec(), warnings: [] }),
+    variantsDir: async (config: Config) => `${config.dir}/variants`,
+    variantFile: async (config: Config, name: VariantName) => `${config.dir}/variants/${name}.yaml`,
+    listVariants: async () => [...TEST_VARIANTS].sort(),
     openStore: async () => store,
     runFlow: async () => fakeRunResult(),
     computeDiff: async () => fakeDiffResult(),

@@ -7,6 +7,7 @@
 
 import type { DiffResponse, FlowsResponse, RunId, RunsResponse } from '../../types.js';
 import type { RunAttribution } from '../attribution.js';
+import type { RunVariantAttribution } from '../variant.js';
 import type { ReportStore } from './deps.js';
 import type { DiffService } from './diff-service.js';
 import { HttpError } from './http.js';
@@ -70,6 +71,29 @@ export async function handleAttribution(
     throw new HttpError(400, 'bad-run-id', `Run ids must be zero-padded numbers, got "${runIdRaw}".`);
   }
   const attribution = await store.readAttribution(flow, runIdRaw);
+  if (attribution === null) {
+    throw new HttpError(404, 'unknown-run', `No run ${runIdRaw} in flow "${flow}".`);
+  }
+  return attribution;
+}
+
+/**
+ * `GET /api/variant/:flow/:runId` (variants spec §7).
+ *
+ * The variant twin of {@link handleAttribution}, and separate from it for the same reason it is
+ * separate from the diff: it describes one run, and the report needs it for both ends of a pair —
+ * including the proposal pair, where one side ran a variant and the other deliberately did not.
+ */
+export async function handleVariantAttribution(
+  store: ReportStore,
+  flowRaw: string,
+  runIdRaw: string,
+): Promise<RunVariantAttribution> {
+  const flow = requireFlowName(flowRaw);
+  if (!isValidRunId(runIdRaw)) {
+    throw new HttpError(400, 'bad-run-id', `Run ids must be zero-padded numbers, got "${runIdRaw}".`);
+  }
+  const attribution = await store.readVariantAttribution(flow, runIdRaw);
   if (attribution === null) {
     throw new HttpError(404, 'unknown-run', `No run ${runIdRaw} in flow "${flow}".`);
   }

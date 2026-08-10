@@ -124,6 +124,71 @@ describe('openStore', () => {
     expect((await store.readMeta('forecast', '0003')).pruned).toBe(false);
   });
 
+  it('carries the variant axis through the same bound root (variants spec §5)', async () => {
+    const store = openStore(config);
+    for (const variant of [undefined, 'denser-forecast', undefined, 'denser-forecast']) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: variant === undefined ? {} : { variant },
+      });
+    }
+
+    expect([...(await store.listRunVariants('forecast')).values()]).toEqual([
+      'none',
+      'denser-forecast',
+      'none',
+      'denser-forecast',
+    ]);
+    // Excluded from the regression timeline by default; `--variants` is how you see them (D24).
+    expect((await store.listRuns('forecast')).map((r) => r.runId)).toEqual(['0000', '0002']);
+    expect((await store.listRuns('forecast', { variants: 'only' })).map((r) => r.runId)).toEqual([
+      '0001',
+      '0003',
+    ]);
+    // The proposal question: the fixture runs share a revision, so 0002 is the nearest baseline.
+    expect(
+      await store.resolvePair('forecast', undefined, undefined, { variant: 'denser-forecast' }),
+    ).toEqual({ flow: 'forecast', base: '0002', head: '0003' });
+  });
+
+  it('promotes a variant run into the permanent timeline through the edge', async () => {
+    const store = openStore(config);
+    await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: { variant: 'denser-forecast' },
+    });
+
+    expect((await store.listRuns('forecast')).map((r) => r.runId)).toEqual(['0000']);
+    await store.keep('forecast', '0001');
+    expect((await store.listRuns('forecast')).map((r) => r.runId)).toEqual(['0000', '0001']);
+  });
+
+  it('applies the two retention buckets, so proposals never evict capture history', async () => {
+    const store = openStore(config); // keepRuns: 2, keepVariantRuns defaulting to 10
+    for (let i = 0; i < 3; i += 1) {
+      await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: { variant: 'denser-forecast' },
+      });
+    }
+    for (let i = 0; i < 3; i += 1) {
+      await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    }
+
+    const result = await store.applyRetention('forecast');
+
+    // The three proposals are the oldest runs of the flow. Under one bucket of 2 they would all
+    // have gone; under two they are inside their own cap of 10 and only the timeline overflows.
+    expect(result.pruned).toEqual(['0003']);
+  });
+
   it('round-trips feedback', async () => {
     const store = openStore(config);
     const entry = await store.appendFeedback({

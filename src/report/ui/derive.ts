@@ -23,6 +23,18 @@ import type {
 } from '../../types.js';
 import { SCENARIO_NONE, SEVERITIES, SEVERITY_ORDER } from '../../types.js';
 import { describeRuleHit, type StepAttribution } from '../attribution.js';
+import {
+  classifyVariantPair,
+  describeVariantHit,
+  describeVariantPair,
+  isKept,
+  isVariantWarningKind,
+  variantOf,
+  VARIANT_NONE,
+  type StepVariantAttribution,
+  type VariantName,
+  type VariantPairLabel,
+} from '../variant.js';
 
 /** Visual treatment of one filmstrip cell (spec §9). */
 export type CellVariant =
@@ -400,6 +412,141 @@ export function scenarioNoteRows(
 
   return rows;
 }
+
+/* ------------------------------------------------------------------ variants (§5, §7) */
+
+/** The value the variant selector uses for "every variant", distinct from the reserved `none`. */
+export const ALL_VARIANTS = '*';
+
+/** How a variant name reads in the interface: the reserved `none` is an absence, not a name. */
+export function variantLabel(variant: VariantName): string {
+  return variant === VARIANT_NONE ? 'no variant' : variant;
+}
+
+/**
+ * Every variant present in a run list, `none` first and the rest alphabetical — the same shape as
+ * {@link scenariosOf}, because the two axes of run identity are shown the same way.
+ */
+export function variantsOf(runs: readonly RunSummary[]): VariantName[] {
+  const seen = new Set<VariantName>();
+  for (const run of runs) seen.add(variantOf(run));
+  const rest = [...seen].filter((name) => name !== VARIANT_NONE).sort();
+  return seen.has(VARIANT_NONE) ? [VARIANT_NONE, ...rest] : rest;
+}
+
+/**
+ * Runs captured under `variant`; every run for {@link ALL_VARIANTS} or a null filter.
+ *
+ * Note what this deliberately does *not* do: hide unpromoted variant runs by default, the way
+ * `vdiff runs` does (D24). That default exists because the CLI timeline is where regression history
+ * is read and proposals would crowd it out; the report is a viewer with an explicit picker, and a
+ * proposal that cannot be selected cannot be looked at — which is the entire point of running one.
+ * They are badged instead, on the picker and in the banner.
+ */
+export function runsForVariant(
+  runs: readonly RunSummary[],
+  variant: VariantName | null,
+): RunSummary[] {
+  if (variant === null || variant === ALL_VARIANTS) return runs.slice();
+  return runs.filter((run) => variantOf(run) === variant);
+}
+
+/** True when this timeline row is a proposal nobody promoted into the permanent timeline (D24). */
+export function isEphemeralRun(run: RunSummary): boolean {
+  return variantOf(run) !== VARIANT_NONE && !isKept(run);
+}
+
+/**
+ * The banner a pair carries on the variant axis (variants spec §5, D24).
+ *
+ * Severity is where this differs from every other banner in the report, and the difference is the
+ * decision: **the proposal comparison is the normal case**, so it is `note` — stated, calm, no
+ * warning stripe. It is what a variant run exists to produce, and dressing it as an anomaly would
+ * teach a reader to skip the row that also carries the two pairings that really are confounded.
+ */
+export interface VariantBannerRow {
+  label: VariantPairLabel;
+  /** `note` states a fact; `med` says the findings below mean something other than a regression. */
+  severity: 'med' | 'note';
+  message: string;
+}
+
+const VARIANT_BANNER_SEVERITY: Record<VariantPairLabel, 'med' | 'note'> = {
+  'variant-proposal': 'note',
+  'cross-variant': 'med',
+  'variant-across-revisions': 'med',
+};
+
+/**
+ * The variant banner for a pair, derived from the two runs' meta rather than from a field on the
+ * stored diff — so a pair computed before variants existed still classifies correctly instead of
+ * reading as "no variant information".
+ */
+export function variantBanners(diff: DiffResult | null): VariantBannerRow[] {
+  if (diff === null) return [];
+  const pair = classifyVariantPair(diff.baseMeta, diff.headMeta);
+  const message = describeVariantPair(pair);
+  if (pair.label === null || message === null) return [];
+  return [{ label: pair.label, severity: VARIANT_BANNER_SEVERITY[pair.label], message }];
+}
+
+/** One annotation line under the toolbar, attached to the selected step (variants spec §7). */
+export interface VariantNoteRow {
+  /** Stable across renders: rule id plus verb, which is also what the fold is keyed by. */
+  key: string;
+  side: 'base' | 'head';
+  /** The verb, rendered as a tag beside the sentence rather than conjugated into it. */
+  verb: string;
+  text: string;
+  viewports: ViewportId[];
+}
+
+/**
+ * The annotation lines for one side of the pair at one step: "element modified by `denser-forecast`
+ * rule `tighter-cards`" (variants spec §7).
+ *
+ * Empty when that run had no variant, or when its rules changed nothing in this step — which is why
+ * the component can render it unconditionally and still disappear on an ordinary run.
+ *
+ * Rules that matched nothing and rules reverted before capture are deliberately absent: they are
+ * properties of the whole run, they are already run warnings naming their rule ids, and a rule that
+ * matched nothing has no step to annotate. Saying it twice would make neither statement the one a
+ * reader trusts.
+ */
+export function variantNoteRows(
+  side: 'base' | 'head',
+  attribution: StepVariantAttribution | undefined,
+): VariantNoteRow[] {
+  if (attribution === undefined) return [];
+  return attribution.rules.map((hit) => ({
+    key: `${side}-${hit.ruleId}-${hit.verb}`,
+    side,
+    verb: hit.verb,
+    text: describeVariantHit(hit),
+    viewports: hit.viewports,
+  }));
+}
+
+/**
+ * Run-warning kinds the rail renders as high severity.
+ *
+ * All of them share one property: they say the capture is not what its label claims. A HAR miss or
+ * an unstable git state means a finding may be an artefact; a never-matched scenario rule or a
+ * variant rule that matched nothing — or was reverted before capture (D22) — means the *screenshot*
+ * is of something other than the state named above it. That is the worst thing this tool can do
+ * quietly, so it is the loudest thing it says.
+ */
+export function isHighSeverityWarning(kind: string): boolean {
+  return HIGH_WARNING_KINDS.has(kind) || isVariantWarningKind(kind);
+}
+
+const HIGH_WARNING_KINDS: ReadonlySet<string> = new Set([
+  'har-miss',
+  'unstable-git',
+  'console-error',
+  'scenario-rule-unmatched',
+  'mock-miss',
+]);
 
 /** Index of a run id within an ascending run list, or -1. */
 export function runIndex(runs: readonly RunSummary[], runId: string | null): number {

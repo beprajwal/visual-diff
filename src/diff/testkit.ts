@@ -27,6 +27,8 @@ import type {
   StyleSubset,
   ViewportId,
 } from '../types.js';
+import { VARIANT_NONE } from '../store/internal/variant.js';
+import type { MaybeVariant, VariantRunMeta } from '../store/internal/variant.js';
 import { createImage, encodePng } from './pixel.js';
 
 export type Rgba = [number, number, number, number];
@@ -98,17 +100,19 @@ export interface FixtureRun {
   flow?: string;
   viewports?: ViewportId[];
   steps: FixtureStep[];
-  meta?: Partial<RunMeta>;
+  meta?: Partial<RunMeta> & MaybeVariant;
 }
 
 const EPOCH = '2026-08-08T10:00:00.000Z';
 
-function metaFor(run: FixtureRun, viewports: ViewportId[]): RunMeta {
+function metaFor(run: FixtureRun, viewports: ViewportId[]): VariantRunMeta {
   return {
     runId: run.runId,
     flow: run.flow ?? 'checkout',
     // Overridable through `meta`; a fixture that says nothing is the slice-1 case (mocking §6).
     scenario: SCENARIO_NONE,
+    // Likewise on the variant axis: nothing said means the unmodified page (variants §5).
+    variant: VARIANT_NONE,
     flowHash: 'sha256:fixture',
     revision: { sha: `sha-${run.runId}`, ref: 'main', dirty: false },
     mode: 'attach',

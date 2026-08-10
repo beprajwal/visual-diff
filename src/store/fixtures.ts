@@ -11,6 +11,7 @@
 import { SCENARIO_NONE, STYLE_PROPS } from '../types.js';
 import { beginRun, type RunMetaInput } from './run-store.js';
 import { sha256 } from './internal/hash.js';
+import { VARIANT_NONE, type MaybeVariant } from './internal/variant.js';
 import type {
   A11ySnapshot,
   ConsoleEntry,
@@ -121,11 +122,16 @@ export function makeFlowSnapshot(flow: string, steps: Step[], viewports: Viewpor
   };
 }
 
-export function makeRunMeta(flow: string, overrides: Partial<RunMeta> = {}): RunMetaInput {
+export function makeRunMeta(
+  flow: string,
+  overrides: Partial<RunMeta> & MaybeVariant = {},
+): RunMetaInput {
   const base: RunMetaInput = {
     flow,
     /** Overridable, but a fixture with no scenario is the slice-1 case: the reserved `none` (§6). */
     scenario: SCENARIO_NONE,
+    /** Likewise: a fixture that says nothing about variants captured the unmodified page (§5). */
+    variant: VARIANT_NONE,
     flowHash: sha256(flow),
     revision: { sha: '9f8e7d6', ref: 'main', dirty: false },
     mode: 'attach',
@@ -170,7 +176,7 @@ export interface WriteFixtureRunOptions {
   flow: string;
   steps: FixtureStep[];
   viewports?: ViewportId[];
-  meta?: Partial<RunMeta>;
+  meta?: Partial<RunMeta> & MaybeVariant;
 }
 
 /** Build and commit a complete run directory through the real writer. */

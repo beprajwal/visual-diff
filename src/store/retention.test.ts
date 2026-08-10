@@ -8,7 +8,14 @@ import { writeDiff } from './diff-store.js';
 import { makeRunMeta, writeFixtureRun } from './fixtures.js';
 import { listDirNames } from './internal/fs.js';
 import * as paths from './paths.js';
-import { PRESERVED_FILES, pinRun, pruneFlow, pruneRun, retentionCandidates } from './retention.js';
+import {
+  PRESERVED_FILES,
+  keepRun,
+  pinRun,
+  pruneFlow,
+  pruneRun,
+  retentionCandidates,
+} from './retention.js';
 import { listRunIds, readRunMeta } from './run-store.js';
 import type { DiffResult, RunId, RunMeta } from '../types.js';
 
@@ -251,5 +258,185 @@ describe('the retention policy under scenarios', () => {
     await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
 
     expect(await retentionCandidates(tmp, 'forecast', 1)).toEqual([ids[0]]);
+  });
+});
+
+/*
+ * The two retention buckets (variants spec §5, D24).
+ *
+ * The failure this prevents is quiet and total: an agent tries eight arrangements of a page, and
+ * the regression history the next diff depends on is gone. Sharing one bucket makes that certain
+ * for any flow with a 20-run cap and an afternoon of proposals, and there is nothing in the output
+ * of `vdiff diff` that would say what happened.
+ *
+ * So both directions are tested, because both are real. Proposals must not evict capture history —
+ * and capture history must not evict a proposal the user is still looking at, which is the one
+ * whose file the agent has not yet read.
+ */
+describe('the retention policy under variants', () => {
+  async function seedVariant(
+    variant: string,
+    count: number,
+    extra: { scenario?: string; kept?: boolean } = {},
+  ): Promise<RunId[]> {
+    const ids: RunId[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const run = await writeFixtureRun({
+        root: tmp,
+        flow: 'forecast',
+        steps: [{ id: 'cart' }],
+        meta: { variant, ...extra },
+      });
+      ids.push(run.runId);
+    }
+    return ids;
+  }
+
+  it('counts the two buckets separately, at their own caps', async () => {
+    const unvaried = await seedVariant('none', 3);
+    const proposals = await seedVariant('denser-forecast', 3);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 2, keepVariantRuns: 1 });
+
+    // One over in the timeline bucket, two over in the variant bucket.
+    expect(result.pruned).toEqual([unvaried[0], proposals[0], proposals[1]]);
+  });
+
+  it('never lets proposals evict capture history, however many are captured', async () => {
+    const history = await seedVariant('none', 4);
+    await seedVariant('denser-forecast', 30);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 10 });
+
+    // A single 20-run bucket would have pruned every one of the four unvaried runs: they are the
+    // oldest of the 34, and the proposals alone overflow the cap.
+    for (const runId of history) {
+      expect(result.pruned).not.toContain(runId);
+      expect((await readRunMeta(tmp, 'forecast', runId)).pruned).toBe(false);
+    }
+    expect(result.pruned).toHaveLength(20);
+  });
+
+  it('never lets capture history evict a proposal, in the other direction', async () => {
+    const proposal = await seedVariant('denser-forecast', 1);
+    await seedVariant('none', 25);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 10 });
+
+    // The proposal is the oldest run of the flow, so a shared bucket would have pruned it first.
+    expect(result.pruned).not.toContain(proposal[0]);
+    expect((await readRunMeta(tmp, 'forecast', proposal[0] as RunId)).pruned).toBe(false);
+    expect(result.pruned).toHaveLength(5);
+  });
+
+  it('gives each variant its own group, so one proposal never evicts another', async () => {
+    const denser = await seedVariant('denser-forecast', 1);
+    await seedVariant('wider-forecast', 12);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 10 });
+
+    expect(result.pruned).not.toContain(denser[0]);
+    expect(result.pruned).toHaveLength(2);
+  });
+
+  it('splits the same variant by scenario too, because identity is both axes', async () => {
+    const underNone = await seedVariant('denser-forecast', 2);
+    const underEmpty = await seedVariant('denser-forecast', 2, { scenario: 'empty-forecast' });
+
+    expect(await retentionCandidates(tmp, 'forecast', 20, 1)).toEqual([
+      underNone[0],
+      underEmpty[0],
+    ]);
+  });
+
+  it('moves a promoted run across the boundary — the only way a run changes bucket', async () => {
+    const proposals = await seedVariant('denser-forecast', 3);
+    await keepRun(tmp, 'forecast', proposals[1] as RunId);
+
+    // Two ephemeral runs remain in the variant bucket (cap 1, so the older goes); the promoted run
+    // is now judged against the timeline cap of 20 and survives despite being over the variant one.
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 1 });
+
+    expect(result.pruned).toEqual([proposals[0]]);
+    expect((await readRunMeta(tmp, 'forecast', proposals[1] as RunId)).pruned).toBe(false);
+  });
+
+  it('defaults the variant bucket when a caller names only keepRuns', async () => {
+    await seedVariant('denser-forecast', 12);
+
+    // DEFAULT_KEEP_VARIANT_RUNS is 10, so two fall out even though keepRuns is 20.
+    expect(await retentionCandidates(tmp, 'forecast', 20)).toEqual(['0000', '0001']);
+    expect((await pruneFlow(tmp, 'forecast', { keepRuns: 20 })).pruned).toEqual(['0000', '0001']);
+  });
+
+  it('rejects a variant bucket below one, naming the key', async () => {
+    await seedVariant('denser-forecast', 2);
+    await expect(pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 0 })).rejects.toThrow(
+      'retention.keepVariantRuns must be >= 1, got 0',
+    );
+  });
+
+  it('reads a run with no variant key as part of the unvaried timeline bucket', async () => {
+    const ids = await seedVariant('none', 2);
+    const file = paths.runMetaFile(tmp, 'forecast', ids[0] as RunId);
+    const stored = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, unknown>;
+    delete stored.variant;
+    await fsp.writeFile(file, `${JSON.stringify(stored, null, 2)}\n`);
+
+    expect(await retentionCandidates(tmp, 'forecast', 1, 1)).toEqual([ids[0]]);
+  });
+
+  it('still refuses to prune a pinned proposal over the variant cap', async () => {
+    const proposals = await seedVariant('denser-forecast', 3);
+    await pinRun(tmp, 'forecast', proposals[0] as RunId);
+
+    const result = await pruneFlow(tmp, 'forecast', { keepRuns: 20, keepVariantRuns: 1 });
+
+    expect(result.skipped).toContainEqual({ runId: proposals[0], reason: 'pinned' });
+    expect(result.pruned).toEqual([proposals[1]]);
+  });
+});
+
+describe('promotion', () => {
+  it('sets kept without touching the run’s identity', async () => {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: { variant: 'denser-forecast', scenario: 'empty-forecast' },
+    });
+
+    const promoted = await keepRun(tmp, 'forecast', run.runId);
+
+    expect((promoted as { kept?: boolean }).kept).toBe(true);
+    // Still the capture of that proposal: rewriting the variant to `none` would claim the
+    // unmodified page had been captured when it had not.
+    expect((promoted as { variant?: string }).variant).toBe('denser-forecast');
+    expect(promoted.scenario).toBe('empty-forecast');
+    expect(promoted.runId).toBe(run.runId);
+    expect((await readRunMeta(tmp, 'forecast', run.runId) as { kept?: boolean }).kept).toBe(true);
+  });
+
+  it('demotes again, so a promotion is not a one-way door', async () => {
+    const run = await writeFixtureRun({
+      root: tmp,
+      flow: 'forecast',
+      steps: [{ id: 'cart' }],
+      meta: { variant: 'denser-forecast' },
+    });
+    await keepRun(tmp, 'forecast', run.runId);
+    const demoted = await keepRun(tmp, 'forecast', run.runId, false);
+    expect((demoted as { kept?: boolean }).kept).toBe(false);
+  });
+
+  it('refuses to promote a run that ran no variant, rather than writing a meaningless flag', async () => {
+    const run = await writeFixtureRun({ root: tmp, flow: 'forecast', steps: [{ id: 'cart' }] });
+    await expect(keepRun(tmp, 'forecast', run.runId)).rejects.toThrow(
+      `run ${run.runId} of flow "forecast" ran no variant; only a variant run can be promoted with --keep`,
+    );
+  });
+
+  it('404s on an unknown run rather than writing a phantom meta.json', async () => {
+    await expect(keepRun(tmp, 'forecast', '0099')).rejects.toThrow(/does not exist/);
   });
 });

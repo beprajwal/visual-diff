@@ -24,6 +24,13 @@ import {
   type RunSummary,
 } from '../../types.js';
 import { summarizeStep, type RunAttribution, type StepAttribution } from '../attribution.js';
+import {
+  summarizeVariantRun,
+  VARIANT_NONE,
+  type RunVariantAttribution,
+  type VariantName,
+  type VariantReportFile,
+} from '../variant.js';
 import type { FeedbackDraft, FlowInfo, ReportStore } from './deps.js';
 
 /** Flow names are directory names in the store; keep them boring so paths stay safe. */
@@ -49,17 +56,38 @@ export function pairDirName(base: RunId, head: RunId): string {
 }
 
 /**
+ * A timeline row carrying the fourth axis of run identity (variants spec §5).
+ *
+ * An intersection rather than an assumption about `RunSummary`, so this file compiles against the
+ * published contract whether or not it has grown the fields yet, and needs no edit once it has.
+ * Both are always materialised here — `none` and `false` — so the page never has to distinguish
+ * "no variant" from "this store predates variants". They are the same thing.
+ */
+export type VariantRunSummary = RunSummary & { variant: VariantName; kept: boolean };
+
+/** The variant a run was captured under, read tolerantly off a `meta.json` of any vintage. */
+function variantOfMeta(meta: RunMeta): VariantName {
+  const raw = (meta as { variant?: unknown }).variant;
+  if (typeof raw !== 'string') return VARIANT_NONE;
+  const trimmed = raw.trim();
+  return trimmed === '' ? VARIANT_NONE : trimmed;
+}
+
+/**
  * Project a stored RunMeta onto the timeline row the report renders.
  *
- * `scenario` is defaulted rather than required, because a slice-1 `meta.json` on disk predates the
- * field (mocking spec §6). Reading it as `none` here is what keeps those runs in the timeline
- * instead of silently dropping every run recorded before this slice.
+ * `scenario` and `variant` are both defaulted rather than required, because a `meta.json` on disk
+ * may predate either field (mocking spec §6; variants spec §5). Reading them as `none` here is what
+ * keeps those runs in the timeline instead of silently dropping — or, worse, badging as proposals —
+ * every run recorded before this slice.
  */
-export function toRunSummary(meta: RunMeta, findingsCount: number | null): RunSummary {
+export function toRunSummary(meta: RunMeta, findingsCount: number | null): VariantRunSummary {
   return {
     runId: meta.runId,
     flow: meta.flow,
     scenario: meta.scenario ?? SCENARIO_NONE,
+    variant: variantOfMeta(meta),
+    kept: (meta as { kept?: unknown }).kept === true,
     revision: meta.revision,
     mode: meta.mode,
     status: meta.status,
@@ -275,6 +303,24 @@ export class FsReportStore implements ReportStore {
     }
 
     return { flow, runId, scenario: meta.scenario ?? SCENARIO_NONE, steps };
+  }
+
+  /**
+   * What the variant layer did to each step of a run (variants spec §7).
+   *
+   * Returns null only when the run itself is unknown, exactly as {@link readAttribution} does. A
+   * run captured without a variant has no `variant.json` at all and comes back as a populated
+   * object with no rows, so the page can tell "nothing to attribute" — the ordinary case — from
+   * "no such run", which is an error.
+   */
+  async readVariantAttribution(flow: string, runId: RunId): Promise<RunVariantAttribution | null> {
+    const meta = await this.readMeta(flow, runId);
+    if (!meta) return null;
+
+    const report = await readJsonFile<VariantReportFile>(
+      path.join(this.runDir(flow, runId), 'variant.json'),
+    );
+    return summarizeVariantRun(flow, runId, variantOfMeta(meta), report);
   }
 
   async readCachedDiff(flow: string, base: RunId, head: RunId): Promise<DiffResult | null> {

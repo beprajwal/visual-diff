@@ -35,6 +35,8 @@ import { z } from 'zod';
 import { configError } from './errors.js';
 import { parseDuration } from './internal/duration.js';
 import { isDirectory, readTextOrNull } from './internal/fs.js';
+import { DEFAULT_KEEP_VARIANT_RUNS } from './internal/variant.js';
+import type { VariantConfig } from './internal/variant.js';
 import * as paths from './paths.js';
 import {
   DEFAULTS,
@@ -73,6 +75,11 @@ const networkSchema = z
 const retentionSchema = z
   .object({
     keepRuns: z.number().int().positive().optional(),
+    /**
+     * The second bucket (variants spec §5, D24). Separate from `keepRuns` so exploratory variant
+     * runs can never evict the capture history regressions depend on.
+     */
+    keepVariantRuns: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -181,8 +188,12 @@ function zodIssues(
 /* ------------------------------------------------------------------ defaults */
 
 /** A fully-defaulted Config. `app` has no defaults: the spec's example always spells it out. */
-export function buildConfig(root: string, file: ConfigFile, readyTimeoutMs: number): Config {
-  const config: Config = {
+export function buildConfig(
+  root: string,
+  file: ConfigFile,
+  readyTimeoutMs: number,
+): VariantConfig {
+  const config: VariantConfig = {
     root,
     dir: paths.vdiffDir(root),
     app: {
@@ -203,6 +214,9 @@ export function buildConfig(root: string, file: ConfigFile, readyTimeoutMs: numb
     },
     retention: {
       keepRuns: file.retention?.keepRuns ?? DEFAULTS.retention.keepRuns,
+      // Not in `DEFAULTS` because `types.ts` does not yet carry the variant axis; the constant
+      // lives beside the rest of the axis so config and pruner cannot drift (variants spec §5).
+      keepVariantRuns: file.retention?.keepVariantRuns ?? DEFAULT_KEEP_VARIANT_RUNS,
     },
   };
   if (file.app.install !== undefined) config.app.install = file.app.install;

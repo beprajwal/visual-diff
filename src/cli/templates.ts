@@ -11,17 +11,18 @@
 export const EXAMPLE_FLOW_NAME = 'example';
 
 /**
- * `.gitignore` block. `flows/`, `scenarios/` and `config.yaml` **must** be committed: replaying a
- * historical revision reads them out of git history at that SHA (D4 for flows, mocking spec §5
- * "Storage" for scenarios), so an uncommitted one has nothing to read — and the failure is a
- * confusing "scenario absent at the target SHA" on a file that is plainly sitting on disk.
- * Everything else — runs, diffs, cache, feedback — is local.
+ * `.gitignore` block. `flows/`, `scenarios/`, `variants/` and `config.yaml` **must** be committed:
+ * replaying a historical revision reads them out of git history at that SHA (D4 for flows, mocking
+ * spec §5 "Storage" for scenarios, variants spec §4 for variants), so an uncommitted one has
+ * nothing to read — and the failure is a confusing "variant absent at the target SHA" on a file
+ * that is plainly sitting on disk. Everything else — runs, diffs, cache, feedback — is local.
  */
-export const GITIGNORE_BLOCK = `# visual-diff — flows, scenarios and config are committed; runs, diffs, cache and feedback are local.
+export const GITIGNORE_BLOCK = `# visual-diff — flows, scenarios, variants and config are committed; runs, diffs, cache and feedback are local.
 .visual-diff/*
 !.visual-diff/config.yaml
 !.visual-diff/flows/
 !.visual-diff/scenarios/
+!.visual-diff/variants/
 `;
 
 /** Presence of this line means the block has already been installed. */
@@ -137,5 +138,60 @@ rules:
   # - id: example-slow
   #   match: { url: "**/api/search**" }
   #   delay: 3000
+`;
+}
+
+/**
+ * A minimal, valid variant spec (variants spec §4). One `style` rule, so it is a working file the
+ * moment it is written — the selector is the only thing the author has to change.
+ *
+ * The commentary carries the three facts that cost the most when they are learnt the hard way: a
+ * variant cannot invent UI, a rule that matches nothing produces a run warning rather than a
+ * silently unchanged screenshot, and the rule `id` is what the report names when it attributes a
+ * modified element.
+ */
+export function variantYaml(name: string): string {
+  return `# .visual-diff/variants/${name}.yaml — a proposed UI change, applied just before capture.
+#
+# Rules act on the page the application *already rendered*: they restyle, retext, hide, reorder and
+# clone elements that exist. A variant cannot invent UI — there is no HTML verb and there never will
+# be one — so what you see is a real prediction of the real app, not a wireframe of it.
+#
+# Preview it with \`vdiff run <flow> --variant ${name}\`, which diffs against the unmodified page at
+# the same revision. Variant runs live in their own retention bucket and stay out of the regression
+# timeline; \`--keep\` promotes one that turned out to be worth tracking.
+#
+# Rule ids are stable and load-bearing: the report attributes every modified element to the rule
+# that modified it by id. Exactly one verb per rule — style, text, hide, order or clone. A rule that
+# matches nothing, or whose effect the app re-rendered away before capture, is reported as a run
+# warning; without that you would be looking at the unmodified UI believing it is the proposal.
+
+version: 1
+variant: ${name}
+description: describe the change this variant proposes
+
+rules:
+  - id: example-tighter
+    match: "[data-test=card]"
+    style: { padding: 8px, gap: 4px }
+
+  # - id: example-copy
+  #   match: "[data-test=save-cta]"
+  #   text: "Save this location"
+
+  # - id: example-hide
+  #   match: "[data-test=air-quality]"
+  #   hide: true
+
+  # - id: example-order
+  #   match: "[data-test=forecast-chart]"
+  #   order: first            # first | last | { before: <selector> } | { after: <selector> }
+
+  # - id: example-clone
+  #   clone:
+  #     from: { step: pricing, match: "[data-test=plan-card]:first-child" }
+  #     into: "[data-test=sidebar]"
+  #     position: prepend     # prepend | append | { before: … } | { after: … }
+  #     times: 1
 `;
 }

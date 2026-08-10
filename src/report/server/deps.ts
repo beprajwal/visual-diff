@@ -22,6 +22,7 @@ import type {
   RunSummary,
 } from '../../types.js';
 import type { RunAttribution } from '../attribution.js';
+import type { RunVariantAttribution } from '../variant.js';
 
 /** The diff engine's edge: two run directories in, one DiffResult out. No network, no browser. */
 export type ComputeDiffFn = (
@@ -65,6 +66,16 @@ export interface ReportStore {
    * (mocking spec §8). Null when the run is unknown; empty rows when it had no scenario.
    */
   readAttribution(flow: string, runId: RunId): Promise<RunAttribution | null>;
+  /**
+   * What the variant layer did to each step of a run, folded from `variant.json` (variants spec
+   * §7). Null when the run is unknown; empty rows when it had no variant.
+   *
+   * A second route rather than a field on {@link readAttribution}, for the reason attribution is a
+   * route at all: it is a property of *one run*, and the two axes were shaped by different specs
+   * whose rules have their own ids. Folding them into one payload would make a cross-variant pair
+   * unable to say which side did what.
+   */
+  readVariantAttribution(flow: string, runId: RunId): Promise<RunVariantAttribution | null>;
   /** A previously stored `findings.json`, or null when nothing is cached. */
   readCachedDiff(flow: string, base: RunId, head: RunId): Promise<DiffResult | null>;
   /**

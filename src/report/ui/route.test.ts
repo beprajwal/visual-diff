@@ -113,3 +113,30 @@ describe('the scenario filter in the hash (mocking §7)', () => {
     expect(parseHash('#flow=forecast').scenario).toBeUndefined();
   });
 });
+
+describe('the variant filter in the hash (variants §5)', () => {
+  /**
+   * A proposal exists to be shown to somebody, and this is how it is shown: the link a reviewer
+   * pastes at an agent has to land on the proposal, not on the unfiltered timeline.
+   */
+  it('round-trips a filter alongside the scenario one', () => {
+    const route = parseHash('#flow=forecast&scenario=empty-forecast&variant=denser&pair=0002..0004');
+    expect(route).toMatchObject({ scenario: 'empty-forecast', variant: 'denser' });
+    expect(formatHash(route)).toBe(
+      '#flow=forecast&scenario=empty-forecast&variant=denser&pair=0002..0004',
+    );
+  });
+
+  it('omits the all-variants default, so the common URL stays short', () => {
+    expect(formatHash({ flow: 'forecast', variant: '*' })).toBe('#flow=forecast');
+  });
+
+  it('keeps the reserved `none` filter, which is a real selection', () => {
+    expect(formatHash({ flow: 'forecast', variant: 'none' })).toBe('#flow=forecast&variant=none');
+    expect(parseHash('#variant=none').variant).toBe('none');
+  });
+
+  it('leaves the filter unset when the hash does not name one', () => {
+    expect(parseHash('#flow=forecast').variant).toBeUndefined();
+  });
+});

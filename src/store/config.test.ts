@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { findProjectRoot, loadConfig, loadConfigOrThrow, parseConfigSource } from './config.js';
+import { DEFAULT_KEEP_VARIANT_RUNS, keepVariantRunsOf } from './internal/variant.js';
 import { DEFAULTS } from '../types.js';
 
 const FILE = '/projects/shop/.visual-diff/config.yaml';
@@ -52,7 +53,8 @@ describe('parseConfigSource', () => {
       ignore: ['[data-test=session-id]'],
     });
     expect(result.value.network).toEqual({ redact: ['x-api-key'], scrub: true });
-    expect(result.value.retention).toEqual({ keepRuns: 20 });
+    // The §6 example names only `keepRuns`; the variant bucket defaults beside it (variants §5).
+    expect(result.value.retention).toEqual({ keepRuns: 20, keepVariantRuns: 10 });
     expect(result.value.root).toBe(ROOT);
     expect(result.value.dir).toBe(path.join(ROOT, '.visual-diff'));
   });
@@ -66,6 +68,8 @@ describe('parseConfigSource', () => {
     expect(result.value.diff.ignore).toEqual([]);
     expect(result.value.retention.keepRuns).toBe(DEFAULTS.retention.keepRuns);
     expect(result.value.retention.keepRuns).toBe(20);
+    expect(keepVariantRunsOf(result.value.retention)).toBe(DEFAULT_KEEP_VARIANT_RUNS);
+    expect(keepVariantRunsOf(result.value.retention)).toBe(10);
     expect(result.value.network.redact).toEqual([]);
     expect(result.value.app.readyTimeoutMs).toBe(DEFAULTS.readyTimeoutMs);
     expect(result.value.app.install).toBeUndefined();
@@ -139,6 +143,30 @@ describe('parseConfigSource', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.issues[0]?.code).toBe('empty-config');
+  });
+
+  it('reads the variant retention bucket, which is separate from keepRuns (variants §5)', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepRuns: 30', '  keepVariantRuns: 3'].join('\n'));
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.retention.keepRuns).toBe(30);
+    expect(keepVariantRunsOf(result.value.retention)).toBe(3);
+  });
+
+  it('reports a mistyped keepVariantRuns with file, line and the offending key', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepVariantRun: 3'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.code).toBe('unknown-key');
+    expect(result.issues[0]?.message).toBe('unknown key "retention.keepVariantRun"');
+    expect(result.issues[0]?.at.key).toBe('retention.keepVariantRun');
+    expect(result.issues[0]?.at.line).toBe(5);
+  });
+
+  it('rejects a variant bucket of zero rather than pruning every proposal on sight', () => {
+    const result = parse([MINIMAL, 'retention:', '  keepVariantRuns: 0'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('retention.keepVariantRuns');
   });
 
   it('accepts a project-level baseUrl override', () => {

@@ -68,6 +68,18 @@ import {
   type ScenarioPlan,
   type ScenarioRuntime,
 } from './scenario.js';
+import { VARIANT_NONE, type VariantName } from '../variant/index.js';
+import { variantWarnings } from '../variant-apply/index.js';
+import {
+  aggregateReport,
+  buildVariantRuntime,
+  isVariantFailure,
+  resolveVariant,
+  toRunWarning,
+  variantReport,
+  type VariantPlan,
+  type VariantRuntime,
+} from './variant.js';
 import { normalizeViewports, runPool } from './viewport.js';
 import { addWorktree, reapWorktrees, type Worktree } from './worktree.js';
 import { toolVersion } from '../version.js';
@@ -77,6 +89,26 @@ export interface RunContext {
   cwd?: string;
   /** Pre-opened store, for tests. */
   store?: Store;
+}
+
+/**
+ * `--variant <name>` (variants spec §6).
+ *
+ * Declared alongside `RunOptions` rather than inside it while `variant` is this slice's addition to
+ * the shared option shape: a caller that knows nothing about variants passes `RunOptions` and gets
+ * `VARIANT_NONE` recorded, which is exactly the slice-1 behaviour.
+ */
+export interface VariantRunOptions {
+  /** Capture under this variant. Absent means `VARIANT_NONE`. */
+  variant?: VariantName;
+  /**
+   * `--keep`: promote this run into the permanent timeline (§5, D24).
+   *
+   * Recorded in `meta.json` because the store reads it there — `kept` is what excludes a variant run
+   * from the ephemeral bucket that keeps proposals from evicting capture history — and `meta.json`
+   * is written here and nowhere else. Inert on a run with no variant, which is already permanent.
+   */
+  keep?: boolean;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -496,7 +528,10 @@ export async function planNetwork(
   );
 }
 
-export async function runFlow(options: RunOptions, context: RunContext = {}): Promise<RunResult> {
+export async function runFlow(
+  options: RunOptions & VariantRunOptions,
+  context: RunContext = {},
+): Promise<RunResult> {
   // Before the lock, the store, or anything else: a run that cannot legally exist should cost
   // nothing and leave nothing behind (mocking spec §2).
   assertRecordScenarioExclusive(options);
@@ -534,6 +569,23 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
       });
     }
 
+    // The fourth axis of run identity (§5). Read out of git history at the target SHA on historical
+    // replay, exactly as the flow and the scenario are (D4): a proposal is evaluated against the
+    // revision it was written for, never against a revision it never met.
+    let variant: VariantPlan | undefined;
+    if (options.variant !== undefined) {
+      variant = await resolveVariant({
+        name: options.variant,
+        root,
+        gitRoot: target.gitRoot,
+        // A clone sourced from a step this flow does not have is exit 2 **before the run starts**
+        // (§7), which is what handing validation the flow's step ids buys: the message carries the
+        // file, the line and the offending key, and no dev server or browser has been paid for.
+        flowStepIds: spec.steps.map((step) => step.id),
+        ...(target.sha === undefined ? {} : { sha: target.sha }),
+      });
+    }
+
     const har = await planNetwork(
       store,
       spec,
@@ -554,9 +606,11 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
       if (error.log !== undefined && error.log !== '') {
         logPath = await activeDraft.writeLog(error.logName ?? 'run.log', error.log);
       }
-      const meta: Omit<RunMeta, 'runId'> = {
+      const meta: Omit<RunMeta, 'runId'> & { variant: VariantName; kept?: boolean } = {
         flow: options.flow,
         scenario: scenario?.name ?? SCENARIO_NONE,
+        variant: variant?.name ?? VARIANT_NONE,
+        ...(options.keep === true ? { kept: true } : {}),
         flowHash,
         revision: (target as ResolvedTarget).revision,
         mode: (target as ResolvedTarget).mode,
@@ -649,22 +703,31 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
 
       // One runtime per viewport (see `ScenarioRuntime`): `nth` counts per request, and viewports
       // replay concurrently, so a shared counter would make the result depend on scheduling.
+      const newScenarioRuntime = (): ScenarioRuntime =>
+        buildScenarioRuntime({
+          ...(scenario === undefined ? {} : { plan: scenario }),
+          ...(recorded === undefined ? {} : { har: recorded }),
+        });
+
       const runtimes = new Map<ViewportId, ScenarioRuntime>();
-      if (scenario !== undefined || har.mode === 'mock') {
+      const scenarioInForce = scenario !== undefined || har.mode === 'mock';
+      if (scenarioInForce) {
+        for (const viewport of viewports) runtimes.set(viewport.id, newScenarioRuntime());
+      }
+
+      // One variant runtime per viewport, for the reason there is one scenario runtime per
+      // viewport: the clone material and the applied records describe *that* viewport's DOM.
+      const variantRuntimes = new Map<ViewportId, VariantRuntime>();
+      if (variant !== undefined) {
         for (const viewport of viewports) {
-          runtimes.set(
-            viewport.id,
-            buildScenarioRuntime({
-              ...(scenario === undefined ? {} : { plan: scenario }),
-              ...(recorded === undefined ? {} : { har: recorded }),
-            }),
-          );
+          variantRuntimes.set(viewport.id, buildVariantRuntime({ plan: variant, viewport: viewport.id }));
         }
       }
 
       const outcomes = await runPool(viewports, DEFAULTS.viewportConcurrency, (viewport) => {
         const harPath = harPathFor(viewport);
         const runtime = runtimes.get(viewport.id);
+        const variantRuntime = variantRuntimes.get(viewport.id);
         return replayViewport({
           browser,
           viewport,
@@ -673,6 +736,11 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
           network: har.mode,
           ...(harPath === undefined ? {} : { har: harPath }),
           ...(runtime === undefined ? {} : { scenario: runtime }),
+          ...(variantRuntime === undefined ? {} : { variant: variantRuntime }),
+          // Clone-source contexts get their own engine over the same scenario, never this
+          // viewport's: `nth` counts per request, and source traffic must not consume the
+          // target's counters (D23, mocking spec §11).
+          ...(scenarioInForce ? { newScenarioRuntime } : {}),
           ...(options.continueOnError === undefined ? {} : { continueOnError: options.continueOnError }),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
         });
@@ -680,6 +748,16 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
 
       const failures = outcomes.filter((outcome) => !outcome.ok);
       replays = outcomes.flatMap((outcome) => (outcome.ok ? [outcome.value] : []));
+
+      // A clone source that could not be resolved fails the run naming the rule and the source
+      // (§7, D23), and it fails it *with that sentence* — the generic "every viewport replay
+      // failed" would bury the one fact the user can act on. Checked before the count, because a
+      // missing source fails every viewport but a surviving one must not downgrade it to a warning.
+      const variantFailure = failures
+        .map((failure) => (failure.ok ? undefined : failure.error))
+        .find((error) => isVariantFailure(error));
+      if (variantFailure !== undefined) throw variantFailure;
+
       if (replays.length === 0) {
         const first = failures[0];
         const cause = first !== undefined && !first.ok ? first.error : undefined;
@@ -852,6 +930,30 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
       }
     }
 
+    // The three §7 warnings, built once from every capture of the run.
+    //
+    // They are the sibling of mocking's never-matched rule warning and they exist for the same
+    // reason: a variant run hands back a picture, and the danger of this whole subsystem is a
+    // picture of the unmodified UI carrying a proposal's name. `aggregateReport` is what makes the
+    // verdict a *run* verdict — a rule that changed nothing in one viewport but held in another has
+    // done its job, while a rule the application re-rendered over anywhere (D22) has not.
+    if (variant !== undefined) {
+      const captures = replays.flatMap((replay) => replay.variantCaptures);
+      const aggregate = aggregateReport(
+        variant.name,
+        variant.spec.rules.map((rule) => rule.id),
+        captures.map((capture) => capture.report),
+      );
+      for (const warning of variantWarnings(aggregate)) warnings.push(toRunWarning(warning));
+
+      // Attribution (§7): every element a rule changed, so the report can annotate the step with
+      // "element modified by `denser-forecast` rule `tighter-cards`" with nothing to instrument.
+      await draft.writeArtifact(
+        'variant.json',
+        `${JSON.stringify(variantReport(variant, captures), null, 2)}\n`,
+      );
+    }
+
     // A screenshot taken with requests outstanding is a non-deterministic capture, which is exactly
     // the failure mode the whole tool exists to rule out — so it is a run warning, like a HAR miss.
     const unsettledSteps = steps.filter((step) => step.unsettled !== undefined);
@@ -906,11 +1008,18 @@ export async function runFlow(options: RunOptions, context: RunContext = {}): Pr
     }
 
     const failedSteps = steps.filter((step) => step.status === 'failed').map((step) => step.id);
-    const meta: Omit<RunMeta, 'runId'> = {
+    const meta: Omit<RunMeta, 'runId'> & { variant: VariantName; kept?: boolean } = {
       flow: options.flow,
       // The third axis of run identity (D12), and the label the report badges a mock run with:
       // fidelity under `mock` is only as good as the scenario, so neither is left to memory (D13).
       scenario: scenario?.name ?? SCENARIO_NONE,
+      // The fourth (variants §5), recorded exactly as the scenario is and for the same reason:
+      // variant is an attribute of a run, not a level of hierarchy. `none` for an unvaried run, so
+      // slice-1 and mocking-era runs read back unchanged.
+      variant: variant?.name ?? VARIANT_NONE,
+      // `--keep` promotes this run out of the ephemeral variant bucket (D24). Written only when it
+      // was asked for: `kept: false` on every run would read as a decision nobody made.
+      ...(options.keep === true ? { kept: true } : {}),
       flowHash,
       revision: target.revision,
       mode: server.mode,

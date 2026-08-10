@@ -246,3 +246,48 @@ describe('createClient — attribution (mocking §8)', () => {
     );
   });
 });
+
+describe('createClient — variant attribution (variants §7)', () => {
+  it('requests /api/variant/<flow>/<runId> with the session token', async () => {
+    const { calls, fetchImpl } = recorder({
+      flow: 'forecast',
+      runId: '0007',
+      variant: 'denser-forecast',
+      steps: [],
+      unmatchedRules: [],
+      revertedRules: [],
+    });
+    const client = createClient({ token: 'tok', fetchImpl });
+
+    const attribution = await client.variantAttribution('forecast', '0007');
+
+    expect(calls[0]?.url).toBe('/api/variant/forecast/0007?token=tok');
+    expect(attribution.variant).toBe('denser-forecast');
+  });
+
+  it('encodes a flow name that needs it', async () => {
+    const { calls, fetchImpl } = recorder({
+      flow: 'a b',
+      runId: '0007',
+      variant: 'none',
+      steps: [],
+      unmatchedRules: [],
+      revertedRules: [],
+    });
+    await createClient({ token: null, fetchImpl }).variantAttribution('a b', '0007');
+    expect(calls[0]?.url).toBe('/api/variant/a%20b/0007');
+  });
+
+  it('surfaces a 404 as an ApiError carrying the server message', async () => {
+    const { fetchImpl } = recorder(
+      { error: 'unknown-run', message: 'No run 0099 in flow "forecast".' },
+      { status: 404, statusText: 'Not Found' },
+    );
+    const client = createClient({ token: 'tok', fetchImpl });
+
+    await expect(client.variantAttribution('forecast', '0099')).rejects.toBeInstanceOf(ApiError);
+    await expect(client.variantAttribution('forecast', '0099')).rejects.toThrow(
+      'No run 0099 in flow "forecast".',
+    );
+  });
+});

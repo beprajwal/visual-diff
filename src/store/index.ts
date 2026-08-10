@@ -16,6 +16,8 @@ import * as revision from './revision.js';
 import * as runLoad from './run-load.js';
 import * as runStore from './run-store.js';
 import { parseFlowSnapshot, serializeFlowSnapshot } from './snapshot.js';
+import { keepVariantRunsOf } from './internal/variant.js';
+import type { VariantName, VariantRunSummary } from './internal/variant.js';
 import type { AckResult, ReadFeedbackFilter } from './feedback-store.js';
 import type { AcquireLockOptions, LockHandle } from './lock.js';
 import type { PruneResult } from './retention.js';
@@ -50,10 +52,15 @@ export interface Store {
   listRunIds(flow: string): Promise<RunId[]>;
   latestRunId(flow: string): Promise<RunId | null>;
   readMeta(flow: string, runId: RunId): Promise<RunMeta>;
-  /** The timeline, optionally narrowed to one scenario (mocking spec §7). */
-  listRuns(flow: string, options?: ListRunSummariesOptions): Promise<RunSummary[]>;
+  /**
+   * The timeline, optionally narrowed to one scenario (mocking spec §7) or one variant, and by
+   * default excluding ephemeral variant runs (variants spec §5, D24).
+   */
+  listRuns(flow: string, options?: ListRunSummariesOptions): Promise<VariantRunSummary[]>;
   /** The scenario each run of the flow was captured under (mocking spec §6). */
   listRunScenarios(flow: string): Promise<Map<RunId, ScenarioName>>;
+  /** The variant each run of the flow was captured under (variants spec §5). */
+  listRunVariants(flow: string): Promise<Map<RunId, VariantName>>;
   loadRun(flow: string, runId: RunId, options?: runLoad.LoadRunOptions): Promise<LoadedRun>;
   runDir(flow: string, runId: RunId): string;
   beginRun(flow: string): Promise<RunDraft>;
@@ -83,6 +90,8 @@ export interface Store {
 
   /* retention */
   pin(flow: string, runId: RunId, pinned?: boolean): Promise<RunMeta>;
+  /** `--keep`: promote a variant run into the permanent timeline (variants spec §5). */
+  keep(flow: string, runId: RunId, kept?: boolean): Promise<RunMeta>;
   prune(flow: string, runId: RunId): Promise<PruneResult>;
   applyRetention(flow: string): Promise<PruneResult>;
 
@@ -113,6 +122,7 @@ export function openStore(config: Config): Store {
         options,
       ),
     listRunScenarios: (flow) => runStore.readScenarioIndex(root, flow),
+    listRunVariants: (flow) => runStore.readVariantIndex(root, flow),
     loadRun: (flow, runId, options) => runLoad.loadRun(root, flow, runId, options),
     runDir: (flow, runId) => paths.runDir(root, flow, runId),
     beginRun: (flow) => runStore.beginRun(root, flow),
@@ -131,9 +141,14 @@ export function openStore(config: Config): Store {
     ackFeedback: (ids) => feedbackStore.ackFeedback(root, ids),
 
     pin: (flow, runId, pinned = true) => retention.pinRun(root, flow, runId, pinned),
+    keep: (flow, runId, kept = true) => retention.keepRun(root, flow, runId, kept),
     prune: (flow, runId) => retention.pruneRun(root, flow, runId),
+    // Two buckets, so a run of proposals can never evict the capture history (variants spec §5).
     applyRetention: (flow) =>
-      retention.pruneFlow(root, flow, { keepRuns: config.retention.keepRuns }),
+      retention.pruneFlow(root, flow, {
+        keepRuns: config.retention.keepRuns,
+        keepVariantRuns: keepVariantRunsOf(config.retention),
+      }),
 
     acquireLock: (flow, options) => lockModule.acquireLock(root, flow, options),
     readRevision: () => revision.readRevision(root),
@@ -165,10 +180,12 @@ export {
   listRunIds,
   listRunSummaries,
   readFlowSnapshotSource,
+  readRunIdentityIndex,
   readRunMeta,
   readRunMetaOrNull,
   readScenarioIndex,
   readStepResult,
+  readVariantIndex,
   reapAbandonedRuns,
   resolvePair,
   runExists,
@@ -179,6 +196,7 @@ export type {
   ListRunSummariesOptions,
   ResolvePairOptions,
   RunDraft,
+  RunIdentity,
   RunMetaInput,
   ShotInput,
 } from './run-store.js';
@@ -188,6 +206,39 @@ export {
   sameScenario,
   scenarioOf,
 } from './internal/scenario.js';
+/**
+ * The variant axis of run identity (variants spec §5, D24). Exported from the store edge for the
+ * same reason the scenario helpers are: the runner, the CLI and the report all need to read a run's
+ * variant, and none of them may reimplement "absent means none".
+ */
+export {
+  DEFAULT_KEEP_VARIANT_RUNS,
+  VARIANT_NONE,
+  captureHint,
+  describeRevision,
+  describeVariant,
+  isEphemeralVariantRun,
+  isKept,
+  isVariantRun,
+  keepVariantRunsOf,
+  normalizeVariantMeta,
+  normalizeVariantName,
+  retentionBucketOf,
+  runIdentityKey,
+  sameRevision,
+  sameVariant,
+  variantOf,
+} from './internal/variant.js';
+export type {
+  MaybeVariant,
+  RetentionBucket,
+  VariantConfig,
+  VariantFilter,
+  VariantName,
+  VariantRetentionConfig,
+  VariantRunMeta,
+  VariantRunSummary,
+} from './internal/variant.js';
 export { loadRun, loadRunDir } from './run-load.js';
 export type { LoadRunOptions } from './run-load.js';
 export {
@@ -216,6 +267,7 @@ export type { AckResult, AppendFeedbackOptions, ReadFeedbackFilter } from './fee
 export {
   PRESERVED_FILES,
   isPruneExempt,
+  keepRun,
   pinRun,
   pruneAllFlows,
   pruneFlow,
