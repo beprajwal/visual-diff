@@ -47,12 +47,25 @@ CLI. Rejected: using each harness's richest mechanism (four codepaths, four ways
 capability the CLI already provides) and a single lowest-common-denominator `AGENTS.md` (weakest
 integration, and it discards the skill support three of the four genuinely have).
 
-**D16 — Project-local by default, `--global` to opt out, project wins.**
+**D16 — Project-local by default, `--global` to opt out; the project copy is what we install, but
+we do not control precedence.**
 The two cases are genuinely different: a solo user wants install-once-per-machine, a team wants
-skills committed beside `.visual-diff/flows/` so everyone drives the tool identically. When both
-exist, the project install wins, matching how every one of these harnesses resolves its own config.
-`vdiff install --check` reports both, so a stale global copy shadowed by a project copy is still
-visible rather than silently ignored.
+skills committed beside `.visual-diff/flows/` so everyone drives the tool identically.
+
+**Corrected 2026-08-10.** This decision originally claimed the project install wins, "matching how
+every one of these harnesses resolves its own config". That is false, and the correction matters
+because it inverts the failure mode:
+
+- **pi scans global locations first and keeps the first skill found for a name.** A stale copy in
+  `~/.agents/skills` or `~/.pi/agent/skills` therefore **shadows** the project install. `vdiff
+  install` and `--check` say so explicitly for pi rather than implying the project copy wins.
+- **Codex does not resolve duplicates at all.** Repository paths take precedence in ordering, but
+  both entries stay visible in the skill selector, so a name installed in two scopes is a
+  duplicate-name hazard the user sees, not a silent shadowing. `--check` reports it as such.
+- Claude Code and opencode behave as originally assumed.
+
+`vdiff install --check` reports every scope it finds, per harness, because "which copy actually
+wins" is a property of the harness and not something this tool can impose.
 
 **D17 — Version stamp in frontmatter, checked on demand, never auto-applied.**
 Installed files carry `x-vdiff-version` (the CLI version that wrote them) and `x-vdiff-source` (the
@@ -102,22 +115,30 @@ Verified against current documentation on 2026-08-09; sources in §8.
 | Claude Code | `.claude/skills/` / `~/.claude/skills/` | `.claude/commands/*.md` | — |
 | Codex | `.agents/skills/` (repo + global) | `~/.codex/prompts` | `AGENTS.md`, `~/.codex/AGENTS.md` |
 | pi | `.pi/skills/<n>/SKILL.md` / `~/.pi/agent/skills/` | — (invoked as `/skill:name`) | `AGENTS.md`, `AGENTS.override.md` |
-| opencode | **none — see below** | `.opencode/commands/*.md` / `~/.config/opencode/commands/` | `AGENTS.md` |
+| opencode | `.agents/skills/` / `~/.agents/skills/` | `.opencode/commands/*.md` / `~/.config/opencode/commands/` | `AGENTS.md` |
 
-### opencode has no skills entry, deliberately
+### Resolved 2026-08-10, before implementation
 
-opencode's documentation describes commands and `AGENTS.md`; it does not document a skill mechanism.
-Rather than guess a path, opencode gets `skills: null` and receives commands plus an `AGENTS.md`
-block pointing at the CLI and at `.agents/skills/`. **This is recorded as unverified as of
-2026-08-09, not as a design choice** — if opencode supports skills, this entry should gain one.
+All three items this spec left unverified were checked against current documentation first. Two of
+them changed the design:
 
-Two further items were deliberately not resolved and must be checked during implementation rather
-than assumed:
+1. **opencode does support skills**, and reads `.agents/skills/` natively — along with
+   `.opencode/skills/` and `.claude/skills/`, project and global. The earlier `skills: null` plan was
+   stale. This strengthens D18 rather than complicating it: **the shared directory now serves three
+   of four harnesses**, and only Claude Code needs a native path. opencode also validates skill
+   names against `^[a-z0-9]+(-[a-z0-9]+)*$` and requires the directory name to match `name`.
+2. **pi requires `description`** — a skill missing one is silently not loaded, which would have been
+   an invisible failure. Optional fields are `license`, `compatibility`, `metadata`,
+   `allowed-tools`, `disable-model-invocation`; unknown top-level keys are ignored, so the version
+   stamps live inside `metadata`. pi's global-first scan order also forced the D16 correction above.
+3. **Codex precedence is closest-to-cwd first**, so repository beats global — but duplicates are
+   both shown rather than resolved (D16).
 
-1. **pi's SKILL.md frontmatter fields.** Its documentation describes paths, not required fields.
-2. **Codex `.agents/skills` precedence** between repository-level and global.
-
-Both are cheap to verify from the harness itself; neither is safe to invent.
+**Still only partially verified:** Codex's *global* skills path. The official documentation says
+`$HOME/.agents/skills` and never mentions `~/.codex/skills`, while several third-party guides and
+the `openai/skills` catalog reference the latter. We write the documented path, which is also the
+one shared with opencode and pi. If Codex users report skills not being found globally, this is the
+first thing to check.
 
 ## 5. Install behaviour
 
@@ -182,7 +203,9 @@ Verified 2026-08-09:
 
 - Codex customization — <https://learn.chatgpt.com/docs/customization/overview>
 - opencode commands — <https://opencode.ai/docs/commands/>
-- pi extensions — <https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md>
+- pi skills — <https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md>
+  (the earlier citation of `extensions.md` was wrong: that file documents extensions, tools, events
+  and UI, and says nothing about skills)
 - Cross-agent SKILL.md convention — <https://github.com/badlogic/pi-skills>
 
 SKILL.md is a cross-agent format rather than a Claude Code one: the same `name`/`description`
