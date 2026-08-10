@@ -1,0 +1,140 @@
+src/e2e/index.ts
+  s_63a46ecbc6f681::t_1193d1bb3c82ef 96-118
+src/diff/index.ts
+  s_63a46ecbc6f681::t_22f13cf5cc6bc4 90-96,98
+package.json
+  s_63a46ecbc6f681::t_9cb1a4e7eb089a 70
+src/e2e/testkit.ts
+  s_63a46ecbc6f681::t_f9b1f3f696fb14 19-20
+  s_63a46ecbc6f681::t_0c337c76961f00 123-154
+src/store/config.ts
+  s_63a46ecbc6f681::t_b5796acd4ff368 228-239
+  s_63a46ecbc6f681::t_1beae737e2189a 59-62,65
+  s_63a46ecbc6f681::t_f085996b38f20a 197-198
+  s_63a46ecbc6f681::t_4934df8dce4a8f 249,325,358-360
+  s_63a46ecbc6f681::t_979462c144d46f 271-275
+  s_63a46ecbc6f681::t_197e2ff4cf8569 112-129,137,143-169,171-188
+  s_63a46ecbc6f681::t_e0e2ca24fc86e9 170
+  s_63a46ecbc6f681::t_6cde81577000ce 19-21,31-42
+  s_63a46ecbc6f681::t_edcaf7db4cfeef 57
+  s_63a46ecbc6f681::t_89272e123de3d1 189
+docs/superpowers/specs/2026-08-10-e2e-mode-design.md
+  s_63a46ecbc6f681::t_3856211f685103 80,84-86,92-139
+  s_63a46ecbc6f681::t_e3c6d64bcbce52 209-212
+  s_63a46ecbc6f681::t_8d7f3c6bb963cd 226-229
+src/e2e/discover.ts
+  s_63a46ecbc6f681::t_2d0085444c1035 1-190
+src/store/e2e-map.test.ts
+  s_63a46ecbc6f681::t_4d57ab6b6fd0c5 251-261
+  s_63a46ecbc6f681::t_e1b04c6642766b 180-219
+  s_63a46ecbc6f681::t_96d99d145e1b39 12-15
+  s_63a46ecbc6f681::t_0293804fcc2827 30
+  s_63a46ecbc6f681::t_40df41d3f4d938 87
+src/e2e/image.ts
+  s_63a46ecbc6f681::t_ad6dac13df752f 1-146
+src/report/e2e.ts
+  s_63a46ecbc6f681::t_61c35f6b78a0d1 201-237,239-243,246,248-256,258-266,275-285,287-289,291-303,306-322
+  s_63a46ecbc6f681::t_f7a57fcad0a059 352-358
+  s_63a46ecbc6f681::t_cb3686bd5ccda5 324
+  s_63a46ecbc6f681::t_b715651c4b70e8 338-340
+  s_63a46ecbc6f681::t_694451e74a7c04 129-142,145,149
+src/report/e2e.test.ts
+  s_63a46ecbc6f681::t_7f9d83cc09674f 20,25,31-33
+  s_63a46ecbc6f681::t_c538e75969fce6 230,232-235,240,243,250-281,285-307
+  s_63a46ecbc6f681::t_5646d80f81eb63 109-148
+src/diff/e2e-pairing.test.ts
+  s_63a46ecbc6f681::t_5fbbd57a8feab1 441-443
+  s_63a46ecbc6f681::t_911213680b8d4b 552-557,559,563-565
+  s_63a46ecbc6f681::t_947236b62eebf8 205-209
+src/e2e/image.test.ts
+  s_63a46ecbc6f681::t_c53e87ca4b4be6 1-90
+src/report/ui/derive.test.ts
+  s_63a46ecbc6f681::t_fc920eadb73b0a 812,818-820,825-827,831-849,855-856,861-899
+  s_63a46ecbc6f681::t_cc64b8927c2d7f 22
+  s_63a46ecbc6f681::t_2979eb77081e5e 776,781-786,794-795,797
+src/diff/fidelity.test.ts
+  s_63a46ecbc6f681::t_745b42d402ec53 202-205,207
+  s_63a46ecbc6f681::t_30f0be90adb979 116-118,120,132-136,139,149
+  s_63a46ecbc6f681::t_0d7b8fbdfce1b9 1-114,121-131,137-138,140-148,150-155,157-161,163-182,184-201,206,209-242
+  s_63a46ecbc6f681::t_8d0e5b8d4148f8 115,119
+  s_63a46ecbc6f681::t_86a3c6b669922a 156,162,183,208
+src/store/config.test.ts
+  s_63a46ecbc6f681::t_ad45b6c5760d4e 215-299
+src/cli/main.test.ts
+  s_63a46ecbc6f681::t_72f955f668293b 2157,2163-2164,2166-2168,2170
+src/store/e2e-map.ts
+  s_63a46ecbc6f681::t_bcad8af7baa48d 30-44,67-71,91,94-107,156-167,296,299
+src/e2e/ingest.ts
+  s_63a46ecbc6f681::t_42e07fa3d0379f 24,73,92,95,104-105,128,174,204-206,221-222,233,252,295,304,354,393-394,400,436-439,442-444,459,466,473-474,491,497,517-518,528,541-542,556,560,633,647-654,660-665
+  s_63a46ecbc6f681::t_142de1ec6ca5c4 1-23,25-72,74-91,93-94,96-103,106-127,129-173,175-203,207-220,223-232,234-251,253-294,296-303,305-353,355-392,395-399,401-435,440-441,445-458,460-465,467-472,475-490,492-496,498-516,519-527,529-540,543-555,557-559,561-632,634-646,655-659,666-667
+src/diff/fidelity.ts
+  s_63a46ecbc6f681::t_93fc7b04402fdd 69-78
+  s_63a46ecbc6f681::t_46a6a65b53a291 11-30
+  s_63a46ecbc6f681::t_d468cdf8a1fbfb 40-50,52-56
+  s_63a46ecbc6f681::t_87f92479a69847 68,79-92,104-111,120-143,146-172,179-183,186-193
+  s_63a46ecbc6f681::t_38c49f506b7c01 219-237
+src/diff/e2e-noise.ts
+  s_63a46ecbc6f681::t_520972a62deef4 43-57
+  s_63a46ecbc6f681::t_b8b51ee30a8c11 60-61
+  s_63a46ecbc6f681::t_d2b3862ebeb065 194-196,222-244,249-280
+  s_63a46ecbc6f681::t_1a885b02f64270 245-248
+  s_63a46ecbc6f681::t_2e1ec208b749b0 93,98-104
+src/store/internal/e2e.ts
+  s_63a46ecbc6f681::t_657342ece948af 263-279,284-285
+src/report/ui/derive.ts
+  s_63a46ecbc6f681::t_11981d08141a31 665,667-669,671,690-729,731-734,739-741,746-748,752,763-764,771-780
+  s_63a46ecbc6f681::t_bd20c8d4974ad6 35-36,38,41
+  s_63a46ecbc6f681::t_c07fac6fc80bcf 622-624
+  s_63a46ecbc6f681::t_f551d48f08acbf 659
+  s_63a46ecbc6f681::t_8a19e217edb41a 631-634
+  s_63a46ecbc6f681::t_d18c15d21de167 781
+src/report/ui/styles.ts
+  s_63a46ecbc6f681::t_9997d51153aad3 707-718
+src/report/ui/components/RightRail.tsx
+  s_63a46ecbc6f681::t_c5741c3af5892c 9-12
+src/report/ui/components/Header.tsx
+  s_63a46ecbc6f681::t_d3955873ee543e 128-130
+src/diff/edge.ts
+  s_63a46ecbc6f681::t_08d9c7084f6084 14-18
+  s_63a46ecbc6f681::t_f24a477a124127 21,23-26,34-70,74,76-81,85-86
+src/e2e/discover.test.ts
+  s_63a46ecbc6f681::t_29b69b223a15e5 1-143
+src/report/ui/components/FindingItem.tsx
+  s_63a46ecbc6f681::t_a76361ff88e2e2 41
+  s_63a46ecbc6f681::t_2310c546c00273 5-10,16
+  s_63a46ecbc6f681::t_fd8e861bf9307d 68-73
+README.md
+  s_63a46ecbc6f681::t_def369ec5cd5c0 123-129
+src/store/index.ts
+  s_63a46ecbc6f681::t_35847c4c9b7698 282
+src/e2e/ingest.test.ts
+  s_63a46ecbc6f681::t_6ac14cc3567113 290-293
+  s_63a46ecbc6f681::t_0830280e928af7 301-303
+  s_63a46ecbc6f681::t_84d714d7e734e5 416
+  s_63a46ecbc6f681::t_3c487c0cb2f938 16
+  s_63a46ecbc6f681::t_1804819a8f6db7 1-15,17-276,278-289,294-300,304-401,403-415,417-481,483-560
+  s_63a46ecbc6f681::t_db83d6c0bbc405 277,402,482
+src/diff/e2e-config.test.ts
+  s_63a46ecbc6f681::t_0a0b5f800b98fc 195-286
+  s_63a46ecbc6f681::t_92fd680c41a3bd 1-22,24-32,34,36-37,39-194,287-315
+  s_63a46ecbc6f681::t_4d63244b5d351b 38
+  s_63a46ecbc6f681::t_f733dc33f77c15 23,33,35
+package-lock.json
+  s_63a46ecbc6f681::t_53b1e5a1bbe41f 16,1377-1382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "76beb5fe5e4ff44167d4fa40fa35ffc066905e23",
+  "prompts": {},
+  "sessions": {
+    "s_63a46ecbc6f681": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9640a5c0-589d-4f42-8ab9-dc846b6df457",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
