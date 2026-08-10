@@ -151,9 +151,19 @@ Provisional defaults, overridable per project under `e2e:` in config:
 | minimum region area | 64 | larger |
 | antialias tolerance | standard | higher |
 
-Masking matters more here than anywhere else in the tool, so `e2e-map.yaml` also accepts an `ignore`
-list applied to ingested runs — clocks, ids and animated regions, which no amount of threshold
-tuning handles correctly.
+**Proposed, measured, and refused (2026-08-11): an `ignore` list in `e2e-map.yaml`.** This section
+originally specified one, reasoning that masking matters more here than anywhere else — clocks, ids
+and animated regions are not handled correctly by any threshold. It cannot be built, for the same
+reason §4 gives: a selector-based mask must resolve a selector to a rectangle, and a trace snapshot
+carries no geometry, so every element ingests with the rect `{0,0,0,0}`. Measured on one pair: a
+mask that suppressed a finding on a replayed run (1 → 0) suppressed nothing on the same pair ingested
+(1 → 1).
+
+The shipped behaviour is therefore an **exit-2 refusal** naming the key, not a silent no-op — a mask
+the user believes is protecting them, which quietly protects nothing, is precisely the failure this
+project keeps designing against. The alternatives that do work on an ingested pair are
+`e2e.minRegionArea` and `e2e.antialiasTolerance` above, and masking at capture time in the suite
+itself, where geometry still exists.
 
 A rejected alternative worth recording: capturing each shot twice and treating pixels that differ
 between the pair as inherently unstable, masking them automatically. It self-calibrates instead of
