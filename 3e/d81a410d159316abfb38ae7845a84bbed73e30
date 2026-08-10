@@ -1,0 +1,31 @@
+fixtures/app/scripts/showcase.mjs
+  s_63a46ecbc6f681::t_ff42a9cd94920e 102-105,109-110,112-115
+  s_63a46ecbc6f681::t_ee26be946ff2dd 1-65,86-88,92-96,101,106-108,111,116-122,136-139,142-143,153-163
+  s_63a46ecbc6f681::t_c8dd3cdcd492c2 66-85,89-91,97-100
+  s_63a46ecbc6f681::t_dfe2543f9e0885 123-135,140-141,144-152
+fixtures/app/docs/screenshots/cli-output.txt
+  s_63a46ecbc6f681::t_f026b477381101 2,16,20
+  s_63a46ecbc6f681::t_aa123899a6224a 1,15,29
+  s_63a46ecbc6f681::t_8ad3477fd0f8b6 4-8,11-14,18-19,21-22,25-28
+  s_63a46ecbc6f681::t_d4e1c813f83b5f 3,9-10,17,23-24
+fixtures/app/docs/README.md
+  s_63a46ecbc6f681::t_2ba3069afda907 1-139
+fixtures/app/package.json
+  s_63a46ecbc6f681::t_8ad3477fd0f8b6 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "3ed81a410d159316abfb38ae7845a84bbed73e30",
+  "prompts": {},
+  "sessions": {
+    "s_63a46ecbc6f681": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9640a5c0-589d-4f42-8ab9-dc846b6df457",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
