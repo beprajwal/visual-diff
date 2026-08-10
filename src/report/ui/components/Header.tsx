@@ -125,8 +125,9 @@ function RunPicker(props: {
           class="badge e2e"
           title={
             'ingested from a test suite trace, not replayed by this tool: no frozen clock, no' +
-            ' settle gate, viewport-only lossy screenshots, and no computed styles — so this run' +
-            ' supports pixel and DOM findings but never property-level ones.' +
+            ' settle gate, viewport-only lossy screenshots, no computed styles and no element box' +
+            ' metrics — so a diff of two such runs compares pixels only, naming neither the element' +
+            ' nor the property behind a change.' +
             (originLine === null ? '' : ` ${originLine}`)
           }
         >

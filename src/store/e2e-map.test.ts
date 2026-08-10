@@ -9,6 +9,10 @@
  *   spacing, or duplicated under two spellings) — refused at load, with file and line;
  * - it matches nothing in the traces actually ingested — a run warning naming it, because §8 is
  *   explicit that this is the same failure class as a never-matched scenario rule.
+ *
+ * The file's `ignore:` list is the third way, and the worst: §5 documents it, nothing could ever
+ * apply it to an ingested run, and a mask that silently masks nothing turns real noise into findings
+ * the user reads as regressions. It is refused at load, and the refusal is asserted by its message.
  */
 
 import { promises as fsp } from 'node:fs';
@@ -23,6 +27,7 @@ import {
   loadE2eMap,
   loadE2eMapOrThrow,
   parseE2eMapSource,
+  IGNORE_UNSUPPORTED_MESSAGE,
 } from './e2e-map.js';
 import { StoreError } from './errors.js';
 import { E2E_MAP_UNMATCHED } from './internal/e2e.js';
@@ -54,8 +59,6 @@ describe('parseE2eMapSource', () => {
         'steps:',
         '  "checkout.spec.ts › checkout › shows the cart":',
         '    "open the dashboard": dashboard',
-        'ignore:',
-        '  - "[data-test=session-id]"',
       ].join('\n'),
     );
     expect(result.ok).toBe(true);
@@ -66,7 +69,6 @@ describe('parseE2eMapSource', () => {
         .get('checkout.spec.ts › checkout › shows the cart')
         ?.get('open the dashboard'),
     ).toBe('dashboard');
-    expect(result.value.ignore).toEqual(['[data-test=session-id]']);
   });
 
   it('matches a pin written with the line number still in it', () => {
@@ -82,7 +84,7 @@ describe('parseE2eMapSource', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.flows.size).toBe(0);
-    expect(result.value.ignore).toEqual([]);
+    expect(result.value.steps.size).toBe(0);
   });
 
   it('reports an unknown key with file, line and the offending key', () => {
@@ -175,6 +177,46 @@ describe('parseE2eMapSource', () => {
     if (result.ok) return;
     expect(result.issues[0]?.code).toBe('invalid-value');
   });
+
+  /**
+   * §5 documents an `ignore` list here, and it cannot work: masking subtracts a matched node's rect
+   * from the pixel diff, and an ingested node has no rect. `src/diff/e2e-config.test.ts` proves the
+   * inertness against the real diff engine; these three assert that the loader refuses rather than
+   * accepting a list that would suppress nothing.
+   */
+  describe('the ignore list §5 proposes, which cannot be applied', () => {
+    it('refuses it, and says why and what to do instead', () => {
+      const result = parse(['ignore:', '  - ".clock"'].join('\n'));
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues[0]?.code).toBe('e2e-ignore-unsupported');
+      expect(result.issues[0]?.message).toBe(IGNORE_UNSUPPORTED_MESSAGE);
+      // The three things the message has to carry, asserted individually so a rewording that drops
+      // one of them fails here rather than being noticed by a user.
+      expect(result.issues[0]?.message).toContain('the list would suppress nothing');
+      expect(result.issues[0]?.message).toContain('0x0 rect');
+      expect(result.issues[0]?.message).toContain(
+        'tune e2e.minRegionArea and e2e.antialiasTolerance in config.yaml instead',
+      );
+      expect(result.issues[0]?.at.file).toBe(FILE);
+      expect(result.issues[0]?.at.line).toBe(2);
+      expect(result.issues[0]?.at.key).toBe('ignore');
+    });
+
+    it('refuses an empty list too — an empty mask is still a belief that masking exists', () => {
+      const result = parse('ignore: []\n');
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues[0]?.code).toBe('e2e-ignore-unsupported');
+    });
+
+    it('reports it first, ahead of whatever else is wrong with the file', () => {
+      const result = parse(['ignore:', '  - ".clock"', 'flows:', '  "a › b": ../escape'].join('\n'));
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.map((i) => i.code)).toEqual(['e2e-ignore-unsupported', 'unsafe-name']);
+    });
+  });
 });
 
 describe('loadE2eMap', () => {
@@ -205,6 +247,17 @@ describe('loadE2eMap', () => {
   it('exits 2 for a bad map, as a bad config.yaml does', async () => {
     await fsp.writeFile(paths.e2eMapFile(tmp), 'flws: {}\n');
     await expect(loadE2eMapOrThrow(tmp)).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it('exits 2 on an ignore list, so the no-op is hit at ingest and not read as coverage', async () => {
+    await fsp.writeFile(paths.e2eMapFile(tmp), 'ignore:\n  - ".clock"\n');
+    await expect(loadE2eMapOrThrow(tmp)).rejects.toMatchObject({
+      exitCode: 2,
+      code: 'e2e-ignore-unsupported',
+    });
+    await expect(loadE2eMapOrThrow(tmp)).rejects.toThrow(
+      `${IGNORE_UNSUPPORTED_MESSAGE} (${paths.e2eMapFile(tmp)}:2)`,
+    );
   });
 });
 
@@ -244,13 +297,6 @@ describe('createE2eMapper', () => {
     ).toBe('dashboard');
     // The same step title under a different test is not pinned by it.
     expect(mapper.stepIdFor('gone.spec.ts:1 › gone › vanished', 'open the dashboard')).toBeNull();
-  });
-
-  it('carries the ignore list through without applying it', () => {
-    const withIgnore = parse(['ignore:', '  - ".clock"'].join('\n'));
-    expect(withIgnore.ok).toBe(true);
-    if (!withIgnore.ok) return;
-    expect(createE2eMapper(withIgnore.value).ignore).toEqual(['.clock']);
   });
 
   it('warns about every pin no trace asked for, naming step pins by their test (§8)', () => {

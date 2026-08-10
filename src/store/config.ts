@@ -16,6 +16,9 @@
  *   redact: ["x-api-key"]
  * retention:
  *   keepRuns: 20
+ * e2e:
+ *   minRegionArea: 256
+ *   antialiasTolerance: 0.25
  * ```
  *
  * Every default comes from `DEFAULTS` in types.ts, so config and code cannot drift apart. The file
@@ -25,6 +28,18 @@
  *
  * `network.scrub` is deliberately **not** readable from the file: HAR scrubbing is disabled only
  * by an explicit `--no-scrub` (spec §6).
+ *
+ * ## The `e2e:` block (e2e spec §5)
+ *
+ * `diff:` sets the noise controls for every pair; `e2e:` overrides them for a pair with an ingested
+ * side, because an e2e capture has no frozen clock, no seeded RNG and no settle gate. The values in
+ * the example above are the defaults, and this file **does not restate them**: it carries only the
+ * keys the user actually wrote, and `diff/e2e-noise.ts` (`E2E_DIFF_DEFAULTS`) fills the rest. That
+ * is deliberate — two copies of a provisional threshold is how the value nobody re-measures becomes
+ * folklore, which is the failure D27 names outright.
+ *
+ * The block is validated here rather than at diff time so a bad value is a config error with a line
+ * number (exit 2), not a warning discovered halfway through a diff.
  */
 
 import * as path from 'node:path';
@@ -39,10 +54,15 @@ import type { E2eConfig } from './internal/e2e.js';
 import { isDirectory, readTextOrNull } from './internal/fs.js';
 import { DEFAULT_KEEP_VARIANT_RUNS } from './internal/variant.js';
 import { locate, yamlSyntaxIssues, zodIssues } from './internal/yaml-issues.js';
+import type { ParsedYamlDocument } from './internal/yaml-issues.js';
 import * as paths from './paths.js';
+// Type-only, and erased at emit: the *shape* of the `e2e:` block belongs to the module that owns
+// the defaults and applies them (`diff/e2e-noise.ts`), so declaring a second copy of it here is
+// exactly the drift the block's own docblock argues against. No runtime edge is created.
+import type { E2eNoiseOverrides } from '../diff/e2e-noise.js';
 import {
   DEFAULTS,
-  type Config,
+  type ValidationIssue,
   type ValidationResult,
 } from '../types.js';
 
@@ -89,6 +109,24 @@ const retentionSchema = z
   })
   .strict();
 
+/**
+ * `e2e:` — the noise controls a pair with an ingested side is diffed under (e2e spec §5, D27).
+ *
+ * The same two knobs `diff:` exposes, and only those two. `maxRegions` is deliberately absent: it
+ * caps how many findings are shown, not how much noise is tolerated, and one cap for the whole tool
+ * is one fewer number to keep in agreement. `ignore` is absent for a harder reason — see
+ * `store/e2e-map.ts`: nothing can be masked on a run ingested from a trace, because a trace snapshot
+ * carries no box metrics, so accepting a mask list here would be accepting a no-op.
+ *
+ * Bounds match `diffSchema` exactly, so a value that is legal for replay is legal for e2e.
+ */
+const e2eSchema = z
+  .object({
+    minRegionArea: z.number().int().nonnegative().optional(),
+    antialiasTolerance: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
 const configSchema = z
   .object({
     baseUrl: z.string().min(1).optional(),
@@ -96,10 +134,58 @@ const configSchema = z
     diff: diffSchema.optional(),
     network: networkSchema.optional(),
     retention: retentionSchema.optional(),
+    e2e: e2eSchema.optional(),
   })
   .strict();
 
 export type ConfigFile = z.infer<typeof configSchema>;
+
+/**
+ * A fully-defaulted `Config` that also carries the user's `e2e:` overrides.
+ *
+ * Structural, exactly as `E2eConfig` is over `Config`: `src/types.ts` does not yet carry the block,
+ * and every caller that only knows `Config` keeps working because the field is additive and
+ * optional. `e2eNoiseOf` in `diff/e2e-noise.ts` is how a caller reads it back.
+ */
+export type NoiseAwareConfig = E2eConfig & { e2e?: E2eNoiseOverrides };
+
+/**
+ * Keys §5's own table invites a user to write, and what they are actually called.
+ *
+ * §5 tabulates three settings — *pixel threshold*, *minimum region area*, *antialias tolerance* —
+ * but the engine has two knobs, because `pixelmatch` exposes a single YIQ colour-delta threshold
+ * that doubles as its antialias sensitivity (`diff/e2e-noise.ts` records the measurements). A user
+ * transcribing the table therefore lands on a key that does not exist, and a bare "unknown key"
+ * would read as *this setting is unavailable* rather than *this setting has another name*.
+ */
+const E2E_RENAMED_KEYS: Readonly<Record<string, string>> = {
+  pixelThreshold: 'antialiasTolerance',
+  threshold: 'antialiasTolerance',
+  minimumRegionArea: 'minRegionArea',
+};
+
+/** The `e2e:` keys that are really other keys, reported before the strict schema calls them unknown. */
+function renamedE2eKeyIssues(
+  raw: unknown,
+  doc: ParsedYamlDocument,
+  lineCounter: YAML.LineCounter,
+  file: string,
+): ValidationIssue[] {
+  const block = (raw as { e2e?: unknown } | null)?.e2e;
+  if (block === null || typeof block !== 'object' || Array.isArray(block)) return [];
+  const issues: ValidationIssue[] = [];
+  for (const [written, actual] of Object.entries(E2E_RENAMED_KEYS)) {
+    if (!Object.hasOwn(block, written)) continue;
+    issues.push({
+      code: 'renamed-key',
+      message:
+        `e2e.${written} is not a setting; the e2e noise controls are e2e.minRegionArea and ` +
+        `e2e.antialiasTolerance — write e2e.${actual} instead`,
+      at: locate(doc, lineCounter, file, ['e2e', written]),
+    });
+  }
+  return issues;
+}
 
 /* ------------------------------------------------------------------ defaults */
 
@@ -108,8 +194,8 @@ export function buildConfig(
   root: string,
   file: ConfigFile,
   readyTimeoutMs: number,
-): E2eConfig {
-  const config: E2eConfig = {
+): NoiseAwareConfig {
+  const config: NoiseAwareConfig = {
     root,
     dir: paths.vdiffDir(root),
     app: {
@@ -139,6 +225,18 @@ export function buildConfig(
   };
   if (file.app.install !== undefined) config.app.install = file.app.install;
   if (file.baseUrl !== undefined) config.baseUrl = file.baseUrl;
+
+  // Only what was written. An absent key stays absent all the way to `e2eNoiseSettings`, which is
+  // the single place `E2E_DIFF_DEFAULTS` is read — so "what is the e2e minimum region area?" has
+  // exactly one answer, and changing it means changing one line.
+  if (file.e2e !== undefined) {
+    const e2e: E2eNoiseOverrides = {};
+    if (file.e2e.minRegionArea !== undefined) e2e.minRegionArea = file.e2e.minRegionArea;
+    if (file.e2e.antialiasTolerance !== undefined) {
+      e2e.antialiasTolerance = file.e2e.antialiasTolerance;
+    }
+    config.e2e = e2e;
+  }
   return config;
 }
 
@@ -148,7 +246,7 @@ export function parseConfigSource(
   source: string,
   file: string,
   root: string,
-): ValidationResult<Config> {
+): ValidationResult<NoiseAwareConfig> {
   const lineCounter = new YAML.LineCounter();
   const doc = YAML.parseDocument(source, { lineCounter });
 
@@ -169,6 +267,11 @@ export function parseConfigSource(
       ],
     };
   }
+
+  // Ahead of the schema, so `e2e.pixelThreshold` is answered with its real name instead of being
+  // rejected as an unknown key the user has no way to look up.
+  const renamed = renamedE2eKeyIssues(raw, doc, lineCounter, file);
+  if (renamed.length > 0) return { ok: false, issues: renamed };
 
   const parsed = configSchema.safeParse(raw);
   if (!parsed.success) {
@@ -219,7 +322,7 @@ export interface LoadConfigOptions {
 
 export async function loadConfig(
   options: LoadConfigOptions = {},
-): Promise<ValidationResult<Config>> {
+): Promise<ValidationResult<NoiseAwareConfig>> {
   const start = options.cwd ?? process.cwd();
   const root = options.root ?? (await findProjectRoot(start));
   if (root === null) {
@@ -252,7 +355,9 @@ export async function loadConfig(
 }
 
 /** Load or fail with exit code 2 (spec §9, "config or spec error"). */
-export async function loadConfigOrThrow(options: LoadConfigOptions = {}): Promise<Config> {
+export async function loadConfigOrThrow(
+  options: LoadConfigOptions = {},
+): Promise<NoiseAwareConfig> {
   const result = await loadConfig(options);
   if (result.ok) return result.value;
   const first = result.issues[0];

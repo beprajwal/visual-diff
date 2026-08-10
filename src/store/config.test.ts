@@ -212,6 +212,91 @@ describe('parseConfigSource', () => {
   });
 });
 
+/**
+ * `e2e:` — the noise controls for a pair with an ingested side (e2e spec §5, D27).
+ *
+ * The block was documented by the spec and rejected by the schema, so a project following the
+ * documentation got a hard exit-2 config error. These tests fix the shape of it; that an override
+ * reaching this block actually changes what the engine computes is `src/diff/e2e-config.test.ts`,
+ * because parsing a threshold and applying one are different claims.
+ */
+describe('the e2e noise block (§5)', () => {
+  it('accepts §5’s two settings', () => {
+    const result = parse(
+      [MINIMAL, 'e2e:', '  minRegionArea: 400', '  antialiasTolerance: 0.35'].join('\n'),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.e2e).toEqual({ minRegionArea: 400, antialiasTolerance: 0.35 });
+  });
+
+  it('carries only what was written, so the defaults keep living in exactly one place', () => {
+    const partial = parse([MINIMAL, 'e2e:', '  minRegionArea: 400'].join('\n'));
+    if (!partial.ok) throw new Error(JSON.stringify(partial.issues));
+    // Not `{ minRegionArea: 400, antialiasTolerance: 0.25 }`: a config that restated the default
+    // would be a second copy of a provisional number, and `E2E_DIFF_DEFAULTS` would stop being the
+    // answer to "what is the e2e antialias tolerance?".
+    expect(partial.value.e2e).toEqual({ minRegionArea: 400 });
+
+    const absent = parse(MINIMAL);
+    if (!absent.ok) throw new Error(JSON.stringify(absent.issues));
+    expect(absent.value.e2e).toBeUndefined();
+  });
+
+  it('leaves the replay thresholds alone — `e2e:` is an override, not a replacement', () => {
+    const result = parse([MINIMAL, 'e2e:', '  minRegionArea: 400'].join('\n'));
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.diff.minRegionArea).toBe(DEFAULTS.diff.minRegionArea);
+    expect(result.value.diff.antialiasTolerance).toBe(DEFAULTS.diff.antialiasTolerance);
+  });
+
+  it('rejects a value out of range at load, not as a warning mid-diff', () => {
+    const result = parse([MINIMAL, 'e2e:', '  antialiasTolerance: 3'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('e2e.antialiasTolerance');
+    expect(result.issues[0]?.at.line).toBe(5);
+  });
+
+  it('rejects a negative minimum region area', () => {
+    const result = parse([MINIMAL, 'e2e:', '  minRegionArea: -1'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('e2e.minRegionArea');
+  });
+
+  it('reports a mistyped key with file, line and the offending key', () => {
+    const result = parse([MINIMAL, 'e2e:', '  minRegionAre: 400'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.code).toBe('unknown-key');
+    expect(result.issues[0]?.message).toBe('unknown key "e2e.minRegionAre"');
+    expect(result.issues[0]?.at.line).toBe(5);
+  });
+
+  it('names the real setting when the key came from §5’s own wording', () => {
+    // §5 tabulates "pixel threshold"; the engine has one pixelmatch threshold and calls it
+    // `antialiasTolerance`. "unknown key" would read as *not supported* rather than *renamed*.
+    const result = parse([MINIMAL, 'e2e:', '  pixelThreshold: 0.3'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.code).toBe('renamed-key');
+    expect(result.issues[0]?.message).toBe(
+      'e2e.pixelThreshold is not a setting; the e2e noise controls are e2e.minRegionArea and ' +
+        'e2e.antialiasTolerance — write e2e.antialiasTolerance instead',
+    );
+    expect(result.issues[0]?.at.line).toBe(5);
+  });
+
+  it('refuses a mask list here too, wherever the user tries to put one', () => {
+    // `e2e-map.yaml` explains why at length; the point of this one is that config.yaml is not the
+    // workaround a user reaches for next.
+    const result = parse([MINIMAL, 'e2e:', '  ignore: [".clock"]'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.message).toBe('unknown key "e2e.ignore"');
+  });
+});
+
 describe('project discovery', () => {
   let tmp: string;
 

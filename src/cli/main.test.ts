@@ -2154,16 +2154,20 @@ describe('vdiff diff and the source axis (e2e spec §4, D27)', () => {
     expect(seen[0]).toEqual({ e2e: 'include' });
   });
 
-  it('states the e2e pair and spells out the reduced detail, without warning about it', async () => {
+  it('states that an e2e pair is a pixel comparison, without warning about it', async () => {
     const result = fakeDiffResult({ baseMeta: e2eMeta('0003'), headMeta: e2eMeta('0007') });
     const h = harness({ ports: createTestPorts({ computeDiff: async () => result }) });
 
     expect(await runCli(['diff', 'weather', '0003', '0007'], h)).toBe(EXIT.OK);
     const stdout = h.writer.stdout();
+    // "reduced detail" was the old wording, and it implied an element-level explanation survived on
+    // such a pair. None does: a trace snapshot has no box metrics, so nothing attributes (§4).
     expect(stdout).toContain(
-      'e2e pair: e2e diff, reduced detail — no property-level findings: a Playwright trace records' +
-        ' DOM structure but no computed styles',
+      'e2e pair: e2e diff — pixel comparison only: a Playwright trace records DOM structure but no' +
+        ' computed styles and no box metrics, so no finding from this pair can name the element or' +
+        ' the property behind a change',
     );
+    expect(stdout).not.toContain('reduced detail');
     expect(stdout).toContain('steps may share one screenshot');
     expect(stdout).toContain('viewport-only and lossy');
     // The normal case for e2e mode is stated, never marked: a `!` on the ordinary result is how a

@@ -260,13 +260,29 @@ export function describeSource(source: RunSource): string {
  */
 export const E2E_MAP_UNMATCHED = 'e2e-map-unmatched';
 
-/** Repeated step titles inside one test, disambiguated and reported once (§8). */
-export const E2E_DUPLICATE_STEP_TITLES = 'e2e-duplicate-step-titles';
+/**
+ * Repeated step titles inside one test, disambiguated and reported once (§8).
+ *
+ * The string is `e2e-step-title-duplicate` rather than the constant's own name because the kind is a
+ * fact about a *file*: `report/e2e.ts` recognises the kinds a stored `meta.json` carries, and a
+ * warning whose kind the report does not know is a warning the report cannot badge. The two lists
+ * have to agree, and the report's is the one a run written by any build has to satisfy.
+ */
+export const E2E_DUPLICATE_STEP_TITLES = 'e2e-step-title-duplicate';
+
+/**
+ * An ingested run's revision could not be established (§7, §8).
+ *
+ * Unconditional on every ingested run, because it is a fact about the trace format rather than about
+ * one archive: no Playwright trace carries git metadata at any version under any configuration.
+ */
+export const E2E_REVISION_UNKNOWN = 'e2e-revision-unknown';
 
 export type E2eRunWarningKind =
   | RunWarningKind
   | typeof E2E_MAP_UNMATCHED
-  | typeof E2E_DUPLICATE_STEP_TITLES;
+  | typeof E2E_DUPLICATE_STEP_TITLES
+  | typeof E2E_REVISION_UNKNOWN;
 
 /** `RunWarning` widened by the two kinds above, plus the titles they are about. */
 export type E2eRunWarning = Omit<RunWarning, 'kind'> & {

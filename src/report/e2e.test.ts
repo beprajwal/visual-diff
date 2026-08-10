@@ -17,15 +17,20 @@ import {
   describeE2eOrigin,
   describeE2eRevision,
   describeSourcePair,
+  e2eDegradedSentences,
   e2eOriginOf,
   isE2eRun,
   isE2eWarningKind,
   isHighSeverityE2eWarningKind,
+  isPixelsOnlyFinding,
   isRunSource,
   showSource,
   sourceOf,
   E2E_DEGRADED_SENTENCES,
   E2E_MISSING_LAYERS,
+  E2E_MIXED_ATTRIBUTION_SENTENCE,
+  E2E_PIXELS_ONLY_SENTENCE,
+  PIXELS_ONLY_FINDING_NOTE,
   E2E_WARNING_KINDS,
   RUN_SOURCES,
   SOURCE_E2E,
@@ -100,6 +105,46 @@ describe('e2eOriginOf', () => {
 
   it('returns null when the block holds nothing usable', () => {
     expect(e2eOriginOf({ e2e: { title: '', retry: 'two' } })).toBeNull();
+  });
+
+  it('reads the block ingestion actually writes: testTitle, archive, and a nested suite', () => {
+    // This is the shape `store/internal/e2e.ts` validates at commit and therefore the only shape a
+    // real `meta.json` has. A reader that understood only the flat spelling would show nothing at
+    // all for every ingested run — which is how a badge silently stops meaning anything.
+    expect(
+      e2eOriginOf({
+        e2e: {
+          traceHash: 'sha256:abc',
+          testTitle: 'weather.spec.ts:14 › weather dashboard › shows the forecast',
+          titleKey: 'weather.spec.ts › weather dashboard › shows the forecast',
+          archive: '/tmp/traces/dashboard-baseline.zip',
+          suite: {
+            browser: 'chromium',
+            channel: 'chrome',
+            playwrightVersion: '1.62.1',
+            platform: 'darwin',
+            traceVersion: 8,
+          },
+        },
+      }),
+    ).toEqual({
+      traceHash: 'sha256:abc',
+      tracePath: '/tmp/traces/dashboard-baseline.zip',
+      title: 'weather.spec.ts:14 › weather dashboard › shows the forecast',
+      browser: 'chromium',
+      channel: 'chrome',
+      playwrightVersion: '1.62.1',
+      platform: 'darwin',
+      traceVersion: 8,
+    });
+  });
+
+  it('prefers a flat field over its nested alias, so an explicit value always wins', () => {
+    expect(
+      e2eOriginOf({
+        e2e: { title: 'flat', testTitle: 'nested', browser: 'firefox', suite: { browser: 'chromium' } },
+      }),
+    ).toEqual({ title: 'flat', browser: 'firefox' });
   });
 });
 
@@ -182,31 +227,84 @@ describe('describeSourcePair', () => {
     );
   });
 
-  it('states the reduced detail for an e2e pair instead of warning about it', () => {
+  it('states that an e2e pair is a pixel comparison, instead of warning about it', () => {
     expect(describeSourcePair(classifySourcePair({ source: 'e2e' }, { source: 'e2e' }))).toBe(
-      'e2e pair: e2e diff, reduced detail — no property-level findings: a Playwright trace records' +
-        ' DOM structure but no computed styles, so this diff says which region changed and which' +
-        ' element is responsible, and never "padding 8px → 12px"',
+      'e2e pair: e2e diff — pixel comparison only: a Playwright trace records DOM structure but no' +
+        ' computed styles and no box metrics, so no finding from this pair can name the element or' +
+        ' the property behind a change — a renamed heading appears as a changed region and nothing' +
+        ' more',
     );
   });
 });
 
-describe('the degraded-diff explanation (§4)', () => {
+describe('what an e2e diff can report (§4)', () => {
   it('states all three things a reader would otherwise read as a defect', () => {
     expect(E2E_DEGRADED_SENTENCES).toHaveLength(3);
-    expect(E2E_DEGRADED_SENTENCES[0]).toContain('no property-level findings');
+    expect(E2E_DEGRADED_SENTENCES[0]).toContain('pixel comparison only');
     // Several steps legitimately resolve to the same screencast frame; presenting that as a fault
     // would be the report inventing a problem that is not there.
     expect(E2E_DEGRADED_SENTENCES[1]).toContain('steps may share one screenshot');
     expect(E2E_DEGRADED_SENTENCES[2]).toContain('viewport-only and lossy');
   });
 
-  it('names the two layers a trace does not carry', () => {
-    expect(E2E_MISSING_LAYERS).toEqual(['computed-style subset', 'accessibility tree']);
+  /**
+   * The claim this slice exists to stop: that an e2e pair still says which element is responsible
+   * for a region. It never did — a trace snapshot has no box metrics — so no sentence may promise
+   * it, and the word chosen to avoid promising it is asserted rather than left to a reviewer's eye.
+   */
+  it('never promises element-level detail on a pair of ingested runs', () => {
+    for (const sentence of e2eDegradedSentences(
+      classifySourcePair({ source: 'e2e' }, { source: 'e2e' }),
+    )) {
+      expect(sentence).not.toContain('element is responsible');
+      expect(sentence).not.toContain('reduced detail');
+    }
+    expect(E2E_PIXELS_ONLY_SENTENCE).toContain(
+      'no finding from this pair can name the element or the property behind a change',
+    );
+  });
+
+  it('tells a mixed pair the different truth: element names came from the replayed run', () => {
+    const mixed = e2eDegradedSentences(classifySourcePair({}, { source: 'e2e' }));
+    expect(mixed[0]).toBe(E2E_MIXED_ATTRIBUTION_SENTENCE);
+    expect(mixed[0]).toContain('any element named below was located in the replayed run only');
+    // And the two lines beneath it are true of either pair, so they are shared verbatim.
+    expect(mixed.slice(1)).toEqual(E2E_DEGRADED_SENTENCES.slice(1));
+    expect(e2eDegradedSentences(classifySourcePair({}, {}))).toEqual([]);
+  });
+
+  it('names the three layers a trace does not carry, geometry among them', () => {
+    expect(E2E_MISSING_LAYERS).toEqual([
+      'computed-style subset',
+      'accessibility tree',
+      'element box metrics',
+    ]);
   });
 
   it('summarises to one line for output with room for one', () => {
-    expect(describeDegradedDiff()).toBe(`e2e diff, reduced detail — ${E2E_DEGRADED_SENTENCES[0]}`);
+    expect(describeDegradedDiff()).toBe(`e2e diff — ${E2E_DEGRADED_SENTENCES[0]}`);
+    expect(describeDegradedDiff()).not.toContain('reduced detail');
+  });
+});
+
+describe('a finding that explains nothing beyond its pixels (§4)', () => {
+  const pixelFinding = { reasons: ['pixels-only', 'e2e-degraded'] };
+
+  it('recognises the finding an e2e pair actually produces', () => {
+    expect(isPixelsOnlyFinding(pixelFinding)).toBe(true);
+    expect(PIXELS_ONLY_FINDING_NOTE).toContain('no element: this pair is a pixel comparison');
+    expect(PIXELS_ONLY_FINDING_NOTE).toContain('carries no box metrics');
+  });
+
+  it('says nothing about a finding that did name an element', () => {
+    expect(isPixelsOnlyFinding({ ...pixelFinding, element: { selector: 'h1' } })).toBe(false);
+  });
+
+  /** A canvas repaint on a replay pair is `pixels-only` too, and has a different cause entirely. */
+  it('says nothing about an unattributed region on a replay pair', () => {
+    expect(isPixelsOnlyFinding({ reasons: ['pixels-only'] })).toBe(false);
+    expect(isPixelsOnlyFinding({ reasons: [] })).toBe(false);
+    expect(isPixelsOnlyFinding(null)).toBe(false);
   });
 });
 

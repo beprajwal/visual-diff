@@ -202,10 +202,11 @@ describe('fidelity', () => {
   it('says in one sentence what an e2e diff cannot report, in the spec’s own example', () => {
     const note = pairSources(meta({ runId: '0003', ...E2E }), meta(E2E)).fidelity.note;
     expect(note).toBe(
-      'one or both runs were ingested from a Playwright trace, which carries no computed styles ' +
-        'and no accessibility tree — pixel regions and DOM attribution still apply, ' +
-        'property-level findings do not, so this diff cannot report a change like ' +
-        '"padding 8px → 12px"',
+      'both runs were ingested from Playwright traces, which carry no computed styles, no ' +
+        'accessibility tree and no box metrics — so this is a pixel comparison only: it reports ' +
+        'which regions of the screenshot changed and cannot say which element or which property ' +
+        'changed, so a heading renamed from "Saved locations" to "Your places" appears here as ' +
+        'changed pixels and nothing more',
     );
   });
 });
@@ -437,8 +438,9 @@ describe('property-level findings on a degraded pair (§4)', () => {
       expect(finding.changes.map((c) => c.prop)).not.toContain('color');
       expect(finding.changes.map((c) => c.prop)).not.toContain('name');
     }
-    // The region is still reported, and still attributed: §4's "which region changed and which
-    // element is responsible" is what survives the degradation.
+    // The region is still reported, and — on this *mixed* pair only — still attributed: the base
+    // side is a replay, so it has the box metrics the ingested side lacks. On a pair of ingested
+    // runs there is no geometry on either side and nothing attributes at all (fidelity.test.ts).
     expect(findings.length).toBeGreaterThan(0);
     expect(findings.some((f) => f.region !== undefined && f.element !== undefined)).toBe(true);
   });
@@ -547,17 +549,20 @@ describe('e2e noise settings (§5, D27)', () => {
     ]);
   });
 
-  it('appends the map’s ignore list, and appending twice is appending once', () => {
-    const withIgnore = { ...options, ignore: ['.clock'], e2e: { ignore: ['.clock', '.spinner'] } };
-    const once = resolveDiffOptions(withIgnore, meta({ runId: '0003', ...E2E }), meta(E2E));
-    expect(once.options.ignore).toEqual(['.clock', '.spinner']);
-
+  it('resolves twice exactly as it resolves once, which is what lets the cache key agree', () => {
+    // `computeDiff` resolves to build the cache key and `diffRuns` resolves to run the stages, on
+    // the same inputs. If the second pass moved anything, the key would describe options the engine
+    // did not run under.
+    const requested = { ...options, ignore: ['.clock'], e2e: { minRegionArea: 900 } };
+    const once = resolveDiffOptions(requested, meta({ runId: '0003', ...E2E }), meta(E2E));
     const twice = resolveDiffOptions(
-      { ...once.options, e2e: withIgnore.e2e },
+      { ...once.options, e2e: requested.e2e },
       meta({ runId: '0003', ...E2E }),
       meta(E2E),
     );
-    expect(twice.options.ignore).toEqual(['.clock', '.spinner']);
+    expect(twice.options).toEqual(once.options);
+    expect(once.options.ignore).toEqual(['.clock']);
+    expect(once.options.minRegionArea).toBe(900);
   });
 
   it('drops a change an ingested pair cannot vouch for, and keeps it for a replay pair', async () => {

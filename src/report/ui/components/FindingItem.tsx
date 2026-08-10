@@ -2,11 +2,18 @@
  * One finding row: kind, severity, element, and — when expanded — the property-level change list
  * from the diff engine. Clicking the row selects the finding (highlighting its region); the comment
  * action opens the feedback box (spec §9).
+ *
+ * A row with no element is the ordinary case on an e2e pair, not an omission (e2e spec §4): a trace
+ * snapshot carries no box metrics, so a changed region cannot be attributed to anything. The row
+ * says so in place of the selector rather than simply showing nothing, because a blank where every
+ * other row has an element reads as a rendering fault, and a reviewer who does not know the pair is
+ * a pixel comparison will look for the missing detail somewhere else.
  */
 
 import { useState } from 'preact/hooks';
 
 import type { Finding, JsonPrimitive } from '../../../types.js';
+import { pixelsOnlyFindingNote } from '../derive.js';
 
 export interface FindingItemProps {
   finding: Finding;
@@ -31,6 +38,7 @@ export function FindingItem({
 }: FindingItemProps) {
   const [expanded, setExpanded] = useState(false);
   const element = finding.element;
+  const pixelsOnly = pixelsOnlyFindingNote(finding);
   const hasDetail = finding.changes.length > 0 || cropUrl !== null;
 
   return (
@@ -56,6 +64,12 @@ export function FindingItem({
           {element.name ? ` “${element.name}”` : ''}
         </div>
       ) : null}
+
+      {pixelsOnly === null ? null : (
+        <div class="sel pixels-only" title={pixelsOnly}>
+          {pixelsOnly}
+        </div>
+      )}
 
       {finding.collapsed ? (
         <div class="sel">{finding.collapsed.count} smaller changes folded in</div>

@@ -87,8 +87,15 @@ export type { DegradedCapture, PairFidelity } from './fidelity.js';
  * The noise-tolerant settings an ingested pair is diffed under (e2e spec §5, D27) — provisional,
  * documented, and defined in exactly one place so they stay tunable rather than becoming folklore.
  */
-export { e2eNoiseSettings, resolveDiffOptions, E2E_DIFF_DEFAULTS } from './e2e-noise.js';
+export {
+  diffOptionsFromConfig,
+  e2eNoiseOf,
+  e2eNoiseSettings,
+  resolveDiffOptions,
+  E2E_DIFF_DEFAULTS,
+} from './e2e-noise.js';
 export type {
+  DiffOptionsSource,
   E2eAwareDiffOptions,
   E2eNoiseOverrides,
   E2eNoiseSettings,

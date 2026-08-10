@@ -7,8 +7,6 @@
  * steps:
  *   "checkout.spec.ts › checkout › shows the cart":
  *     "open the dashboard": dashboard
- * ignore:
- *   - "[data-test=session-id]"
  * ```
  *
  * D26 derives a flow name from a test title and a step id from a step title, which is the only
@@ -29,9 +27,21 @@
  *   which the spec is explicit about: "a stale map entry silently doing nothing is the same failure
  *   as a never-matched scenario rule".
  *
- * `ignore` is parsed and carried, not applied: masking ingested runs is §5's business and belongs
- * to the diff engine. It lives in this file rather than in `config.yaml` because the spec puts it
- * here, beside the titles it is scoped to.
+ * ## `ignore:` is refused, and why
+ *
+ * §5 proposes an `ignore` list here — "clocks, ids and animated regions, which no amount of
+ * threshold tuning handles correctly" — and it cannot be built. Masking is a geometric operation:
+ * the engine matches a selector against a captured node, takes that node's rect, and subtracts the
+ * rect from the pixel diff (`diff/viewportDiff.ts`, `exclusionRects`). A Playwright trace's DOM
+ * snapshot carries attributes but no box metrics, so every ingested node's rect is `0×0`
+ * (`e2e/to-shots.ts`, `UNAVAILABLE_RECT`) and subtracting it subtracts nothing. Measured, not
+ * assumed: an ignore selector that suppresses a finding on a replay pair suppresses none of it on
+ * the same pair ingested.
+ *
+ * So the key is parsed — purely so it can be named — and then **refused**, with the file and the
+ * line. The alternative was to accept the list, carry it to the engine and have it mask nothing,
+ * which is the failure this whole file exists to prevent, one field over: a user reading the
+ * resulting findings as real regressions because they believe the clock is covered.
  */
 
 import * as YAML from 'yaml';
@@ -54,7 +64,11 @@ const mapSchema = z
     flows: z.record(z.string().min(1)).optional(),
     /** Test title → (step title → step id). */
     steps: z.record(z.record(z.string().min(1))).optional(),
-    /** Selectors masked on ingested runs (§5). Carried here, applied by the diff engine. */
+    /**
+     * §5's proposed mask list. Accepted by the schema **only** so it can be rejected by name: a
+     * bare "unknown key" would read as a typo in a key the spec documents, when the truth is that
+     * the feature cannot exist on an ingested run at all. See {@link IGNORE_UNSUPPORTED_MESSAGE}.
+     */
     ignore: z.array(z.string()).optional(),
   })
   .strict();
@@ -70,14 +84,26 @@ export interface E2eMap {
   flows: Map<string, string>;
   /** Normalised test title → (step title → step id). */
   steps: Map<string, Map<string, string>>;
-  /** Selectors to mask on ingested runs (§5). Never applied here. */
-  ignore: string[];
 }
 
 /** The map a project with no `e2e-map.yaml` has: empty, and not an error (the file is optional). */
 export function emptyE2eMap(file: string): E2eMap {
-  return { file, flows: new Map(), steps: new Map(), ignore: [] };
+  return { file, flows: new Map(), steps: new Map() };
 }
+
+/**
+ * Why `ignore:` is refused. One string, asserted by the test that owns this behaviour, so the
+ * explanation can never drift from the rejection.
+ *
+ * It says three things on purpose: that the list would do nothing, *why* it would do nothing, and
+ * what to reach for instead. A refusal without the third part just moves the user's confusion.
+ */
+export const IGNORE_UNSUPPORTED_MESSAGE =
+  'e2e-map.yaml "ignore" cannot be applied: a Playwright trace snapshot records element ' +
+  'attributes but no box metrics, so every ingested element has a 0x0 rect and no selector can be ' +
+  'turned into a masked region — the list would suppress nothing. Remove it; tune ' +
+  'e2e.minRegionArea and e2e.antialiasTolerance in config.yaml instead, and mask at capture time ' +
+  'in the test suite itself if a region must not be compared.';
 
 /* ------------------------------------------------------------------ parsing */
 
@@ -126,6 +152,18 @@ export function parseE2eMapSource(source: string, file: string): ValidationResul
 
   const issues: ValidationIssue[] = [];
   const map = emptyE2eMap(file);
+
+  // First, so the answer to "why are my clocks still showing up" is the first line of the error
+  // rather than the last, and so it is reported even when the pins below are also wrong.
+  if (parsed.data.ignore !== undefined) {
+    issues.push(
+      issue(
+        'e2e-ignore-unsupported',
+        IGNORE_UNSUPPORTED_MESSAGE,
+        locate(doc, lineCounter, file, ['ignore']),
+      ),
+    );
+  }
 
   // Where each normalised title came from, so a collision names both original spellings.
   const flowKeySource = new Map<string, string>();
@@ -204,7 +242,6 @@ export function parseE2eMapSource(source: string, file: string): ValidationResul
     map.steps.set(key, pins);
   }
 
-  map.ignore = [...(parsed.data.ignore ?? [])];
   if (issues.length > 0) return { ok: false, issues };
   return { ok: true, value: map, warnings: [] };
 }
@@ -244,8 +281,6 @@ export async function loadE2eMapOrThrow(root: string): Promise<E2eMap> {
  */
 export interface E2eMapper {
   readonly map: E2eMap;
-  /** Selectors to mask on ingested runs (§5), passed through from the file. */
-  readonly ignore: readonly string[];
   /** The pinned flow name for a test title, or null to derive one. Marks the pin used. */
   flowFor(testTitle: string): string | null;
   /** The pinned step id, or null to derive one. Marks the pin used. */
@@ -258,14 +293,13 @@ export interface E2eMapper {
 
 export function createE2eMapper(map: E2eMap): E2eMapper {
   const usedFlows = new Set<string>();
-  // "<test key> <step title>" — NUL cannot appear in either half of a YAML scalar key here.
+  // "<test key>\u0000<step title>" — NUL cannot appear in either half of a YAML scalar key here.
   const usedSteps = new Set<string>();
 
-  const stepPinKey = (test: string, step: string): string => `${test} ${step}`;
+  const stepPinKey = (test: string, step: string): string => `${test}\u0000${step}`;
 
   return {
     map,
-    ignore: map.ignore,
 
     flowFor(testTitle: string): string | null {
       const key = normalizeTitle(testTitle);

@@ -93,3 +93,26 @@ export {
 export { PlaywrightTraceReader, playwrightTraceReader } from './playwright/reader.js';
 
 export { readSource, readerFor, readers } from './registry.js';
+
+export { decodeJpeg, encodePng, frameToPng, isPng, readPngSize, ImageDecodeError } from './image.js';
+export type { ConvertedFrame, DecodedImage } from './image.js';
+
+export { discoverArchives, hasMagic, segmentMatcher } from './discover.js';
+
+/**
+ * The ingest half of the slice: the two calls `cli/deps.ts` binds `MODULE_SPECIFIERS.e2e` to.
+ *
+ * They live behind this edge with the reader rather than in `store/` because ingesting is a decision
+ * about *what a run should be*, and the store's job is to hold whatever it is told to. The direction
+ * of the dependency follows: `ingest.ts` imports `store/index.js`, and nothing in `store/` knows this
+ * module exists.
+ */
+export { planIngest, ingestTraces, E2E_FROM_KINDS } from './ingest.js';
+export type {
+  E2eArchivePlan,
+  E2eFromKind,
+  E2eIngestPlan,
+  E2eIngestReport,
+  E2eIngestRequest,
+  E2eIngestedRun,
+} from './ingest.js';

@@ -126,13 +126,27 @@ export function e2eOriginOf(run: object | null | undefined): E2eOrigin | null {
   const raw = (run as { e2e?: unknown } | null | undefined)?.e2e;
   if (raw === null || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
+  // What ingestion actually writes is `E2eRunInfo`: the test title under `testTitle`, the archive
+  // path under `archive`, and the capture conditions nested under `suite` (e2e §7). Those names are
+  // the ones the store validates at commit, so they are what a real `meta.json` carries — the flat
+  // spellings below are read first only because they are what a caller constructing an origin by
+  // hand writes, and because reading both is what makes this a tolerant reader rather than a schema.
+  const suite = record['suite'];
+  const nested = suite !== null && typeof suite === 'object' ? (suite as Record<string, unknown>) : {};
+  const aliases: Record<string, unknown> = {
+    title: record['testTitle'],
+    tracePath: record['archive'],
+    ...nested,
+  };
+  const pick = (key: string): unknown => (record[key] === undefined ? aliases[key] : record[key]);
+
   const origin: E2eOrigin = {};
   for (const key of ORIGIN_STRINGS) {
-    const value = record[key];
+    const value = pick(key);
     if (typeof value === 'string' && value.trim() !== '') origin[key] = value;
   }
   for (const key of ORIGIN_NUMBERS) {
-    const value = record[key];
+    const value = pick(key);
     if (typeof value === 'number' && Number.isFinite(value)) origin[key] = value;
   }
   return Object.keys(origin).length === 0 ? null : origin;
@@ -184,23 +198,72 @@ export function describeE2eRevision(revision: Revision | null | undefined): stri
 /**
  * Capture layers slice 1 records and a trace archive does not, in the order §4's table lists them.
  *
- * `computed-style` is the one that changes what the diff can *say*: without resolved values there
- * are no property-level findings, so an e2e diff never reports "padding 8px → 12px". The
- * accessibility tree is simply absent. Both are stated rather than silently missing, because a
- * report that shows fewer findings without explaining why reads as a report that missed them.
+ * `element box metrics` is the one that changes what a finding can *be*: a snapshot serialises
+ * attributes, never rectangles, so every ingested node arrives with a zero rect, no pixel region
+ * intersects any node, and on a pair of ingested runs no finding can name an element at all. The
+ * computed-style subset is what removes property-level findings; the accessibility tree is simply
+ * absent. All three are stated rather than silently missing, because a report that shows fewer,
+ * vaguer findings without explaining why reads as a report that missed things.
  */
-export const E2E_MISSING_LAYERS = ['computed-style subset', 'accessibility tree'] as const;
+export const E2E_MISSING_LAYERS = [
+  'computed-style subset',
+  'accessibility tree',
+  'element box metrics',
+] as const;
 
 /**
- * Why an e2e diff carries less detail than a replay diff (§4).
+ * The reason codes a finding carries when it is a changed region nobody could attribute.
  *
- * Stated in three sentences because there are three separate things a reader would otherwise
- * mis-read as a defect:
+ * Declared here as plain strings rather than imported from the diff engine, for the same reason
+ * {@link E2E_WARNING_KINDS} is: the report reads `findings.json` off disk and has to recognise what
+ * a *stored* finding carries, which is a fact about a file rather than about the union this build
+ * compiles against.
+ */
+export const PIXELS_ONLY_REASON = 'pixels-only';
+export const E2E_DEGRADED_REASON = 'e2e-degraded';
+
+/** Just enough of a stored finding to ask whether it explains anything beyond its pixels. */
+export interface AttributableFinding {
+  element?: unknown;
+  reasons?: readonly string[];
+}
+
+/**
+ * True for a finding that reports changed pixels and names nothing — every finding of an e2e pair.
  *
- *  1. **No property-level findings.** A trace's DOM snapshot is attributes only — it carries the
- *     page's author CSS as text, but no resolved values for any element. Pixel regions and DOM
- *     attribution still work, so the diff can say *which region changed and which element is
- *     responsible*; it cannot say by how much a property moved.
+ * The three conditions are one fact seen from three sides: no element was attributed, the region
+ * was reported on pixels alone, and the pair had an ingested side. Requiring all three keeps the
+ * sentence off the *replay* pair's occasional unattributed canvas repaint, which has a different
+ * cause and a different remedy.
+ */
+export function isPixelsOnlyFinding(finding: AttributableFinding | null | undefined): boolean {
+  const reasons = finding?.reasons ?? [];
+  if (finding?.element !== undefined && finding?.element !== null) return false;
+  return reasons.includes(PIXELS_ONLY_REASON) && reasons.includes(E2E_DEGRADED_REASON);
+}
+
+/**
+ * The sentence such a finding earns, rendered under it.
+ *
+ * On the finding rather than only in the banner because a finding is what gets linked, filtered,
+ * exported and pasted into a review: the qualification has to travel with it.
+ */
+export const PIXELS_ONLY_FINDING_NOTE =
+  'no element: this pair is a pixel comparison — a trace snapshot carries no box metrics, so this' +
+  ' region could not be attributed to an element and there is no property-level explanation for it';
+
+/**
+ * What an e2e diff can and cannot report (§4).
+ *
+ * Three sentences, because there are three separate things a reader would otherwise mis-read as a
+ * defect. The first exists in two versions, because two genuinely different things are true:
+ *
+ *  1. **Pixels only, on a pair of ingested runs.** A trace's DOM snapshot is attributes only — no
+ *     resolved styles, and no box metrics for anything. Regions are detected; nothing can be
+ *     attributed to an element, and no property can be compared. The diff reports *where* the
+ *     screenshot changed and stops there.
+ *     On a **mixed** pair the replayed side still has geometry, so a region can still be named —
+ *     through that side alone — which is a different claim and gets its own sentence.
  *  2. **Shared screenshots.** A trace's images come from a throttled screencast, not from one
  *     capture per action, so several steps legitimately resolve to the same frame. Identical images
  *     under different step ids are expected. Presenting that as a fault would be the report
@@ -209,19 +272,56 @@ export const E2E_MISSING_LAYERS = ['computed-style subset', 'accessibility tree'
  *     the viewport at whatever scroll offset the page was at — never the full page. Small
  *     differences against a replay run's full-page PNG are the codec and the crop, not the UI.
  */
-export const E2E_DEGRADED_SENTENCES: readonly string[] = [
-  'no property-level findings: a Playwright trace records DOM structure but no computed styles, so' +
-    ' this diff says which region changed and which element is responsible, and never "padding 8px' +
-    ' → 12px"',
+export const E2E_PIXELS_ONLY_SENTENCE =
+  'pixel comparison only: a Playwright trace records DOM structure but no computed styles and no' +
+  ' box metrics, so no finding from this pair can name the element or the property behind a' +
+  ' change — a renamed heading appears as a changed region and nothing more';
+
+export const E2E_MIXED_ATTRIBUTION_SENTENCE =
+  'element detail comes from the replayed run alone: the ingested run records DOM structure but no' +
+  ' computed styles and no box metrics, so no property-level finding is possible and any element' +
+  ' named below was located in the replayed run only';
+
+export const E2E_SHARED_FRAME_SENTENCE =
   'steps may share one screenshot: a trace records a throttled screencast, not one frame per' +
-    ' action, so identical images under different step ids are expected rather than a fault',
+  ' action, so identical images under different step ids are expected rather than a fault';
+
+export const E2E_LOSSY_FRAME_SENTENCE =
   'screenshots are viewport-only and lossy: JPEG, downscaled to fit 800×800, captured at whatever' +
-    ' scroll offset the page was at — never the full page',
+  ' scroll offset the page was at — never the full page';
+
+/**
+ * The e2e-pair wording, which is the wording for the pair e2e mode exists to produce.
+ *
+ * Kept as an array under the original name because both front-ends print `slice(1)` of it as the
+ * lines *below* the headline sentence, and those two lines are true of a mixed pair as well.
+ * {@link e2eDegradedSentences} is what a caller should use when it knows which pair it has.
+ */
+export const E2E_DEGRADED_SENTENCES: readonly string[] = [
+  E2E_PIXELS_ONLY_SENTENCE,
+  E2E_SHARED_FRAME_SENTENCE,
+  E2E_LOSSY_FRAME_SENTENCE,
 ];
 
-/** The degraded-diff explanation as one line, for output that has room for only one. */
+/** The same three sentences, with the first one chosen for the pair actually in hand. */
+export function e2eDegradedSentences(pair: SourcePair): readonly string[] {
+  if (!pair.degraded) return [];
+  const headline =
+    pair.base === SOURCE_E2E && pair.head === SOURCE_E2E
+      ? E2E_PIXELS_ONLY_SENTENCE
+      : E2E_MIXED_ATTRIBUTION_SENTENCE;
+  return [headline, E2E_SHARED_FRAME_SENTENCE, E2E_LOSSY_FRAME_SENTENCE];
+}
+
+/**
+ * The e2e-pair explanation as one line, for output that has room for only one.
+ *
+ * "pixel comparison only" and not "reduced detail": the second implies some element-level
+ * explanation survived, and none does. A reader who takes only the first three words away from this
+ * sentence still believes something true.
+ */
 export function describeDegradedDiff(): string {
-  return `e2e diff, reduced detail — ${E2E_DEGRADED_SENTENCES[0] as string}`;
+  return `e2e diff — ${E2E_PIXELS_ONLY_SENTENCE}`;
 }
 
 /* ------------------------------------------------------------------ pairing (D27) */
@@ -235,8 +335,9 @@ export function describeDegradedDiff(): string {
  *   gate, a lossy downscaled viewport frame against a full-page PNG — so nearly every finding below
  *   describes the capture method rather than the application.
  * - `e2e-pair` — both sides ingested. Not a warning: this is what e2e mode exists to produce. It is
- *   carried anyway, at `note`, because the *degraded* diff (§4) applies to it and a reader who is
- *   not told will read the missing property-level findings as the tool having missed them.
+ *   carried anyway, at `note`, because such a pair is a **pixel comparison** (§4) — no finding
+ *   names an element or a property — and a reader who is not told will read a list of anonymous
+ *   changed regions as the tool having looked at the DOM and found nothing in it.
  *
  * `null` is the pair that needs no comment: both sides replayed, which is every pair slice 1 could
  * produce and therefore what an unchanged project keeps seeing.
@@ -248,9 +349,13 @@ export interface SourcePair {
   head: RunSource;
   label: SourcePairLabel | null;
   /**
-   * True when *either* side is an e2e run, and therefore when §4's reduced detail applies to the
-   * whole comparison. Deliberately not the same question as `label !== null`: a mixed pair is both
-   * degraded and confounded, and the report says both things.
+   * True when *either* side is an e2e run, and therefore when §4 applies to the whole comparison.
+   * Deliberately not the same question as `label !== null`: a mixed pair is both degraded and
+   * confounded, and the report says both things.
+   *
+   * Note that `degraded` alone does not say whether findings can name elements — `e2e-pair` cannot
+   * and `e2e-vs-replay` can, through its replayed side. {@link e2eDegradedSentences} makes that
+   * distinction; anything that only knows `degraded` must not promise element-level detail.
    */
   degraded: boolean;
 }

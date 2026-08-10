@@ -19,6 +19,7 @@ import {
   isMockOnly,
   pairBanners,
   pairLabels,
+  pixelsOnlyFindingNote,
   runIndex,
   runLabel,
   runsForScenario,
@@ -772,12 +773,17 @@ describe('sourceBanners (e2e spec §4, D27)', () => {
     expect(sourceBanners(null)).toEqual([]);
   });
 
-  it('states an e2e pair at note severity, carrying the reduced-detail list', () => {
+  it('states an e2e pair at note severity, and says it is a pixel comparison', () => {
     const [row] = sourceBanners(e2eDiff('e2e', 'e2e'));
     expect(row?.label).toBe('e2e-pair');
     expect(row?.severity).toBe('note');
     expect(row?.details).toHaveLength(3);
-    expect(row?.details[0]).toContain('no property-level findings');
+    expect(row?.details[0]).toContain('pixel comparison only');
+    expect(row?.details[0]).toContain(
+      'no finding from this pair can name the element or the property behind a change',
+    );
+    // The wording an earlier version used, which promised attribution a trace cannot support.
+    for (const detail of row?.details ?? []) expect(detail).not.toContain('element is responsible');
   });
 
   it('raises a mixed pair to high, the same severity as mock-vs-recorded', () => {
@@ -785,9 +791,10 @@ describe('sourceBanners (e2e spec §4, D27)', () => {
     expect(row?.label).toBe('e2e-vs-replay');
     expect(row?.severity).toBe('high');
     expect(row?.message).toContain('captured by different machinery');
-    // Degraded as well as confounded: the property-level findings are missing from this comparison
-    // too, and a reader told only "these are incomparable" would still misread the empty layers.
+    // Degraded as well as confounded, but degraded differently: the replayed side still has box
+    // metrics, so this pair *can* name an element — from one side only, which is what it says.
     expect(row?.details).toHaveLength(3);
+    expect(row?.details[0]).toContain('any element named below was located in the replayed run only');
   });
 });
 
@@ -802,17 +809,42 @@ describe('the degraded-diff explanation in the findings rail (§4)', () => {
    * until one of them says so, and the difference is a passing review versus a review that never
    * happened.
    */
-  it('explains each layer a trace cannot supply, naming the layer', () => {
+  it('explains each layer a trace cannot supply, attribution first, naming the layer', () => {
     const diff = makeDiff({
       baseMeta: makeRunMeta('0003', { source: 'e2e' }),
       headMeta: makeRunMeta('0007', { source: 'e2e' }),
     });
     expect(degradedLayerNotes(diff)).toEqual([
+      'element attribution: not available for an e2e pair: a trace snapshot carries no box metrics,' +
+        ' so every finding below is a changed region of the screenshot with no element behind it —' +
+        ' this is a pixel comparison, not an element-level one',
+      'computed-style findings: not available for an e2e pair: a Playwright trace records no' +
+        ' computed styles, so there is nothing to compare property by property',
+      'accessibility findings: not available for an e2e pair: a Playwright trace records no' +
+        ' accessibility tree',
+      'added/removed element findings: not available for an e2e pair: a trace snapshot carries no' +
+        ' box metrics, so a DOM change cannot be located on the screenshot and is reported as a' +
+        ' changed region instead',
+    ]);
+  });
+
+  /**
+   * A mixed pair keeps its geometry on the replayed side, so it can still attribute a region and
+   * still report a structural change. Telling it otherwise would be the opposite error to the one
+   * this slice fixed: a limit claimed where none exists.
+   */
+  it('claims no attribution limit on a mixed pair, which still has one side with geometry', () => {
+    const mixed = makeDiff({
+      baseMeta: makeRunMeta('0003'),
+      headMeta: makeRunMeta('0007', { source: 'e2e' }),
+    });
+    expect(degradedLayerNotes(mixed)).toEqual([
       'computed-style findings: not available for an e2e pair: a Playwright trace records no' +
         ' computed styles, so there is nothing to compare property by property',
       'accessibility findings: not available for an e2e pair: a Playwright trace records no' +
         ' accessibility tree',
     ]);
+    expect(unavailableKindNote(mixed, 'structural')).toBeNull();
   });
 
   it('says nothing about a kind an e2e pair can still produce', () => {
@@ -820,12 +852,51 @@ describe('the degraded-diff explanation in the findings rail (§4)', () => {
       baseMeta: makeRunMeta('0003', { source: 'e2e' }),
       headMeta: makeRunMeta('0007', { source: 'e2e' }),
     });
-    // Console entries are recorded unconditionally by Playwright tracing, and pixel regions and DOM
-    // attribution both survive; only the two style layers are gone.
+    // Console entries are recorded unconditionally by Playwright tracing, and a changed region is
+    // still reported — as `content`, with nothing attached to it.
     expect(unavailableKindNote(diff, 'console')).toBeNull();
     expect(unavailableKindNote(diff, 'content')).toBeNull();
     expect(unavailableKindNote(diff, 'style')).not.toBeNull();
     expect(unavailableKindNote(diff, 'a11y')).not.toBeNull();
+    expect(unavailableKindNote(diff, 'structural')).not.toBeNull();
+  });
+});
+
+/**
+ * The per-finding half of the same statement. A reviewer reads one finding at a time, and a row
+ * with no selector where every replay row has one reads as a bug until it says why.
+ */
+describe('the pixel-only note on one finding (§4)', () => {
+  const finding = (over: Partial<Finding>): Finding => ({
+    id: 'f1',
+    kind: 'content',
+    severity: 'med',
+    step: 'home' as Finding['step'],
+    changes: [],
+    label: 'visual change',
+    reasons: [],
+    ...over,
+  });
+
+  it('explains the finding an e2e pair actually produces: a region, and nothing else', () => {
+    const note = pixelsOnlyFindingNote(
+      finding({ reasons: ['pixels-only', 'e2e-degraded'], region: { x: 0, y: 0, w: 8, h: 8 } }),
+    );
+    expect(note).toBe(
+      'no element: this pair is a pixel comparison — a trace snapshot carries no box metrics, so' +
+        ' this region could not be attributed to an element and there is no property-level' +
+        ' explanation for it',
+    );
+  });
+
+  it('stays silent when the finding names an element, and on a replay pair', () => {
+    expect(
+      pixelsOnlyFindingNote(
+        finding({ reasons: ['pixels-only', 'e2e-degraded'], element: { selector: 'h1' } }),
+      ),
+    ).toBeNull();
+    expect(pixelsOnlyFindingNote(finding({ reasons: ['pixels-only'] }))).toBeNull();
+    expect(pixelsOnlyFindingNote(null)).toBeNull();
   });
 });
 

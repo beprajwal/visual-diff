@@ -32,10 +32,13 @@ import {
   isE2eRun,
   isE2eWarningKind,
   isHighSeverityE2eWarningKind,
+  isPixelsOnlyFinding,
+  e2eDegradedSentences,
   sourceOf,
-  E2E_DEGRADED_SENTENCES,
+  PIXELS_ONLY_FINDING_NOTE,
   SOURCE_E2E,
   type RunSource,
+  type SourcePair,
   type SourcePairLabel,
 } from '../e2e.js';
 import {
@@ -616,17 +619,19 @@ export function e2eRevisionNote(run: RunSummary | null | undefined): string | nu
  *    lossy downscaled viewport frame compared against a full-page PNG. Almost every finding beneath
  *    it describes the capture rather than the application.
  *  - `e2e-pair` is a **note**. Both sides ingested is what e2e mode exists to produce, so it is
- *    stated calmly — but it is stated, because §4's reduced detail applies and a reader who is not
- *    told will read the absent property-level findings as findings the tool missed.
+ *    stated calmly — but it is stated, because such a pair is a pixel comparison (§4): no finding
+ *    below names an element or a property, and a reader who is not told will read a list of
+ *    anonymous changed regions as the tool having examined the DOM and found nothing there.
  */
 export interface SourceBannerRow {
   label: SourcePairLabel;
   severity: 'high' | 'note';
   message: string;
   /**
-   * The reduced-detail explanation, carried on the row rather than folded into `message` so the
-   * component can render it as a sub-list instead of one unreadable sentence. Empty when the pair
-   * is not degraded.
+   * What this pair can and cannot report, carried on the row rather than folded into `message` so
+   * the component can render it as a sub-list instead of one unreadable sentence. Empty when the
+   * pair is not degraded, and worded for the pair in hand: an e2e pair is told it is pixels only, a
+   * mixed pair is told its element names came from the replayed side.
    */
   details: readonly string[];
 }
@@ -651,19 +656,19 @@ export function sourceBanners(diff: DiffResult | null): SourceBannerRow[] {
       label: pair.label,
       severity: SOURCE_BANNER_SEVERITY[pair.label],
       message,
-      details: pair.degraded ? E2E_DEGRADED_SENTENCES : [],
+      details: e2eDegradedSentences(pair),
     },
   ];
 }
 
 /**
- * Finding kinds an ingested pair cannot produce, so the report can say *why* a layer is empty (§4).
+ * Finding kinds *any* pair with an ingested side cannot produce (§4).
  *
- * `style` is the one that matters: without computed styles there are no property-level findings, so
- * an empty style section on an e2e diff is a capability limit and not a clean bill of health. `a11y`
- * is absent for the same reason — a trace records no accessibility tree.
+ * `style` and `a11y` are gone the moment one side is a trace: no computed styles, no accessibility
+ * tree, nothing to compare. An empty style section on such a diff is a capability limit, not a
+ * clean bill of health.
  */
-const E2E_UNAVAILABLE_KIND_NOTES: ReadonlyMap<string, { layer: string; why: string }> = new Map([
+const DEGRADED_KIND_NOTES: ReadonlyMap<string, { layer: string; why: string }> = new Map([
   [
     'style',
     {
@@ -682,24 +687,69 @@ const E2E_UNAVAILABLE_KIND_NOTES: ReadonlyMap<string, { layer: string; why: stri
   ],
 ]);
 
+/**
+ * Finding kinds that additionally disappear when **both** sides were ingested.
+ *
+ * A structural finding — this element was added, that one removed — reaches the report only by
+ * being attributed to a changed region, and on a pair of ingested runs nothing attributes: a trace
+ * snapshot carries no box metrics, so every node has a zero rect and no region intersects any of
+ * them. The DOM difference may be perfectly real, as a heading renamed from "Saved locations" to
+ * "Your places" is; it arrives as changed pixels with nothing attached.
+ */
+const PIXELS_ONLY_KIND_NOTES: ReadonlyMap<string, { layer: string; why: string }> = new Map([
+  [
+    'structural',
+    {
+      layer: 'added/removed element findings',
+      why:
+        'not available for an e2e pair: a trace snapshot carries no box metrics, so a DOM change' +
+        ' cannot be located on the screenshot and is reported as a changed region instead',
+    },
+  ],
+]);
+
+/**
+ * The headline of the rail on a pixels-only pair, and the sentence this whole slice turns on.
+ *
+ * It goes first because it changes how every finding *that is* present reads: not "the tool
+ * examined the elements here and found this", but "these pixels differ, and nothing in the archive
+ * could say why".
+ */
+const PIXELS_ONLY_ATTRIBUTION_NOTE =
+  'element attribution: not available for an e2e pair: a trace snapshot carries no box metrics, so' +
+  ' every finding below is a changed region of the screenshot with no element behind it — this is a' +
+  ' pixel comparison, not an element-level one';
+
+/** True when both sides were ingested, and therefore when nothing can be attributed at all. */
+function isPixelsOnlyPair(diff: DiffResult | null): boolean {
+  if (diff === null) return false;
+  const pair: SourcePair = classifySourcePair(diff.baseMeta, diff.headMeta);
+  return pair.base === SOURCE_E2E && pair.head === SOURCE_E2E;
+}
+
 /** The `Finding['kind']` values an ingested pair cannot produce, in §4's table order. */
-export const E2E_UNAVAILABLE_FINDING_KINDS: readonly string[] = [...E2E_UNAVAILABLE_KIND_NOTES.keys()];
+export const E2E_UNAVAILABLE_FINDING_KINDS: readonly string[] = [
+  ...DEGRADED_KIND_NOTES.keys(),
+  ...PIXELS_ONLY_KIND_NOTES.keys(),
+];
 
 /**
  * Why a finding kind is empty on this pair, or null when it is empty because nothing changed.
  *
- * This is the whole point of §4's "marks these runs so the report can explain the reduced detail
- * rather than appear to have missed something": an empty list and an impossible list look identical
- * until one of them says so.
+ * This is the whole point of §4's "marks these runs so the report can explain what it could not
+ * look at rather than appear to have missed something": an empty list and an impossible list look
+ * identical until one of them says so.
  */
 export function unavailableKindNote(diff: DiffResult | null, kind: string): string | null {
   if (diff === null) return null;
   if (!classifySourcePair(diff.baseMeta, diff.headMeta).degraded) return null;
-  return E2E_UNAVAILABLE_KIND_NOTES.get(kind)?.why ?? null;
+  const note = DEGRADED_KIND_NOTES.get(kind)?.why;
+  if (note !== undefined) return note;
+  return isPixelsOnlyPair(diff) ? (PIXELS_ONLY_KIND_NOTES.get(kind)?.why ?? null) : null;
 }
 
 /**
- * Every "this layer could not run" line for a pair, in the order §4's table lists them.
+ * Every "this could not run" line for a pair, attribution first and then §4's table order.
  *
  * Rendered beside the findings rather than in the banner strip, because the rail is where a reader
  * decides the tool found nothing. "No findings for this step" and "no findings of that kind are
@@ -710,11 +760,23 @@ export function unavailableKindNote(diff: DiffResult | null, kind: string): stri
  */
 export function degradedLayerNotes(diff: DiffResult | null): string[] {
   const notes: string[] = [];
-  for (const [kind, entry] of E2E_UNAVAILABLE_KIND_NOTES) {
+  if (isPixelsOnlyPair(diff)) notes.push(PIXELS_ONLY_ATTRIBUTION_NOTE);
+  for (const [kind, entry] of [...DEGRADED_KIND_NOTES, ...PIXELS_ONLY_KIND_NOTES]) {
     const note = unavailableKindNote(diff, kind);
     if (note !== null) notes.push(`${entry.layer}: ${note}`);
   }
   return notes;
+}
+
+/**
+ * The line a single finding earns when it explains nothing beyond its own pixels, or null.
+ *
+ * Per finding rather than only per pair, because a finding is what gets selected, linked, filtered
+ * and pasted into a review: "no element was available for this pair" has to travel with it. Null
+ * for every finding that names an element, and for every replay pair.
+ */
+export function pixelsOnlyFindingNote(finding: Finding | null | undefined): string | null {
+  return isPixelsOnlyFinding(finding) ? PIXELS_ONLY_FINDING_NOTE : null;
 }
 
 /**

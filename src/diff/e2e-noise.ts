@@ -40,12 +40,25 @@
  *   not require a raised threshold.
  *
  * So the values below are **chosen, not measured**, and are aimed at the failure the fixture cannot
- * exhibit: a real suite's clocks, animations and network jitter. The honest remedy for the two
- * failures that *were* measured is elsewhere — `e2e-map.yaml`'s `ignore` list for clocks and
- * animated regions (§5), and step→shot mapping for alignment (§4 of the ingestion work).
+ * exhibit: a real suite's clocks, animations and network jitter. Step→shot mapping is the remedy for
+ * the alignment noise that *was* measured (§4 of the ingestion work).
+ *
+ * ## The remedy §5 offers for clocks, and why it is not available
+ *
+ * §5 answers clocks and animated regions with a mask list in `e2e-map.yaml`: "masking matters more
+ * here than anywhere else in the tool". It cannot be built. Masking is geometric — the engine matches
+ * a selector against a captured node, takes that node's rect and subtracts it from the pixel diff —
+ * and a trace's DOM snapshot carries attributes but no box metrics, so every ingested node's rect is
+ * `0×0` and subtracts nothing. Measured, not assumed: `e2e-config.test.ts` shows the same selector
+ * suppressing a finding on a replay pair and none of it on the same pair ingested.
+ *
+ * These two thresholds are therefore the *only* noise control an ingested pair has, which raises what
+ * rests on them. `store/e2e-map.ts` refuses the `ignore` key rather than accepting a list that would
+ * mask nothing while the user believes the clock is covered.
  */
 
-import type { DiffEngineOptions } from '../types.js';
+import { DIFF_ENGINE_VERSION, DEFAULTS } from '../types.js';
+import type { Config, DiffEngineOptions } from '../types.js';
 import { isE2eRun } from '../store/internal/e2e.js';
 import type { MaybeE2e } from '../store/internal/e2e.js';
 
@@ -77,19 +90,22 @@ export const E2E_DIFF_DEFAULTS: E2eNoiseSettings = {
 };
 
 /**
- * The `e2e:` block of `diff:` config (spec §5, "overridable per project"), plus the `ignore` list
- * `e2e-map.yaml` contributes — clocks and animated regions, "which no amount of threshold tuning
- * handles correctly".
+ * The `e2e:` block of `.visual-diff/config.yaml` (spec §5, "overridable per project").
  *
  * Every field is optional: an absent one takes the documented default, and an unreadable one takes
  * the default *and says so*, because a threshold silently ignored is a threshold the user believes
  * is in force.
+ *
+ * **There is no `ignore` here, and there is none in `e2e-map.yaml` either.** §5 proposes a mask list
+ * for ingested runs, and it cannot be built: masking is a geometric operation — a selector is turned
+ * into the rect of the node it matched and that rect is subtracted from the pixel diff — and a
+ * Playwright trace snapshot carries no box metrics, so every ingested node's rect is `0×0`
+ * (`e2e/to-shots.ts`, `UNAVAILABLE_RECT`). A zero rect subtracts nothing. `store/e2e-map.ts` refuses
+ * the key outright rather than accepting a list that would suppress nothing.
  */
 export interface E2eNoiseOverrides {
   minRegionArea?: number;
   antialiasTolerance?: number;
-  /** Selectors ignored on ingested pairs only, appended to `diff.ignore`. */
-  ignore?: readonly string[];
 }
 
 /**
@@ -175,9 +191,9 @@ export interface ResolvedDiffOptions {
  *    `vdiff run` changes" (§1), which has to include the diff of two replay runs producing byte-
  *    identical output — and the same cache key — as it did before this slice existed.
  * 2. **Resolving twice is resolving once.** `computeDiff` resolves to build the cache key and
- *    `diffRuns` resolves to run the stages, on the same inputs; the `ignore` merge therefore
- *    appends only selectors the base list does not already carry, so no path can double the list
- *    (which `ignoreSelectorWarnings` would otherwise report twice, from one config entry).
+ *    `diffRuns` resolves to run the stages, on the same inputs, and the two must never disagree
+ *    about what was computed. Every field written here is written from the same merge of defaults
+ *    and overrides, so a second pass over the result is a no-op.
  *
  * The settings apply to a *pair*, not to a run: a cross-source pair is diffed under the e2e
  * settings, because the noisier side sets what the comparison can resolve.
@@ -192,16 +208,73 @@ export function resolveDiffOptions(
   }
 
   const { settings, warnings } = e2eNoiseSettings(options.e2e);
-  const extra = (options.e2e?.ignore ?? []).filter((selector) => !options.ignore.includes(selector));
 
   return {
     options: {
       ...options,
       minRegionArea: settings.minRegionArea,
       antialiasTolerance: settings.antialiasTolerance,
-      ignore: extra.length === 0 ? options.ignore : [...options.ignore, ...extra],
     },
     e2e: true,
     warnings,
   };
+}
+
+/* ------------------------------------------------------------------ from config to the engine */
+
+/**
+ * The part of `Config` the engine reads.
+ *
+ * Declared structurally rather than as `Config` so the report server, the CLI and a test can all
+ * hand in whatever they hold. `e2e` is optional and carries only what the user wrote — `config.yaml`
+ * deliberately does not resolve the e2e defaults, so that `E2E_DIFF_DEFAULTS` above stays the single
+ * place they exist.
+ */
+export interface DiffOptionsSource {
+  diff: Config['diff'];
+  e2e?: E2eNoiseOverrides;
+}
+
+/**
+ * The engine options a project's config asks for — **the** place `config.yaml` becomes
+ * `DiffEngineOptions`, so no call site can build them by hand and quietly leave `e2e:` behind.
+ *
+ * That is not hypothetical: the `e2e:` block spent this slice unreachable precisely because each
+ * caller assembled the options field by field, and a field nobody copied is a documented setting
+ * that does nothing.
+ *
+ * `diff/edge.ts` is the backstop for the callers that still assemble their own options: it fills the
+ * block in from the project on disk when it finds none on the options. Preferring this function is
+ * still worth it — it reads the config the caller already loaded instead of reading it again.
+ */
+export function diffOptionsFromConfig(
+  config: DiffOptionsSource,
+  overrides: Partial<DiffEngineOptions> = {},
+): E2eAwareDiffOptions {
+  const options: E2eAwareDiffOptions = {
+    minRegionArea: config.diff.minRegionArea,
+    maxRegions: config.diff.maxRegions,
+    antialiasTolerance: config.diff.antialiasTolerance,
+    ignore: config.diff.ignore,
+    engineVersion: DIFF_ENGINE_VERSION,
+    deviceScaleFactor: DEFAULTS.deviceScaleFactor,
+    ...overrides,
+  };
+  const e2e = e2eNoiseOf(config);
+  if (e2e !== undefined) options.e2e = e2e;
+  return options;
+}
+
+/**
+ * The `e2e:` overrides carried by a config, read defensively.
+ *
+ * Same contract as `keepE2eRunsOf` one module over: `src/types.ts` does not yet declare the block,
+ * a config written before it existed simply has none, and a hand-built config object may carry
+ * anything. A value that is not an object reads as *no overrides*, and every individual value is
+ * validated by `e2eNoiseSettings`, which names what it could not use.
+ */
+export function e2eNoiseOf(config: unknown): E2eNoiseOverrides | undefined {
+  const block = (config as { e2e?: unknown } | null | undefined)?.e2e;
+  if (block === null || typeof block !== 'object' || Array.isArray(block)) return undefined;
+  return block as E2eNoiseOverrides;
 }

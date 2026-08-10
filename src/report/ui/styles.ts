@@ -704,4 +704,16 @@ select {
   padding-left: 6px;
   color: var(--fg-faint);
 }
+
+/**
+ * The same statement one finding at a time: this row names no element because the pair is a pixel
+ * comparison (e2e §4). Styled like the note it is, not like a selector, so it is never mistaken for
+ * the element the row would otherwise carry.
+ */
+.pixels-only {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 6px;
+  color: var(--fg-faint);
+  font-style: italic;
+}
 `;

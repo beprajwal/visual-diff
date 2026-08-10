@@ -16,6 +16,8 @@
 
 import { deflateRawSync } from 'node:zlib';
 
+import jpeg from 'jpeg-js';
+
 import { crc32 } from './zip.js';
 
 export interface ZipInput {
@@ -116,6 +118,38 @@ export function fakeJpeg(width: number, height: number, filler = 0): Buffer {
   }
   const padding = Buffer.alloc(filler, 0x5a);
   return Buffer.concat([Buffer.from([0xff, 0xd8]), sof, padding, Buffer.from([0xff, 0xd9])]);
+}
+
+/**
+ * A JPEG that actually decodes, unlike {@link fakeJpeg}.
+ *
+ * The reader only ever reads the frame header, so a header-only file is enough for it. **Ingestion
+ * decodes**: `image.ts` turns every frame into the PNG the diff engine reads, so an archive built
+ * for an ingest test has to carry real entropy-coded data or the conversion fails — which is the
+ * one thing an ingest test must not be fooled about.
+ *
+ * The fill is a solid colour with a single contrasting band, so two archives built with different
+ * colours produce genuinely different pixels and a diff over them is a diff of something.
+ */
+export function realJpeg(
+  width: number,
+  height: number,
+  colour: readonly [number, number, number] = [200, 210, 220],
+  band?: { y: number; h: number; colour: readonly [number, number, number] },
+): Buffer {
+  const data = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const inBand = band !== undefined && y >= band.y && y < band.y + band.h;
+    const [r, g, b] = inBand ? band.colour : colour;
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = r as number;
+      data[offset + 1] = g as number;
+      data[offset + 2] = b as number;
+      data[offset + 3] = 255;
+    }
+  }
+  return Buffer.from(jpeg.encode({ width, height, data }, 90).data);
 }
 
 /* ------------------------------------------------------------------ trace archives */
