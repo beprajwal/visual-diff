@@ -50,6 +50,43 @@ export function isHarnessId(value: string): value is HarnessId {
   return (HARNESS_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * Install targets that are not agent harnesses (CI spec D34).
+ *
+ * `vdiff install github-actions` is the same command with the same guarantees — managed files, a
+ * body-hash stamp, `--force`, `--dry-run`, a human edit preserved — over something that is not a
+ * skill: a CI workflow, read by a runner rather than an agent, with no frontmatter and no user-level
+ * location. Kept as a separate id list rather than a fifth row in {@link HARNESSES}, because that
+ * table's shape (three skill-ish targets and a `frontmatter` function) would be four fields of noise
+ * for it, and every future reader would have to work out which of them apply.
+ */
+export const CI_TARGET_IDS = ['github-actions'] as const;
+export type CiTargetId = (typeof CI_TARGET_IDS)[number];
+
+/** Everything `vdiff install <id>` accepts, harness or not. */
+export type InstallTargetId = HarnessId | CiTargetId;
+
+export function isCiTargetId(value: string): value is CiTargetId {
+  return (CI_TARGET_IDS as readonly string[]).includes(value);
+}
+
+export function isInstallTargetId(value: string): value is InstallTargetId {
+  return isHarnessId(value) || isCiTargetId(value);
+}
+
+/**
+ * The four kinds of artifact an install target can write.
+ *
+ * The first three are the agent-facing ones every harness has some subset of; `workflows` is the CI
+ * one. Install output prints the kinds a target *could* have, so a harness with no command mechanism
+ * says so (D15) while GitHub Actions is not asked why it ships no skills.
+ */
+export const TARGET_KIND_IDS = ['skills', 'commands', 'instructions', 'workflows'] as const;
+export type TargetKind = (typeof TARGET_KIND_IDS)[number];
+
+/** What a harness row can declare. `workflows` belongs to CI targets only. */
+export const HARNESS_TARGET_KINDS: readonly TargetKind[] = ['skills', 'commands', 'instructions'];
+
 /* ------------------------------------------------------------------ version stamp (D17) */
 
 /** The package that wrote an installed file. Pinned to `package.json#name` by a test. */

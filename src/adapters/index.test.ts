@@ -14,8 +14,20 @@ import {
   listAdapters,
 } from './index.js';
 import { claudeCodeAdapter, claudeCodeFiles } from './claude-code/index.js';
+import {
+  BASELINE_WORKFLOW_PATH,
+  GITHUB_ACTIONS_ID,
+  PR_WORKFLOW_PATH,
+} from './github-actions/index.js';
 import { loadSkillBundle, type SkillBundle } from './source.js';
 import type { HarnessId, InstallScope } from './harnesses.js';
+
+/**
+ * The harness adapters alone. `ADAPTERS` also holds the GitHub Actions target (CI spec D34), which is
+ * an install target rather than an agent harness: it has no skills, no frontmatter and one scope, so
+ * every assertion about "the skills every harness ships" is about this subset.
+ */
+const HARNESS_ADAPTERS = ADAPTERS.filter((adapter) => adapter.id !== GITHUB_ACTIONS_ID);
 
 let bundle: SkillBundle;
 
@@ -24,16 +36,46 @@ beforeEach(async () => {
 });
 
 describe('adapter registry (spec §5, harness-packaging spec §4)', () => {
-  it('registers the four harnesses of subsystem 1, in table order', () => {
-    expect(listAdapters()).toEqual(['claude-code', 'codex', 'opencode', 'pi']);
-    expect(listAdapters()).toEqual([...HARNESS_IDS]);
+  it('registers the four harnesses of subsystem 1 in table order, then the CI targets', () => {
+    expect(listAdapters()).toEqual([
+      'claude-code',
+      'codex',
+      'opencode',
+      'pi',
+      'github-actions',
+    ]);
+    expect(listAdapters().slice(0, HARNESS_IDS.length)).toEqual([...HARNESS_IDS]);
   });
 
   it('is generated from the table, so the two can never disagree', () => {
-    expect(ADAPTERS.map((adapter) => adapter.id)).toEqual(HARNESSES.map((harness) => harness.id));
-    expect(ADAPTERS.map((adapter) => adapter.label)).toEqual(
+    expect(HARNESS_ADAPTERS.map((adapter) => adapter.id)).toEqual(
+      HARNESSES.map((harness) => harness.id),
+    );
+    expect(HARNESS_ADAPTERS.map((adapter) => adapter.label)).toEqual(
       HARNESSES.map((harness) => harness.label),
     );
+  });
+
+  it('declares which kinds and scopes each target has (CI spec D34)', () => {
+    for (const adapter of HARNESS_ADAPTERS) {
+      expect(adapter.kinds, adapter.id).toEqual(['skills', 'commands', 'instructions']);
+      expect(adapter.scopes, adapter.id).toEqual(['project', 'global']);
+    }
+    const ci = getAdapter(GITHUB_ACTIONS_ID);
+    expect(ci?.kinds).toEqual(['workflows']);
+    // `.github/workflows` is per repository: there is no user-level target to invent.
+    expect(ci?.scopes).toEqual(['project']);
+  });
+
+  it('composes both workflow files for the CI target, and none for another scope', async () => {
+    const ci = getAdapter(GITHUB_ACTIONS_ID);
+    expect((await (ci?.files('project') ?? [])).map((file) => file.path)).toEqual([
+      PR_WORKFLOW_PATH,
+      BASELINE_WORKFLOW_PATH,
+    ]);
+    expect(await (ci?.files('global') ?? [])).toEqual([]);
+    // YAML has no HTML comment, so the stamp wears `#` instead (CI spec D34).
+    for (const file of await (ci?.files('project') ?? [])) expect(file.comment).toBe('hash');
   });
 
   it('exposes a label, an install, a files description and its targets for every adapter', () => {
@@ -46,10 +88,14 @@ describe('adapter registry (spec §5, harness-packaging spec §4)', () => {
   });
 
   it('carries each harness caveats, so install output need not look them up', () => {
-    for (const adapter of ADAPTERS) {
-      expect(adapter.notes, adapter.id).toBe(HARNESS_NOTES[adapter.id]);
-      expect(adapter.notes.length, adapter.id).toBeGreaterThan(0);
+    for (const harness of HARNESSES) {
+      const adapter = getAdapter(harness.id);
+      expect(adapter?.notes, harness.id).toBe(HARNESS_NOTES[harness.id]);
+      expect(adapter?.notes.length ?? 0, harness.id).toBeGreaterThan(0);
     }
+    // The CI target's caveats live on the adapter itself: it is not in `HARNESS_NOTES` (D34), and an
+    // install that printed no caveats for it would be the one case with nothing to say.
+    expect(getAdapter(GITHUB_ACTIONS_ID)?.notes.length ?? 0).toBeGreaterThan(0);
   });
 
   it('has no duplicate ids', () => {
@@ -70,7 +116,7 @@ describe('adapter registry (spec §5, harness-packaging spec §4)', () => {
   });
 
   it('ships the same three skills to every harness, at that harness own path', async () => {
-    for (const adapter of ADAPTERS) {
+    for (const adapter of HARNESS_ADAPTERS) {
       const files = await adapter.files();
       const skills = files.filter((file) => file.path.endsWith('SKILL.md'));
       expect(skills, adapter.id).toHaveLength(bundle.skills.length);
@@ -86,7 +132,7 @@ describe('adapter registry (spec §5, harness-packaging spec §4)', () => {
   });
 
   it('writes commands only for the harnesses that have a commands target', async () => {
-    for (const adapter of ADAPTERS) {
+    for (const adapter of HARNESS_ADAPTERS) {
       const files = await adapter.files();
       const commandDir = adapter.targets().commands;
       const commands = files.filter((file) => !file.path.endsWith('SKILL.md') && file.path.endsWith('.md') && file.path !== 'AGENTS.md');
@@ -102,8 +148,8 @@ describe('adapter registry (spec §5, harness-packaging spec §4)', () => {
   });
 
   it('writes an instructions block only for the harnesses that read AGENTS.md', async () => {
-    const withInstructions: HarnessId[] = [];
-    for (const adapter of ADAPTERS) {
+    const withInstructions: string[] = [];
+    for (const adapter of HARNESS_ADAPTERS) {
       const files = await adapter.files();
       const blocks = files.filter((file) => file.mode === 'block');
       if (blocks.length > 0) withInstructions.push(adapter.id);
@@ -218,6 +264,15 @@ describe('path map (harness-packaging spec §4)', () => {
       skills: '.agents/skills',
       commands: null,
       instructions: 'AGENTS.md',
+      workflows: null,
+    });
+
+    expect(getAdapter(GITHUB_ACTIONS_ID)?.targets('project')).toEqual({
+      scope: 'project',
+      skills: null,
+      commands: null,
+      instructions: null,
+      workflows: '.github/workflows',
     });
   });
 });

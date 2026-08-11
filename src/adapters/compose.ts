@@ -45,6 +45,12 @@ export interface HarnessTargets {
   skills: string | null;
   commands: string | null;
   instructions: string | null;
+  /**
+   * `.github/workflows`, for a CI target rather than an agent harness (CI spec D34). Null for every
+   * harness — one shape for both kinds of target, so install output, `--list` and `--check` are
+   * written once and neither branches on which kind it is holding.
+   */
+  workflows: string | null;
 }
 
 /**
@@ -74,6 +80,9 @@ export function harnessTargets(harness: Harness, scope: InstallScope): HarnessTa
     skills: targetPath(harness.skills, scope),
     commands: targetPath(harness.commands, scope),
     instructions: targetPath(harness.instructions, scope),
+    // A harness writes no CI workflow, ever: `.github/workflows` belongs to the repository's CI, and
+    // an agent adapter that wrote one would be doing something nobody asked it to.
+    workflows: null,
   };
 }
 

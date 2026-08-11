@@ -50,7 +50,10 @@ function adapterPorts(): Partial<Ports> {
       ADAPTERS.map((adapter) => ({
         id: adapter.id,
         label: adapter.label,
-        notes: HARNESS_NOTES[adapter.id],
+        kinds: adapter.kinds,
+        scopes: adapter.scopes,
+        notes: adapter.notes,
+        next: adapter.next,
       })),
     adapterFiles: async (id: string, scope: InstallScope) => {
       const adapter = getAdapter(id);
@@ -165,6 +168,7 @@ describe('vdiff install <harness>', () => {
     const data = asInstall(result.data);
 
     expect(data.targets).toEqual({
+      workflows: null,
       scope: 'project',
       skills: '.agents/skills',
       commands: null,
@@ -346,7 +350,9 @@ describe('vdiff install — errors', () => {
       expect(error).toBeInstanceOf(CliFailure);
       const failure = error as CliFailure;
       expect(failure.message).toBe("unknown harness 'aider'");
-      expect(failure.hint).toBe('supported harnesses: claude-code, codex, opencode, pi');
+      expect(failure.hint).toBe(
+        'supported harnesses: claude-code, codex, opencode, pi, github-actions',
+      );
     }
 
     await expect(readdir(cwd)).resolves.toEqual([]);
@@ -355,7 +361,16 @@ describe('vdiff install — errors', () => {
   it('lists whatever the registry holds, not a hard-coded name', async () => {
     const ctx = context({
       ports: createTestPorts({
-        listAdapters: async () => [{ id: 'codex', label: 'Imaginary', notes: [] }],
+        listAdapters: async () => [
+          {
+            id: 'codex',
+            label: 'Imaginary',
+            kinds: ['skills'],
+            scopes: ['project', 'global'],
+            notes: [],
+            next: [],
+          },
+        ],
       }),
     });
     try {
@@ -430,11 +445,15 @@ describe('vdiff install --list', () => {
       'codex',
       'opencode',
       'pi',
+      'github-actions',
     ]);
     for (const harness of data.harnesses) {
-      expect(harness.scopes.map((scope) => scope.scope)).toEqual(['project', 'global']);
+      // The CI target has one scope: `.github/workflows` is per repository (CI spec §7).
+      const expected =
+        harness.id === 'github-actions' ? ['project'] : ['project', 'global'];
+      expect(harness.scopes.map((scope) => scope.scope)).toEqual(expected);
       expect(harness.scopes[0]?.root).toBe(cwd);
-      expect(harness.scopes[1]?.root).toBe(home);
+      if (expected.length === 2) expect(harness.scopes[1]?.root).toBe(home);
       expect(harness.notes.length).toBeGreaterThan(0);
     }
 
@@ -457,7 +476,9 @@ describe('vdiff install --list', () => {
     expect(human).toContain('Claude Code (claude-code)');
     expect(human).toContain('pi (pi)');
     for (const path of await pathsFor('claude-code')) expect(human).toContain(path);
-    expect(human).toContain('vdiff install <harness>');
+    expect(human).toContain('GitHub Actions (github-actions)');
+    expect(human).toContain('.github/workflows/visual-diff.yml');
+    expect(human).toContain('vdiff install <target>');
     expect(human).toContain('--global');
   });
 
@@ -469,7 +490,8 @@ describe('vdiff install --list', () => {
     const target = resolve(cwd, 'packages/web');
 
     for (const harness of asList(result.data).harnesses) {
-      expect(harness.scopes.map((scope) => scope.root)).toEqual([target, target]);
+      const roots = harness.id === 'github-actions' ? [target] : [target, target];
+      expect(harness.scopes.map((scope) => scope.root)).toEqual(roots);
     }
     await expect(readdir(cwd), '--list still writes nothing under --dir').resolves.toEqual([]);
   });
@@ -489,7 +511,9 @@ describe('vdiff install --check (§5, "Drift")', () => {
     expect(data.version).toBe(VERSION);
     expect(data.drift).toBe(false);
     for (const harness of data.harnesses) {
-      expect(harness.scopes.map((scope) => scope.status)).toEqual(['missing', 'missing']);
+      const expected =
+        harness.id === 'github-actions' ? ['missing'] : ['missing', 'missing'];
+      expect(harness.scopes.map((scope) => scope.status)).toEqual(expected);
       expect(harness.scopes.every((scope) => scope.duplicate)).toBe(false);
     }
     expect(result.human.join('\n')).toContain('Nothing has drifted.');
@@ -706,6 +730,11 @@ describe('vdiff install — the --json payloads', () => {
           },
         ],
         "harness": "codex",
+        "kinds": [
+          "skills",
+          "commands",
+          "instructions",
+        ],
         "label": "Codex",
         "notes": [
           "Codex does not hide duplicates: a global and a project skill of the same name both stay visible in the skill selector, so a stale global copy is a choice the user sees, not a silent override.",
@@ -719,6 +748,7 @@ describe('vdiff install — the --json payloads', () => {
           "instructions": "AGENTS.md",
           "scope": "project",
           "skills": ".agents/skills",
+          "workflows": null,
         },
         "version": "9.9.9",
         "written": [
@@ -755,6 +785,7 @@ describe('vdiff install — the --json payloads', () => {
               "instructions": "AGENTS.md",
               "scope": "project",
               "skills": ".agents/skills",
+              "workflows": null,
             },
           },
           {
@@ -770,6 +801,7 @@ describe('vdiff install — the --json payloads', () => {
               "instructions": null,
               "scope": "global",
               "skills": ".agents/skills",
+              "workflows": null,
             },
           },
         ],

@@ -23,7 +23,24 @@ import { applyBlock } from './blocks.js';
 /** Bumped only if the stamp format itself changes. */
 export const MANAGED_STAMP_VERSION = 'v1';
 
-const STAMP_RE = /^<!--\s*vdiff:managed\s+(v\d+)\s+sha256:([0-9a-f]{64})\s*-->$/;
+/**
+ * How the stamp line is commented out.
+ *
+ * `html` is every skill, command and instruction file — they are markdown. `hash` exists for the
+ * workflow files the GitHub Actions target writes (CI spec D34): YAML has no HTML comment, and
+ * `<!-- … -->` in a workflow is not an ignored line but a parse error, so a shared stamp mechanism
+ * needs two syntaxes rather than one. Same version, same body hash, same preserve rule.
+ */
+export type CommentStyle = 'html' | 'hash';
+
+const STAMP_BODY = String.raw`vdiff:managed\s+(v\d+)\s+sha256:([0-9a-f]{64})`;
+const STAMP_RE: Record<CommentStyle, RegExp> = {
+  html: new RegExp(String.raw`^<!--\s*${STAMP_BODY}\s*-->$`),
+  hash: new RegExp(String.raw`^#\s*${STAMP_BODY}$`),
+};
+
+/** Every syntax a stamp can wear, for reading a file whose style the caller does not know. */
+const STAMP_STYLES: readonly CommentStyle[] = ['html', 'hash'];
 
 /**
  * How much of a file this tool owns.
@@ -44,6 +61,8 @@ export interface ManagedFile {
   body: string;
   /** Defaults to `file`. */
   mode?: ManagedMode;
+  /** Comment syntax for the stamp. Defaults to `html`; YAML files need `hash` (D34). */
+  comment?: CommentStyle;
 }
 
 /**
@@ -84,23 +103,34 @@ export function bodyHash(body: string): string {
   return createHash('sha256').update(normalizeBody(body), 'utf8').digest('hex');
 }
 
-export function stampLine(hash: string): string {
-  return `<!-- vdiff:managed ${MANAGED_STAMP_VERSION} sha256:${hash} -->`;
+export function stampLine(hash: string, style: CommentStyle = 'html'): string {
+  const body = `vdiff:managed ${MANAGED_STAMP_VERSION} sha256:${hash}`;
+  return style === 'hash' ? `# ${body}` : `<!-- ${body} -->`;
 }
 
 /** Body plus a blank line plus the stamp. This is the exact bytes written to disk. */
-export function renderManaged(body: string): string {
+export function renderManaged(body: string, style: CommentStyle = 'html'): string {
   const normalized = normalizeBody(body);
-  return `${normalized}\n${stampLine(bodyHash(normalized))}\n`;
+  return `${normalized}\n${stampLine(bodyHash(normalized), style)}\n`;
 }
 
-/** Split a file back into body and claimed hash, or null when it carries no stamp. */
+/**
+ * Split a file back into body and claimed hash, or null when it carries no stamp.
+ *
+ * Reads either syntax whatever the caller expected: `--check` holds a path and its content, and
+ * requiring it to know which comment style that file was written in would put the same fact in two
+ * places. A file wearing the *other* style is still ours, which is what matters here.
+ */
 export function parseManaged(content: string): { body: string; hash: string } | null {
   const lines = content.replace(/\r\n/g, '\n').replace(/\s+$/, '').split('\n');
-  const last = lines[lines.length - 1] ?? '';
-  const match = STAMP_RE.exec(last.trim());
-  if (!match) return null;
-  return { body: normalizeBody(lines.slice(0, -1).join('\n')), hash: match[2] as string };
+  const last = (lines[lines.length - 1] ?? '').trim();
+  for (const style of STAMP_STYLES) {
+    const match = STAMP_RE[style].exec(last);
+    if (match) {
+      return { body: normalizeBody(lines.slice(0, -1).join('\n')), hash: match[2] as string };
+    }
+  }
+  return null;
 }
 
 /** True when the file is byte-for-byte what this tool last wrote (whatever version that was). */
@@ -111,8 +141,13 @@ export function isUnmodifiedManaged(content: string): boolean {
 }
 
 /** The decision for a single file. Pure: existing content in, status out. */
-export function planFile(existing: string | null, body: string, force = false): FileStatus {
-  const desired = renderManaged(body);
+export function planFile(
+  existing: string | null,
+  body: string,
+  force = false,
+  style: CommentStyle = 'html',
+): FileStatus {
+  const desired = renderManaged(body, style);
   if (existing === null) return 'created';
   if (existing === desired) return 'unchanged';
   if (force || isUnmodifiedManaged(existing)) return 'updated';
@@ -182,8 +217,9 @@ export async function writeManagedFiles(
       status = planned.status;
       content = planned.content;
     } else {
-      status = planFile(existing, file.body, options.force ?? false);
-      content = renderManaged(file.body);
+      const style = file.comment ?? 'html';
+      status = planFile(existing, file.body, options.force ?? false, style);
+      content = renderManaged(file.body, style);
     }
 
     if (!options.dryRun && (status === 'created' || status === 'updated')) {

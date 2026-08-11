@@ -795,7 +795,7 @@ describe('vdiff install <harness>', () => {
       code: 'unknown-harness',
       message: "unknown harness 'aider'",
       exitCode: EXIT.CONFIG_ERROR,
-      hint: 'supported harnesses: claude-code',
+      hint: 'supported harnesses: claude-code, github-actions',
     });
   });
 

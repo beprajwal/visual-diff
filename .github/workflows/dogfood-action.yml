@@ -1,0 +1,181 @@
+# Runs this repository's own composite action, against this repository's own fixture app.
+#
+# `tests/packaging/action.test.ts` parses `action.yml` and asserts it agrees with the workflows the
+# installer writes. What it cannot do is *run* it: a composite action's steps only exist on a runner,
+# so every shell quoting mistake, every wrong `steps.*.outputs` reference and every cache key that
+# does not match between save and restore is invisible until someone dispatches this.
+#
+# `workflow_dispatch` only, deliberately, exactly as the slow-path job in `ci.yml` is: it installs
+# Chromium, starts a dev server and replays a flow at two viewports twice over. It is a release-time
+# and action-change check, not something every push should pay for.
+#
+# What it exercises, and what it does not:
+#
+#   ✔ mode: baseline — capture, and the cache save (D32)
+#   ✔ mode: pr with baseline: cache — the restore, on a deleted runs directory
+#   ✔ the head replay, the diff, the export, the artifact upload, the step summary
+#   ✘ the pull-request comment — this is not a pull request, so that step skips itself
+#   ✘ replaying a historical revision — `tests/slow/historical-replay.e2e.ts` covers that path
+#
+# The CLI under test is the packed tarball, installed globally and passed to the action through its
+# `cli` input. Without that the action would install the *published* release and this workflow would
+# green while the code in the branch was broken.
+name: dogfood action
+
+on:
+  workflow_dispatch:
+    inputs:
+      fail-on:
+        description: 'Gate level to run the action with (the default, none, keeps the job green).'
+        required: false
+        default: none
+        type: choice
+        options: [none, high, any]
+
+concurrency:
+  group: dogfood-action-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    name: run the action against fixtures/storefront
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # The fixture is a complete vdiff project: `.visual-diff/config.yaml` and one committed flow.
+      FIXTURE: fixtures/storefront
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # The tarball, not the source tree: `npm pack` runs the real build through `prepack`, so what
+      # gets exercised below is what a user would have installed.
+      - name: Pack and install this build globally
+        run: |
+          set -euo pipefail
+          npm run build
+          npm pack --ignore-scripts
+          tarball=$(ls -t ./*.tgz | head -1)
+          echo "installing $tarball"
+          npm install --global "$tarball"
+          vdiff --version
+
+      # ---------------------------------------------------------------- baseline
+      #
+      # First invocation: capture the fixture as it stands and let the action save the cache entry a
+      # pull-request run would restore.
+      - name: 'Capture the baseline (mode: baseline)'
+        uses: ./
+        with:
+          working-directory: ${{ env.FIXTURE }}
+          mode: baseline
+          cli: vdiff
+
+      # The change under test. Commit 01 of the scripted history is a label edit — one `content`
+      # finding on the cart CTA plus a width change — so the diff below has something real to find
+      # and the fixture's own `commit.json` says what that something is.
+      - name: Apply the label-edit overlay
+        run: |
+          set -euo pipefail
+          cp -R fixtures/commits/01-label-edit/files/. "$FIXTURE/"
+          git -C . --no-pager diff --stat -- "$FIXTURE"
+
+      # Deleted on purpose: with the runs still on disk the restore below would be decoration. This is
+      # what makes the cache key the thing under test — if save and restore disagree, `baseline: cache`
+      # fails the job with the key named instead of quietly replaying the base revision.
+      - name: Discard the local runs, so the baseline must come from the cache
+        run: rm -rf "$FIXTURE/.visual-diff/runs"
+
+      # ---------------------------------------------------------------- the pull-request path
+      - name: 'Diff the change (mode: pr, baseline from the cache)'
+        id: visual-diff
+        uses: ./
+        with:
+          working-directory: ${{ env.FIXTURE }}
+          mode: pr
+          # The commit the baseline was captured at. `merge-base(HEAD, HEAD)` is HEAD, which is the
+          # key the previous invocation saved under.
+          base-ref: ${{ github.sha }}
+          baseline: cache
+          fail-on: ${{ inputs.fail-on }}
+          images: changed
+          artifact-name: visual-diff-dogfood
+          cli: vdiff
+
+      # The outputs are part of the action's contract (CI spec §8) and nothing else asserts they are
+      # populated rather than empty strings.
+      - name: Check the action's outputs
+        run: |
+          set -euo pipefail
+          echo "findings=${{ steps.visual-diff.outputs.findings }}"
+          echo "high=${{ steps.visual-diff.outputs.high }}"
+          echo "changed-steps=${{ steps.visual-diff.outputs.changed-steps }}"
+          echo "gate=${{ steps.visual-diff.outputs.gate }}"
+          echo "bundle-dir=${{ steps.visual-diff.outputs.bundle-dir }}"
+          echo "artifact-url=${{ steps.visual-diff.outputs.artifact-url }}"
+
+          fail=0
+          if [ "${{ steps.visual-diff.outputs.findings }}" -lt 1 ]; then
+            echo "::error::the label edit produced no findings — the action ran but compared nothing"
+            fail=1
+          fi
+          if [ "${{ steps.visual-diff.outputs.changed-steps }}" -lt 1 ]; then
+            echo "::error::no step reported as changed"
+            fail=1
+          fi
+          if [ -z "${{ steps.visual-diff.outputs.bundle-dir }}" ]; then
+            echo "::error::no bundle directory reported"
+            fail=1
+          fi
+
+          # The bundle has to be complete on its own (CI spec §5): the four documents, and images the
+          # static page can actually resolve.
+          bundle="${{ steps.visual-diff.outputs.bundle-dir }}/checkout"
+          for file in summary.json findings.json comment.md report.html; do
+            if [ ! -f "$bundle/$file" ]; then
+              echo "::error::bundle is missing $file"
+              fail=1
+            fi
+          done
+          if [ -z "$(find "$bundle/images" -name '*.png' -print -quit 2>/dev/null)" ]; then
+            echo "::error::bundle carries no images, but the diff reported a changed shot"
+            fail=1
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const bundle = process.argv[1];
+            const page = fs.readFileSync(path.join(bundle, "report.html"), "utf8");
+            const sources = [...page.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]);
+            if (sources.length === 0) throw new Error("report.html references no images");
+            for (const src of sources) {
+              if (/^https?:/.test(src)) throw new Error(`report.html reaches off-bundle: ${src}`);
+              fs.accessSync(path.join(bundle, src));
+            }
+            console.log(`report.html: ${sources.length} image(s), all present`);
+          ' "$bundle"
+
+          exit $fail
+
+      # Kept on failure too: when this job goes red, the evidence of *why* is the thing you want.
+      - name: Upload the dogfood bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-bundle
+          path: ${{ steps.visual-diff.outputs.bundle-dir }}
+          if-no-files-found: warn
+          retention-days: 7

@@ -10,6 +10,7 @@
  *   0  success — including `diff` with findings, which is a spec decision, not an accident
  *   1  run or replay failure (a partial run counts: a step did not replay)
  *   2  config or spec error (also: an unknown command, flag or argument)
+ *   3  an opt-in gate tripped (`comment --fail-on high|any`, CI spec D30) — never reached by default
  */
 
 import { homedir } from 'node:os';
@@ -33,7 +34,9 @@ import {
 import { spawnCapture, waitForShutdown } from './process.js';
 import { readVersion } from './version.js';
 
+import { comment } from './commands/comment.js';
 import { diff } from './commands/diff.js';
+import { exportCommand } from './commands/export.js';
 import { e2eIngest, e2eList } from './commands/e2e.js';
 import { feedback } from './commands/feedback.js';
 import { flowCheck, flowNew } from './commands/flow.js';
@@ -88,6 +91,10 @@ async function dispatch(
       return runs(ctx, invocation);
     case 'diff':
       return diff(ctx, invocation);
+    case 'comment':
+      return comment(ctx, invocation);
+    case 'export':
+      return exportCommand(ctx, invocation);
     case 'serve':
       return serve(ctx, invocation);
     case 'feedback':

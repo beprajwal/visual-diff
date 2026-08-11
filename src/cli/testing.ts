@@ -29,6 +29,8 @@ import {
   type ServeInfo,
 } from '../types.js';
 
+import { exportBundle, renderComment } from '../ci/index.js';
+
 import type {
   FileOutcome,
   HarnessInstallDetail,
@@ -62,7 +64,20 @@ export function fakeHarnesses(): HarnessInfo[] {
     {
       id: 'claude-code',
       label: 'Claude Code',
+      kinds: ['skills', 'commands', 'instructions'],
+      scopes: ['project', 'global'],
       notes: ['a copy in ~/.claude/skills overrides this project one'],
+      next: ['`vdiff init` to scaffold .visual-diff/, then `vdiff run <flow>`.'],
+    },
+    // The CI target, so install output's two shapes — an agent harness and a workflow installer —
+    // are both exercised by the command tests (CI spec D34).
+    {
+      id: 'github-actions',
+      label: 'GitHub Actions',
+      kinds: ['workflows'],
+      scopes: ['project'],
+      notes: ['nothing is committed for you'],
+      next: ['Commit .github/workflows/ and open a pull request.'],
     },
   ];
 }
@@ -74,6 +89,7 @@ export function fakeTargets(scope: InstallScope = 'project'): HarnessTargets {
     skills: '.claude/skills',
     commands: '.claude/commands',
     instructions: null,
+    workflows: null,
   };
 }
 
@@ -631,6 +647,7 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
     },
     runDir: (flow: string, runId: RunId) => `${dir}/runs/${flow}/${runId}`,
     diffFile: (pair: PairRef) => `${dir}/diffs/${key(pair)}/findings.json`,
+    exportDir: (pair: PairRef) => `${dir}/exports/${key(pair)}`,
     readDiff: async (pair: PairRef) => store.diffs[key(pair)] ?? null,
     writeDiff: async (pair: PairRef, result: DiffResult) => {
       store.diffs[key(pair)] = result;
@@ -694,6 +711,11 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
     openStore: async () => store,
     runFlow: async () => fakeRunResult(),
     computeDiff: async () => fakeDiffResult(),
+    // The CI edge is the *real* renderer and the real bundle writer: both are pure functions of a
+    // stored diff (CI spec D29), so a fake would only be a second implementation of the thing under
+    // test. `exportBundle` writes to whatever directory the test names, which is a temp dir.
+    renderComment: async (input) => renderComment(input),
+    exportBundle: async (request) => exportBundle(request),
     serveReport: async (_config: Config, _options): Promise<ServeHandle> => ({
       info: fakeServeInfo(),
       close: async () => undefined,
