@@ -18,6 +18,7 @@
 export {
   ADAPTERS,
   createAdapter,
+  githubActionsAdapter,
   getAdapter,
   harnessFiles,
   installAdapter,
@@ -31,12 +32,15 @@ export type {
 } from './registry.js';
 
 export {
+  CI_TARGET_IDS,
   CLAUDE_CODE,
   CODEX,
   HARNESSES,
   HARNESS_IDS,
   HARNESS_NOTES,
+  HARNESS_TARGET_KINDS,
   INSTALL_SCOPES,
+  TARGET_KIND_IDS,
   METADATA_KEY,
   OPENCODE,
   PI,
@@ -44,11 +48,41 @@ export {
   VDIFF_SOURCE,
   VERSION_KEY,
   getHarness,
+  isCiTargetId,
   isHarnessId,
+  isInstallTargetId,
   targetPath,
   versionStamp,
 } from './harnesses.js';
-export type { Harness, HarnessId, InstallScope, SkillMeta, Target } from './harnesses.js';
+export type {
+  CiTargetId,
+  Harness,
+  HarnessId,
+  InstallScope,
+  InstallTargetId,
+  SkillMeta,
+  Target,
+  TargetKind,
+} from './harnesses.js';
+
+/* ------------------------------------------------------------------ CI targets (CI spec D34) */
+
+export {
+  ACTION_REF,
+  BASELINE_WORKFLOW_PATH,
+  GITHUB_ACTIONS_ID,
+  GITHUB_ACTIONS_LABEL,
+  GITHUB_ACTIONS_NOTES,
+  GITHUB_ACTIONS_SCOPES,
+  PR_WORKFLOW_PATH,
+  UnsupportedScopeError,
+  WORKFLOWS_DIR,
+  baselineWorkflow,
+  githubActionsFiles,
+  githubActionsTargets,
+  installGithubActions,
+  prWorkflow,
+} from './github-actions/index.js';
 
 export {
   MAX_DESCRIPTION_LENGTH,
@@ -108,6 +142,7 @@ export {
   MANAGED_STAMP_VERSION,
 } from './files.js';
 export type {
+  CommentStyle,
   FileOutcome,
   FileStatus,
   ManagedFile,

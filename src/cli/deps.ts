@@ -42,6 +42,13 @@ import type {
   ManagedFile,
 } from '../adapters/index.js';
 
+import type {
+  CommentDocument,
+  CommentInput,
+  ExportReport,
+  ExportRequest,
+} from '../ci/index.js';
+
 import { runFailure } from './error.js';
 import type {
   E2eIngestPlan,
@@ -77,6 +84,12 @@ export const MODULE_SPECIFIERS = {
    * a trace reader pulls in a zip reader and a JPEG header parser, and `vdiff runs` must not.
    */
   e2e: '../e2e/index.js',
+  /**
+   * The CI slice's edge (CI spec §7): the markdown renderer and the bundle writer, behind one
+   * module exactly as `mocking`, `variant` and `e2e` are. Loaded on first use, which matters here
+   * because the bundle writer reaches for `node:fs` and the store's path builders.
+   */
+  ci: '../ci/index.js',
   store: '../store/index.js',
   runner: '../runner/index.js',
   diff: '../diff/index.js',
@@ -205,6 +218,7 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
       store.resolvePair(flow, base, head, toResolvePairOptions(filter)),
     runDir: (flow, runId) => store.runDir(flow, runId),
     diffFile: (pair) => module.paths.diffFindingsFile(root, pair.flow, pair.base, pair.head),
+    exportDir: (pair) => module.paths.exportBundleDir(root, pair.flow, pair.base, pair.head),
     readDiff: (pair) => store.readDiff(pair),
     writeDiff: (_pair, result) => store.writeDiff(result),
     pinRun: async (flow, runId) => {
@@ -348,6 +362,24 @@ export function createPorts(): Ports {
       return await fn(config, request);
     },
 
+    // The CI edge. Both are pure — a stored diff in, markdown or a directory out (D29) — so there is
+    // nothing to adapt here beyond the lazy import.
+    async renderComment(input: CommentInput): Promise<CommentDocument> {
+      const fn = await loadExport<(input: CommentInput) => CommentDocument>(
+        MODULE_SPECIFIERS.ci,
+        'renderComment',
+      );
+      return fn(input);
+    },
+
+    async exportBundle(request: ExportRequest): Promise<ExportReport> {
+      const fn = await loadExport<(request: ExportRequest) => Promise<ExportReport>>(
+        MODULE_SPECIFIERS.ci,
+        'exportBundle',
+      );
+      return await fn(request);
+    },
+
     async openStore(config: Config): Promise<StorePort> {
       const module = await loadModule(MODULE_SPECIFIERS.store);
       pick(module, MODULE_SPECIFIERS.store, 'openStore');
@@ -389,11 +421,16 @@ export function createPorts(): Ports {
           `internal module '${MODULE_SPECIFIERS.adapters}' does not export 'ADAPTERS'`,
         );
       }
-      const notes = (module['HARNESS_NOTES'] ?? {}) as Partial<Record<string, readonly string[]>>;
+      // Notes, kinds and scopes are read off the adapter rather than out of `HARNESS_NOTES`: the CI
+      // target is not in that table (CI spec D34), and a lookup that missed it would report a
+      // workflow installer with no caveats at all.
       return (adapters as HarnessAdapter[]).map((adapter) => ({
         id: adapter.id,
         label: adapter.label,
-        notes: notes[adapter.id] ?? [],
+        kinds: adapter.kinds,
+        scopes: adapter.scopes,
+        notes: adapter.notes,
+        next: adapter.next,
       }));
     },
 

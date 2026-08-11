@@ -36,9 +36,12 @@ npx @beprajwal/visual-diff diff example          # findings for the last two run
 npx @beprajwal/visual-diff serve --open          # live local report; hand the URL to a human
 ```
 
-`install <harness>` takes `--dir <path>` to target another directory, `--force` to overwrite files
-it wrote before that you have since edited, and `--dry-run` to print what it would write. The only
-harness in this release is `claude-code`; an unrecognised one exits 2 and lists what is supported.
+`install <target>` takes `--dir <path>` to target another directory, `--force` to overwrite files
+it wrote before that you have since edited, and `--dry-run` to print what it would write. The agent
+harnesses are `claude-code`, `codex`, `opencode` and `pi`; `github-actions` writes CI workflows
+instead of skills (see [On a pull request](#on-a-pull-request)). An unrecognised target exits 2 and
+lists what is supported, and `vdiff install --list` prints every target with the exact files it would
+write.
 
 Requires Node 20 or newer.
 
@@ -74,11 +77,60 @@ vdiff feedback [--json] [--ack]   # pull the human comments left in the report
 ```
 
 Every command accepts `--json` and emits a single envelope object on stdout, which is the
-agent-facing API. Exit codes: `0` success, `1` run or replay failure, `2` config or spec error.
-`vdiff diff` exits `0` even when findings exist — findings are information, not a gate.
+agent-facing API. Exit codes: `0` success, `1` run or replay failure, `2` config or spec error, `3` an
+opt-in gate tripped. `vdiff diff` exits `0` even when findings exist — findings are information, not a
+gate — and `3` is reachable only from `vdiff comment --fail-on`, which nothing sets by default.
 
-Supporting commands: `vdiff install <harness>`, `vdiff init`, `vdiff flow new|check <name>`,
+Supporting commands: `vdiff install <target>`, `vdiff init`, `vdiff flow new|check <name>`,
 `vdiff runs <flow>`, `vdiff pin|prune <run>`, `vdiff install-browser`.
+
+## On a pull request
+
+```sh
+npx @beprajwal/visual-diff install github-actions   # writes .github/workflows/visual-diff{,-baseline}.yml
+```
+
+That is the whole setup. The pull-request workflow replays each flow at the merge-base and at the
+head, diffs them, uploads the evidence, and leaves one comment per flow that it updates in place on
+every push. The check stays **green**: findings are reported, not enforced, until you set
+`fail-on: high` or `fail-on: any` in the workflow.
+
+The pipeline itself lives in a composite action (`beprajwal/visual-diff@v<version>`) rather than in
+the file you just installed, so a fix reaches you on the next version bump. The installed workflows
+are yours — edit them, and a re-install preserves your edits and says so.
+
+```yaml
+- uses: beprajwal/visual-diff@v0.5.0
+  with:
+    flows: checkout search       # default: every flow in .visual-diff/flows
+    fail-on: none                # none | high | any
+    baseline: auto               # auto | cache | replay
+    publish-branch: ''           # set it to embed screenshots in the comment
+    cli: ''                      # e.g. `npx vdiff` to use the version pinned in package.json
+```
+
+Two commands do the rendering, and both work on their own, in any CI system or none:
+
+```sh
+vdiff comment <flow> [base] [head]   # the diff as markdown: stdout, or --out <file>
+vdiff export  <flow> [base] [head]   # a bundle: findings.json, comment.md, report.html, images/
+```
+
+Neither posts, pushes or uploads anything, and neither takes a token — the CLI renders, the action
+transports. Two consequences worth knowing before you read a comment and wonder:
+
+- **Screenshots need a URL.** GitHub cannot render an image out of a workflow artifact, so by default
+  the comment carries the tables and links to the artifact. Nominate `publish-branch` and the action
+  pushes that pull request's diff images to it, which is what makes them embeddable.
+- **The base side is the merge-base**, replayed at that revision with that revision's flow spec — not
+  the base branch tip, which would report other people's changes as yours. `visual-diff-baseline.yml`
+  caches runs from your default branch so most pull requests restore the base side instead of
+  replaying it; delete that workflow and every pull request replays, which is slower and identical.
+
+The design is in
+[`docs/superpowers/specs/2026-08-11-ci-mode-design.md`](docs/superpowers/specs/2026-08-11-ci-mode-design.md),
+including what CI mode deliberately still does not do: there is no hosted report and no
+baseline-approval workflow.
 
 ## A flow spec
 
@@ -131,6 +183,14 @@ The skills live in `skills/` as plain markdown — `manifest.json` naming the id
 `<id>/SKILL.md` each. `npm run build:skills` copies that tree to `dist/skills/` so it ships with the
 CLI, and fails the build if the manifest names a skill that is not on disk. A harness plugin is only
 an envelope around this markdown, which is why the markdown is what the package carries.
+
+The composite action is `action.yml` at the repository root. `tests/packaging/action.test.ts` parses
+it alongside the workflows the installer writes and asserts they agree — every input a workflow passes
+is an input the action declares, and the version it pins is this build's. What a test cannot do is run
+a composite action, so `.github/workflows/dogfood-action.yml` does: dispatch it and the packed tarball
+runs the whole pipeline against `fixtures/storefront`, capturing a baseline, restoring it from the
+cache with the runs directory deleted, diffing a real overlay commit, and checking the bundle it
+produced. It is `workflow_dispatch` only, for the same reason the slow-path job is.
 
 `npm pack` runs the build (`prepack`) and produces the tarball a consumer actually gets;
 `tests/packaging/pack.test.ts` asserts its shape — executable bin with a shebang, `.d.ts` present,

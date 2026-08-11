@@ -293,6 +293,28 @@ export function diffStepViewportDir(
   );
 }
 
+/* ------------------------------------------------------------------ exports (CI spec §5) */
+
+/**
+ * Where `vdiff export` writes a bundle when `--out` names nothing.
+ *
+ * Inside `.visual-diff/` and therefore already git-ignored by the block `vdiff init` writes, and
+ * pointedly *not* part of the run store: nothing here is ever read back — no command resolves a
+ * pair, a run or a diff out of `exports/`. It lives in this file only because the rule that the CLI
+ * joins no store path of its own is worth more than the distinction (spec §5).
+ */
+export function exportsDir(root: string): string {
+  return path.join(vdiffDir(root), 'exports');
+}
+
+export function exportBundleDir(root: string, flow: string, base: RunId, head: RunId): string {
+  return path.join(
+    exportsDir(root),
+    assertSafeSegment('flow', flow),
+    pairDirname(base, head),
+  );
+}
+
 /* -- diff paths relative to `.visual-diff/`, which is what ViewportDiff and Finding carry -- */
 
 export function relDiffDir(flow: string, base: RunId, head: RunId): string {

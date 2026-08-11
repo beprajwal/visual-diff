@@ -1109,6 +1109,14 @@ export const EXIT = {
   RUN_FAILURE: 1,
   /** Config or spec error. */
   CONFIG_ERROR: 2,
+  /**
+   * An opt-in gate tripped (`vdiff comment --fail-on high|any`; CI spec D30).
+   *
+   * Its own code rather than `RUN_FAILURE`: everywhere else exit 1 means the run or replay failed,
+   * and a button that moved four pixels is not a broken run. A consumer that cannot tell the two
+   * apart has to treat every UI change as an infrastructure failure, or the reverse.
+   */
+  GATE_FAILED: 3,
 } as const;
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 

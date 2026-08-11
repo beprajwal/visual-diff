@@ -1,0 +1,555 @@
+# visual-diff — a composite GitHub Action (CI spec §8, D34).
+#
+# The behaviour of CI mode lives here rather than in the workflow files `vdiff install
+# github-actions` writes. Those are forty lines a user owns and edits; this is the pipeline, versioned
+# with the package, so a fix reaches every repository on the next tag.
+#
+# What it does, in order, and why the order matters:
+#
+#   resolve → install → base side → head side → diff → export → publish → artifact → comment → gate
+#
+# The gate is last on purpose (D35). A job that failed before commenting leaves a red check with no
+# explanation of what changed, which is the worst artifact this feature could produce.
+#
+# Nothing here asks `vdiff` to talk to GitHub. The CLI renders markdown and writes a directory (D29);
+# the token is used by exactly two steps — the comment and the optional branch publish — both of them
+# ordinary API calls that are visible in this file.
+name: visual-diff
+description: Replay UI flows at the merge-base and at the head, diff them, and comment the result on the pull request.
+author: Prajwal Raj Basnet
+
+branding:
+  icon: eye
+  color: purple
+
+inputs:
+  flows:
+    description: >-
+      Whitespace-separated flow names. Empty means every flow in .visual-diff/flows.
+    required: false
+    default: ''
+  mode:
+    description: >-
+      pr — replay both sides and comment. baseline — capture this commit and cache it for later pull
+      requests to restore (D32).
+    required: false
+    default: pr
+  base-ref:
+    description: >-
+      Revision the base side is taken at. Empty means the merge-base of the pull request.
+    required: false
+    default: ''
+  baseline:
+    description: 'auto | cache | replay — where the base side comes from (D32).'
+    required: false
+    default: auto
+  fail-on:
+    description: >-
+      none | high | any. Default none: findings are reported and the check stays green (D30).
+    required: false
+    default: none
+  images:
+    description: 'changed | all | none — which shots the evidence bundle carries.'
+    required: false
+    default: changed
+  comment:
+    description: 'Post (or update) the pull-request comment.'
+    required: false
+    default: 'true'
+  artifact:
+    description: 'Upload the evidence bundle as a workflow artifact.'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'Artifact name.'
+    required: false
+    default: visual-diff
+  publish-branch:
+    description: >-
+      Branch to push this pull request's diff images to. Set it and the comment embeds them; leave it
+      empty and the comment links the artifact instead, because GitHub cannot render an image out of
+      one (D31). Requires contents: write.
+    required: false
+    default: ''
+  install:
+    description: >-
+      Command that installs the project's dependencies before the head run. Empty auto-detects from
+      the lockfile; `false` skips it entirely.
+    required: false
+    default: ''
+  node-version:
+    description: 'Node used to run vdiff.'
+    required: false
+    default: '20'
+  version:
+    description: 'Version of @beprajwal/visual-diff to install. Ignored when `cli` is set.'
+    required: false
+    default: '0.5.0'
+  cli:
+    description: >-
+      Command that invokes the CLI. Empty — the default — installs the package globally and calls
+      `vdiff`. Set it to skip that install and use a CLI that is already there: `npx vdiff` for a
+      project that pins the package as a devDependency, or `vdiff` for one that installed it itself.
+      Must be a plain command with no quoting; it is word-split.
+    required: false
+    default: ''
+  working-directory:
+    description: 'Directory holding .visual-diff/.'
+    required: false
+    default: '.'
+  github-token:
+    description: 'Token used by the comment and publish steps only.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  findings:
+    description: 'Total findings across every flow.'
+    value: ${{ steps.render.outputs.findings }}
+  high:
+    description: 'High-severity findings across every flow.'
+    value: ${{ steps.render.outputs.high }}
+  changed-steps:
+    description: 'Steps that changed, across every flow.'
+    value: ${{ steps.render.outputs.changed_steps }}
+  gate:
+    description: 'ok | failed — the configured gate''s verdict (D30).'
+    value: ${{ steps.render.outputs.gate }}
+  bundle-dir:
+    description: 'Directory holding one evidence bundle per flow.'
+    value: ${{ steps.resolve.outputs.bundle_root }}
+  comment-file:
+    description: 'Rendered markdown for the first flow. One file per flow lives in bundle-dir.'
+    value: ${{ steps.render.outputs.comment_file }}
+  artifact-url:
+    description: 'URL of the uploaded bundle, when one was uploaded.'
+    value: ${{ steps.upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    # ---------------------------------------------------------------- resolve
+    #
+    # Everything derived is derived once, here, and written to outputs. A later step that recomputed
+    # the flow list or the merge-base could disagree with the comment about which pair was compared.
+    - name: Resolve inputs
+      id: resolve
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLOWS_INPUT: ${{ inputs.flows }}
+        MODE: ${{ inputs.mode }}
+        BASE_REF_INPUT: ${{ inputs.base-ref }}
+        BASELINE: ${{ inputs.baseline }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        IMAGES: ${{ inputs.images }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+
+        case "$MODE" in pr|baseline) ;; *) echo "::error::mode must be pr or baseline, got '$MODE'"; exit 2 ;; esac
+        case "$BASELINE" in auto|cache|replay) ;; *) echo "::error::baseline must be auto, cache or replay, got '$BASELINE'"; exit 2 ;; esac
+        case "$FAIL_ON" in none|high|any) ;; *) echo "::error::fail-on must be none, high or any, got '$FAIL_ON'"; exit 2 ;; esac
+        case "$IMAGES" in changed|all|none) ;; *) echo "::error::images must be changed, all or none, got '$IMAGES'"; exit 2 ;; esac
+
+        if [ ! -d .visual-diff ]; then
+          echo "::error::no .visual-diff directory in $(pwd) — run \`vdiff init\` and commit it"
+          exit 2
+        fi
+
+        # Flow names: whatever was asked for, or every spec on disk. A flow named but absent is an
+        # error rather than a silently smaller run.
+        flows="$FLOWS_INPUT"
+        if [ -z "${flows// }" ]; then
+          flows=$(find .visual-diff/flows -maxdepth 1 -name '*.yaml' -exec basename {} .yaml \; 2>/dev/null | sort | tr '\n' ' ')
+        fi
+        flows=$(echo "$flows" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+        if [ -z "$flows" ]; then
+          echo "::error::no flows found in .visual-diff/flows and none named via the flows input"
+          exit 2
+        fi
+        for flow in $flows; do
+          if [ ! -f ".visual-diff/flows/$flow.yaml" ]; then
+            echo "::error::flow '$flow' has no spec at .visual-diff/flows/$flow.yaml"
+            exit 2
+          fi
+        done
+        echo "flows=$flows" >> "$GITHUB_OUTPUT"
+
+        # The base side. For a pull request it is the merge-base, not the base branch tip: comparing
+        # against a tip that moved since the branch was cut reports other people's changes as yours.
+        base_sha=''
+        if [ "$MODE" = "pr" ]; then
+          target="${BASE_REF_INPUT:-$PR_BASE_SHA}"
+          if [ -z "$target" ]; then
+            echo "::error::not a pull request and no base-ref given — nothing to compare against"
+            exit 2
+          fi
+          if ! git cat-file -e "$target^{commit}" 2>/dev/null; then
+            echo "base revision $target is not in this clone; fetching it"
+            git fetch --no-tags --depth=1 origin "$target" || {
+              echo "::error::could not fetch base revision $target — check out with fetch-depth: 0"
+              exit 2
+            }
+          fi
+          base_sha=$(git merge-base "$target" HEAD 2>/dev/null || echo "$target")
+          echo "base revision: $base_sha"
+        fi
+        echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+        # One hash over the specs, so a baseline captured before a flow changed is not restored for a
+        # flow that no longer looks like it.
+        spec_hash=$( { cat .visual-diff/config.yaml .visual-diff/flows/*.yaml 2>/dev/null || true; } | shasum -a 256 | cut -c1-16)
+        echo "spec_hash=$spec_hash" >> "$GITHUB_OUTPUT"
+
+        echo "bundle_root=${RUNNER_TEMP}/visual-diff" >> "$GITHUB_OUTPUT"
+        mkdir -p "${RUNNER_TEMP}/visual-diff"
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # Skipped when `cli` names a command that already exists — which is how this repository dogfoods
+    # the action against a locally packed tarball, and how a project that pins the package as a
+    # devDependency avoids a second copy of it.
+    - name: Install vdiff
+      if: inputs.cli == ''
+      shell: bash
+      env:
+        VDIFF_VERSION: ${{ inputs.version }}
+      run: npm install --global "@beprajwal/visual-diff@${VDIFF_VERSION}"
+
+    - name: Report the CLI in use
+      shell: bash
+      env:
+        CLI: ${{ inputs.cli }}
+      run: |
+        set -euo pipefail
+        ${CLI:-vdiff} --version
+
+    # Chromium lives outside node_modules, so it needs its own cache entry. Keyed by the vdiff
+    # version: a bumped playwright-core must fetch a matching browser build, and a stale browser is
+    # how a diff fails for reasons that have nothing to do with the change under test.
+    - name: Cache Chromium
+      id: chromium
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: vdiff-chromium-${{ runner.os }}-${{ inputs.version }}
+
+    - name: Install Chromium
+      if: steps.chromium.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        CLI: ${{ inputs.cli }}
+      run: ${CLI:-vdiff} install-browser
+
+    # The browser download is not the shared libraries it links against, and the cache restores the
+    # binary rather than the system packages. Without these the process dies during startup and
+    # Playwright waits for a handshake that never arrives — which surfaces as a hang, not an error.
+    - name: Install browser system dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo npx --yes playwright install-deps chromium
+
+    - name: Install project dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INSTALL: ${{ inputs.install }}
+      run: |
+        set -euo pipefail
+        if [ "$INSTALL" = "false" ]; then
+          echo "install: skipped by input"
+          exit 0
+        fi
+        # The head side replays against the working tree, so the dev server this project starts needs
+        # its dependencies. A historical revision is different: `vdiff run --at` installs inside its
+        # own worktree using the command in .visual-diff/config.yaml.
+        command="$INSTALL"
+        if [ -z "${command// }" ]; then
+          if [ -f pnpm-lock.yaml ]; then command='corepack pnpm install --frozen-lockfile'
+          elif [ -f yarn.lock ]; then command='corepack yarn install --immutable'
+          elif [ -f package-lock.json ]; then command='npm ci'
+          elif [ -f package.json ]; then command='npm install'
+          else command='' ; fi
+        fi
+        if [ -z "$command" ]; then
+          echo "install: no lockfile and no package.json — nothing to install"
+          exit 0
+        fi
+        echo "install: $command"
+        eval "$command"
+
+    # ---------------------------------------------------------------- the base side (D32)
+    - name: Restore baseline runs
+      id: baseline
+      if: inputs.mode == 'pr' && inputs.baseline != 'replay'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.working-directory }}/.visual-diff/runs
+        key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ steps.resolve.outputs.base_sha }}
+
+    - name: Replay the base revision
+      if: inputs.mode == 'pr' && steps.baseline.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
+        BASELINE: ${{ inputs.baseline }}
+        CLI: ${{ inputs.cli }}
+      run: |
+        set -euo pipefail
+        cli=${CLI:-vdiff}
+        if [ "$BASELINE" = "cache" ]; then
+          echo "::error::no cached baseline for $BASE_SHA and baseline: cache forbids replaying it"
+          exit 2
+        fi
+        # A missing baseline is a slower job, never a failed one — the same posture the store takes
+        # when a diff needs a run that does not exist.
+        echo "::notice::no cached baseline for $BASE_SHA; replaying the base revision (slower)"
+        for flow in $FLOWS; do
+          $cli run "$flow" --at "$BASE_SHA"
+        done
+
+    # ---------------------------------------------------------------- the head side
+    - name: Replay the working tree
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        CLI: ${{ inputs.cli }}
+      run: |
+        set -euo pipefail
+        cli=${CLI:-vdiff}
+        for flow in $FLOWS; do
+          $cli run "$flow"
+        done
+
+    # In baseline mode that is the whole job: capture, cache, stop. Nothing is diffed, because there
+    # is nothing yet to diff it against.
+    - name: Save the baseline
+      if: inputs.mode == 'baseline'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ inputs.working-directory }}/.visual-diff/runs
+        key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ github.sha }}
+
+    # ---------------------------------------------------------------- diff and export
+    - name: Diff and export
+      id: export
+      if: inputs.mode == 'pr'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
+        IMAGES: ${{ inputs.images }}
+        CLI: ${{ inputs.cli }}
+      run: |
+        set -euo pipefail
+        cli=${CLI:-vdiff}
+        for flow in $FLOWS; do
+          # `diff` first so its human output lands in the log: a reader scanning the job should see
+          # the finding table without downloading anything.
+          $cli diff "$flow"
+          $cli export "$flow" --images "$IMAGES" --out "$BUNDLE_ROOT/$flow"
+        done
+
+    # ---------------------------------------------------------------- publish images (D31)
+    #
+    # Only when a branch was nominated. Pushing images into someone's repository on every pull request
+    # is not a default anybody should get by surprise, so the artifact is the default and this is the
+    # opt-in that makes inline images possible at all.
+    - name: Publish diff images
+      id: publish
+      if: inputs.mode == 'pr' && inputs.publish-branch != ''
+      shell: bash
+      env:
+        BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        BRANCH: ${{ inputs.publish-branch }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        SERVER: ${{ github.server_url }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        set -euo pipefail
+        prefix="pr-${PR_NUMBER:-manual}/${SHA:0:12}"
+        work="${RUNNER_TEMP}/vdiff-publish"
+        rm -rf "$work"
+        git clone --depth 1 --branch "$BRANCH" \
+          "${SERVER}/${REPO}.git" "$work" 2>/dev/null || {
+          # First publish: an orphan branch, so the image history never touches the code history.
+          git clone --depth 1 "${SERVER}/${REPO}.git" "$work"
+          git -C "$work" checkout --orphan "$BRANCH"
+          git -C "$work" rm -rf . >/dev/null 2>&1 || true
+          printf '%s\n' \
+            '# visual-diff images' '' \
+            'Generated by the visual-diff action. Safe to delete: it holds only diff screenshots.' \
+            > "$work/README.md"
+        }
+
+        for flow in $FLOWS; do
+          target="$work/$prefix/$flow"
+          mkdir -p "$target"
+          if [ -d "$BUNDLE_ROOT/$flow/images" ]; then
+            cp -R "$BUNDLE_ROOT/$flow/images" "$target/"
+          fi
+          cp "$BUNDLE_ROOT/$flow/report.html" "$target/" 2>/dev/null || true
+        done
+
+        cd "$work"
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add -A
+        if git diff --cached --quiet; then
+          echo "nothing new to publish"
+        else
+          git commit -m "visual-diff: ${prefix}"
+          git push "https://x-access-token:${GH_TOKEN}@${SERVER#https://}/${REPO}.git" "HEAD:${BRANCH}"
+        fi
+        echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
+
+    # ---------------------------------------------------------------- artifact, then comment
+    #
+    # The artifact goes up before the comment is rendered, because the comment links it: every
+    # truncation notice in the body points at findings.json inside this upload (D33).
+    - name: Upload the evidence bundle
+      id: upload
+      if: inputs.mode == 'pr' && inputs.artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.resolve.outputs.bundle_root }}
+        if-no-files-found: warn
+        retention-days: 14
+
+    - name: Render the comment
+      id: render
+      if: inputs.mode == 'pr'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
+        IMAGE_BASE: ${{ steps.publish.outputs.image_base }}
+        ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        CLI: ${{ inputs.cli }}
+      run: |
+        set -euo pipefail
+        cli=${CLI:-vdiff}
+        findings=0
+        high=0
+        changed=0
+        gate=ok
+        first=''
+
+        for flow in $FLOWS; do
+          args=(comment "$flow" --json --fail-on "$FAIL_ON" --artifact-name "$ARTIFACT_NAME"
+                --out "$BUNDLE_ROOT/$flow/comment.md")
+          if [ -n "$IMAGE_BASE" ]; then args+=(--image-base "$IMAGE_BASE/$flow"); fi
+          if [ -n "$ARTIFACT_URL" ]; then args+=(--artifact-url "$ARTIFACT_URL"); fi
+
+          # `--fail-on` exits 3 when it trips (D30). The verdict is collected here and enforced in
+          # the last step of the job, after the comment has been posted (D35).
+          set +e
+          $cli "${args[@]}" > "$BUNDLE_ROOT/$flow/comment.json"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+            echo "::error::vdiff comment failed for flow '$flow' (exit $status)"
+            cat "$BUNDLE_ROOT/$flow/comment.json" >&2 || true
+            exit "$status"
+          fi
+          if [ "$status" -eq 3 ]; then gate=failed; fi
+
+          summary=$(node -e '
+            const fs = require("node:fs");
+            const envelope = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const data = envelope.data ?? {};
+            const s = data.result?.summary ?? {};
+            process.stdout.write([
+              s.totalFindings ?? 0,
+              s.bySeverity?.high ?? 0,
+              s.stepsChanged ?? 0,
+            ].join(" "));
+          ' "$BUNDLE_ROOT/$flow/comment.json")
+          read -r f h c <<< "$summary"
+          findings=$((findings + f))
+          high=$((high + h))
+          changed=$((changed + c))
+          if [ -z "$first" ]; then first="$BUNDLE_ROOT/$flow/comment.md"; fi
+
+          {
+            echo "### visual-diff — \`$flow\`"
+            echo
+            cat "$BUNDLE_ROOT/$flow/comment.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+        done
+
+        echo "findings=$findings" >> "$GITHUB_OUTPUT"
+        echo "high=$high" >> "$GITHUB_OUTPUT"
+        echo "changed_steps=$changed" >> "$GITHUB_OUTPUT"
+        echo "gate=$gate" >> "$GITHUB_OUTPUT"
+        echo "comment_file=$first" >> "$GITHUB_OUTPUT"
+
+    # One comment per flow, found by its marker and updated in place, so a pull request with fourteen
+    # pushes has one visual-diff comment per flow rather than fourteen (D33).
+    - name: Post the comment
+      if: inputs.mode == 'pr' && inputs.comment == 'true' && github.event.pull_request.number
+      uses: actions/github-script@v7
+      env:
+        FLOWS: ${{ steps.resolve.outputs.flows }}
+        BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const issue_number = context.payload.pull_request.number;
+          const { owner, repo } = context.repo;
+
+          const existing = await github.paginate(github.rest.issues.listComments, {
+            owner, repo, issue_number, per_page: 100,
+          });
+
+          for (const flow of process.env.FLOWS.trim().split(/\s+/).filter(Boolean)) {
+            const file = path.join(process.env.BUNDLE_ROOT, flow, 'comment.md');
+            if (!fs.existsSync(file)) {
+              core.warning(`no rendered comment for flow ${flow}`);
+              continue;
+            }
+            const body = fs.readFileSync(file, 'utf8');
+            // The marker is the comment's first line, written by `vdiff comment` itself.
+            const marker = body.split('\n', 1)[0].trim();
+            if (!marker.startsWith('<!--')) {
+              core.warning(`comment for ${flow} carries no marker; posting without upsert`);
+            }
+
+            const previous = existing.find((comment) => comment.body?.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+              core.info(`updated comment ${previous.id} for flow ${flow}`);
+            } else {
+              const created = await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              core.info(`created comment ${created.data.id} for flow ${flow}`);
+            }
+          }
+
+    # Last, and only when asked for (D30, D35): the evidence exists, the comment is posted, and now
+    # the check can go red.
+    - name: Enforce the gate
+      if: inputs.mode == 'pr' && steps.render.outputs.gate == 'failed'
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+        FINDINGS: ${{ steps.render.outputs.findings }}
+        HIGH: ${{ steps.render.outputs.high }}
+      run: |
+        echo "::error::visual-diff gate '${FAIL_ON}' failed — ${FINDINGS} finding(s), ${HIGH} high severity. See the comment on this pull request for what changed."
+        exit 1

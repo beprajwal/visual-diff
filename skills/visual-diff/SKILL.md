@@ -131,14 +131,41 @@ those) are understood. Fix the rule; a silently dead ignore makes you read noise
 
 ## Exit codes
 
-`0` success · `1` run or replay failure · `2` config or spec error
+`0` success · `1` run or replay failure · `2` config or spec error · `3` an opt-in gate tripped
 
 On `2`, the error names the file, line, and offending key. Fix the spec; do not retry the command.
+Exit `3` is reachable only from `vdiff comment --fail-on high|any`, which nothing sets by default.
+
+## Handing a diff to a pull request
+
+Two commands turn a stored diff into something a reviewer reads without your terminal:
+
+```sh
+vdiff comment <flow> [base] [head]   # the diff as pull-request markdown, on stdout or --out <file>
+vdiff export  <flow> [base] [head]   # a portable bundle: findings.json, comment.md, report.html, images
+```
+
+Both resolve the same pair `vdiff diff` does, and both only render — neither posts, pushes, or
+uploads anything, and neither takes a credential. Useful facts when you use them:
+
+- **No `--image-base`, no screenshots.** A comment can only embed an image that already has a URL, so
+  without one it carries the tables and links to the bundle. That is expected, not a failure.
+- **`--out <file>`** is how you hand the body to something else without passing kilobytes of markdown
+  through a shell, where a backtick in a selector becomes a command substitution.
+- **`vdiff export --images changed|all|none`** bounds the bundle. `changed` is the default: the shots
+  that moved. `report.html` in the bundle is a static page that opens from disk with no server.
+- The comment is capped to fit a pull-request body and *states* what it dropped. If you need the
+  whole set, read `findings.json` from the bundle rather than the comment.
+
+For GitHub specifically, `vdiff install github-actions` writes the two workflow files that do all of
+the above on every pull request. Do not hand-roll a workflow that shells out to these commands unless
+the user asks for it.
 
 ## What this skill is not for
 
 - Wireframing or exploring UI that is not in the repo yet
 - Running the project's e2e suite
-- Gating CI on visual change
+- Deciding *whether* visual change should block a merge
 
-Those are separate concerns and, in this version, not supported.
+The first two are separate concerns and not supported. The third is the user's call: findings never
+gate unless someone sets `--fail-on`.

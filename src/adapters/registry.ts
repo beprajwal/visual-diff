@@ -15,11 +15,24 @@ import { writeManagedFiles, type FileOutcome, type ManagedFile, type WriteOption
 import {
   HARNESSES,
   HARNESS_NOTES,
+  HARNESS_TARGET_KINDS,
+  INSTALL_SCOPES,
   getHarness,
   type Harness,
   type HarnessId,
   type InstallScope,
+  type InstallTargetId,
+  type TargetKind,
 } from './harnesses.js';
+import {
+  GITHUB_ACTIONS_ID,
+  GITHUB_ACTIONS_LABEL,
+  GITHUB_ACTIONS_NOTES,
+  GITHUB_ACTIONS_SCOPES,
+  githubActionsFiles,
+  githubActionsTargets,
+  installGithubActions,
+} from './github-actions/index.js';
 import { loadSkillBundle, type SkillBundle } from './source.js';
 import { TOOL_VERSION } from '../version.js';
 
@@ -41,7 +54,7 @@ export interface InstallOptions extends WriteOptions {
  * Generic in the id so `installClaudeCode` still returns something assignable to the narrow
  * `Adapter` contract in `src/types.ts`, whose `AdapterId` this module deliberately does not widen.
  */
-export interface HarnessInstallDetail<Id extends HarnessId = HarnessId> {
+export interface HarnessInstallDetail<Id extends InstallTargetId = InstallTargetId> {
   id: Id;
   written: string[];
   skipped: string[];
@@ -49,9 +62,22 @@ export interface HarnessInstallDetail<Id extends HarnessId = HarnessId> {
 }
 
 /** The shape the CLI codes against. `targets` is what install output names (D18). */
-export interface HarnessAdapter<Id extends HarnessId = HarnessId> {
+export interface HarnessAdapter<Id extends InstallTargetId = InstallTargetId> {
   id: Id;
   label: string;
+  /**
+   * Which kinds of artifact this target is about (CI spec D34).
+   *
+   * An agent harness declares the three agent-facing kinds, so a harness with no command mechanism
+   * is *reported* as having none rather than silently writing fewer files (D15). A CI target declares
+   * `workflows` alone, so install output does not explain that GitHub Actions ships no skills.
+   */
+  kinds: readonly TargetKind[];
+  /**
+   * Scopes this target has. Every harness has both (D16); `.github/workflows` is per repository, so
+   * the CI target has only `project` and asking for the other is a config error naming the reason.
+   */
+  scopes: readonly InstallScope[];
   /**
    * What "installed" does not guarantee for this harness — a personal copy overriding the project
    * one, a duplicate staying visible, the mechanism being switched off in configuration. Carried on
@@ -59,6 +85,8 @@ export interface HarnessAdapter<Id extends HarnessId = HarnessId> {
    * arrives with its caveats attached (see {@link HARNESS_NOTES}).
    */
   notes: readonly string[];
+  /** What to do next, printed after a successful install. */
+  next: readonly string[];
   install(root: string, options?: InstallOptions): Promise<HarnessInstallDetail<Id>>;
   /** Every file this adapter would write, fully composed. Touches no project directory. */
   files(scope?: InstallScope, options?: Omit<InstallOptions, 'scope'>): Promise<ManagedFile[]>;
@@ -118,7 +146,10 @@ export function createAdapter<Id extends HarnessId>(
   const adapter: HarnessAdapter<Id> = {
     id: harness.id,
     label: harness.label,
+    kinds: HARNESS_TARGET_KINDS,
+    scopes: INSTALL_SCOPES,
     notes: HARNESS_NOTES[harness.id],
+    next: ['`vdiff init` to scaffold .visual-diff/, then `vdiff run <flow>`.'],
     install: (root: string, options: InstallOptions = {}): Promise<HarnessInstallDetail<Id>> =>
       installHarness(harness, root, options),
     files: (
@@ -132,18 +163,62 @@ export function createAdapter<Id extends HarnessId>(
   return adapter;
 }
 
-/** Every registered adapter, in table order. */
-export const ADAPTERS: readonly HarnessAdapter[] = HARNESSES.map((harness) => createAdapter(harness));
+/**
+ * The GitHub Actions target, as an adapter (CI spec D34).
+ *
+ * Hand-written rather than generated from a table row, because it is not a harness: there is no
+ * frontmatter to compose, no skill body to copy, and the files are YAML. What it shares with the
+ * four generated adapters is the whole of what the CLI depends on — the same five methods, the same
+ * managed-file writer underneath, the same stamp — so `install`, `--list` and `--check` treat it
+ * identically and none of them branches on which kind of target it is.
+ */
+export const githubActionsAdapter: HarnessAdapter<'github-actions'> = {
+  id: GITHUB_ACTIONS_ID,
+  label: GITHUB_ACTIONS_LABEL,
+  kinds: ['workflows'],
+  scopes: GITHUB_ACTIONS_SCOPES,
+  notes: GITHUB_ACTIONS_NOTES,
+  next: [
+    'Commit .github/workflows/ and open a pull request — a workflow GitHub has never seen never runs.',
+    '`vdiff init` first if .visual-diff/ does not exist yet: the job needs a flow to replay.',
+  ],
+  install: async (root, options = {}) => {
+    const detail = await installGithubActions(root, {
+      ...options,
+      ...(options.version === undefined ? {} : { version: options.version }),
+    });
+    return {
+      id: GITHUB_ACTIONS_ID,
+      written: detail.written,
+      skipped: detail.skipped,
+      files: detail.files as FileOutcome[],
+    };
+  },
+  files: async (scope: InstallScope = 'project', options: Omit<InstallOptions, 'scope'> = {}) => {
+    // A scope this target does not have writes nothing rather than throwing, so `--list` and
+    // `--check` can walk both scopes for every registered target without special-casing this one.
+    if (!GITHUB_ACTIONS_SCOPES.includes(scope)) return [];
+    return githubActionsFiles(options.version === undefined ? {} : { version: options.version });
+  },
+  targets: (scope: InstallScope = 'project') => githubActionsTargets(scope),
+};
 
-/** Every registered harness id, in registration order. */
-export function listAdapters(): HarnessId[] {
+/** Every registered adapter, in registration order: the four harnesses, then the CI targets. */
+export const ADAPTERS: readonly HarnessAdapter[] = [
+  ...HARNESSES.map((harness) => createAdapter(harness)),
+  githubActionsAdapter,
+];
+
+/** Every registered target id, in registration order. */
+export function listAdapters(): InstallTargetId[] {
   return ADAPTERS.map((adapter) => adapter.id);
 }
 
 /** The adapter for an id, or undefined when the id is not registered. */
 export function getAdapter(id: string): HarnessAdapter | undefined {
   const harness = getHarness(id);
-  return harness === undefined ? undefined : createAdapter(harness);
+  if (harness !== undefined) return createAdapter(harness);
+  return ADAPTERS.find((adapter) => adapter.id === id);
 }
 
 /**

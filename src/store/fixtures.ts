@@ -8,6 +8,8 @@
  * Everything here is deterministic: fixed timestamps, fixed env, no randomness.
  */
 
+import { PNG } from 'pngjs';
+
 import { SCENARIO_NONE, STYLE_PROPS } from '../types.js';
 import { beginRun, type RunMetaInput } from './run-store.js';
 import { SOURCE_E2E, SOURCE_REPLAY, UNKNOWN_REVISION } from './internal/e2e.js';
@@ -189,11 +191,37 @@ export const TINY_PNG = Uint8Array.from([
   0x42, 0x60, 0x82,
 ]);
 
+/**
+ * A solid-colour PNG of a given size.
+ *
+ * {@link TINY_PNG} is 1x1, which is enough for path and retention tests and useless for diff ones:
+ * the engine drops any region below `minRegionArea` (64 px² by default), so two different 1x1 images
+ * produce a pair with no findings at all. A fixture that wants a *real* finding needs real pixels.
+ */
+export function solidPng(
+  width: number,
+  height: number,
+  [red, green, blue]: readonly [number, number, number],
+): Uint8Array {
+  const png = new PNG({ width, height });
+  for (let offset = 0; offset < png.data.length; offset += 4) {
+    png.data[offset] = red;
+    png.data[offset + 1] = green;
+    png.data[offset + 2] = blue;
+    png.data[offset + 3] = 255;
+  }
+  return Uint8Array.from(PNG.sync.write(png));
+}
+
 export interface FixtureStep {
   id: string;
   /** Defaults to every viewport of the run. Pass `[]` for a step that produced no shot. */
   viewports?: ViewportId[];
   nodes?: DomNode[];
+  /** Defaults to {@link TINY_PNG}. Pass {@link solidPng} output for a fixture the diff engine sees. */
+  screenshot?: Uint8Array;
+  /** Dimensions recorded on the shot. Default 1x1, matching {@link TINY_PNG}. */
+  size?: { width: number; height: number };
   result?: Partial<StepResult>;
   console?: ConsoleEntry[];
   network?: NetworkEntry[];
@@ -224,11 +252,11 @@ export async function writeFixtureRun(
       const dom = makeDomSnapshot(step.id, viewport, step.nodes ?? [makeDomNode()]);
       result.viewports[viewport] = await draft.writeShot(step.id, {
         viewport,
-        screenshot: TINY_PNG,
+        screenshot: step.screenshot ?? TINY_PNG,
         dom,
         a11y: makeA11ySnapshot(step.id, viewport),
-        width: 1,
-        height: 1,
+        width: step.size?.width ?? 1,
+        height: step.size?.height ?? 1,
       });
     }
     await draft.writeStepResult(result);

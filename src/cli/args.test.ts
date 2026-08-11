@@ -180,7 +180,7 @@ describe('parseArgs — the documented surface (spec §9)', () => {
               ? ['install', 'claude-code', '--json']
               : command === 'e2e'
                 ? ['e2e', '--from', 'trace', 'trace.zip', '--json']
-                : ['run', 'runs', 'diff'].includes(command)
+                : ['run', 'runs', 'diff', 'comment', 'export'].includes(command)
                   ? [command, 'checkout', '--json']
                   : [command, '--json'];
       expect(ok(argv).json, `${command} should accept --json`).toBe(true);

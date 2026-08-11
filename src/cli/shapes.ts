@@ -22,10 +22,12 @@ import type {
 } from '../types.js';
 import type {
   FileOutcome,
-  HarnessId,
   HarnessTargets,
   InstallScope,
+  InstallTargetId,
+  TargetKind,
 } from '../adapters/index.js';
+import type { GateVerdict } from './ci.js';
 import type { SourcePair } from './e2e.js';
 import type { E2eIngestPlan, E2eIngestReport } from './ports.js';
 import type { VariantPair } from './variant.js';
@@ -131,6 +133,58 @@ export interface DiffData {
   result: DiffResult;
 }
 
+/**
+ * `vdiff comment <flow> [base] [head]` — the rendered markdown and what shaped it (CI spec §6).
+ *
+ * The markdown travels *inside* the envelope rather than on stdout when `--json` is given, because
+ * the transport that posts it is the same kind of consumer as an agent: one object, one field to
+ * read, no stream to split. `path` is set when `--out` wrote a file, so a workflow can hand the file
+ * to `gh` without re-serialising the body through a shell.
+ */
+export interface CommentData {
+  flow: string;
+  pair: PairRef;
+  markdown: string;
+  /** The HTML comment an upserting transport searches for (D33). Always the first line of `markdown`. */
+  marker: string;
+  bytes: number;
+  /** Image groups rendered. Zero whenever no `--image-base` was given — GitHub cannot serve one (D31). */
+  images: number;
+  /** What did not fit in the body, so a caller can log it rather than discover it (D33). */
+  truncated: { findings: number; images: number; steps: boolean };
+  /** Absolute path written by `--out`; null when the markdown went to stdout only. */
+  path: string | null;
+  /** The gate that was evaluated. `level: 'none'` — the default — never trips (D30). */
+  gate: GateVerdict;
+  labels: PairLabel[];
+  /** Every pairing sentence the comment carries, in the order it carries them. */
+  notices: string[];
+  result: DiffResult;
+}
+
+/** `vdiff export <flow> [base] [head]` — the bundle that was written (CI spec §5). */
+export interface ExportData {
+  flow: string;
+  pair: PairRef;
+  /** Absolute path of the bundle directory. */
+  outDir: string;
+  /** Bundle-relative paths written, in write order. */
+  files: string[];
+  /** Image files copied. Counts files, not cells: one cell is up to three of them. */
+  images: number;
+  /**
+   * Sources that were expected and absent — a pruned run has no screenshots, and a step with no
+   * base side has no pixel diff. Reported rather than repaired: inventing an image would be worse.
+   */
+  missing: string[];
+  gate: GateVerdict;
+  labels: PairLabel[];
+  notices: string[];
+  /** The bundle's own `comment.md`, rendered with bundle-relative image paths. */
+  comment: { path: string; bytes: number };
+  result: DiffResult;
+}
+
 /** `vdiff feedback [--ack]` */
 export interface FeedbackData {
   count: number;
@@ -156,7 +210,9 @@ export interface PruneData {
 
 /** `vdiff install <harness>` — the adapter files that were (or, with `--dry-run`, would be) written. */
 export interface InstallData {
-  harness: HarnessId;
+  harness: InstallTargetId;
+  /** Which kinds of artifact this target writes (CI spec D34): the agent-facing three, or workflows. */
+  kinds: readonly TargetKind[];
   /** Human name of the harness, e.g. "Claude Code". */
   label: string;
   /** Which target layout was written: project-local by default, user-level under `--global` (D16). */
@@ -195,7 +251,7 @@ export interface InstallListScope {
 
 /** One harness in the `vdiff install --list` payload. */
 export interface InstallListHarness {
-  id: HarnessId;
+  id: InstallTargetId;
   label: string;
   /** Both scopes, project first — `--list` documents targets, not just filenames (§5). */
   scopes: InstallListScope[];
@@ -255,7 +311,7 @@ export interface InstallCheckScope {
 }
 
 export interface InstallCheckHarness {
-  id: HarnessId;
+  id: InstallTargetId;
   label: string;
   /** Project first, then global. Both are always reported, installed or not (D16). */
   scopes: InstallCheckScope[];

@@ -43,6 +43,7 @@ describe('module edges', () => {
       '../mocking/index.js',
       '../variant-apply/index.js',
       '../e2e/index.js',
+      '../ci/index.js',
       '../store/index.js',
       '../runner/index.js',
       '../diff/index.js',
@@ -147,6 +148,7 @@ describe('module edges', () => {
       'adapterFiles',
       'adapterTargets',
       'computeDiff',
+      'exportBundle',
       'ingestE2eTraces',
       'installAdapter',
       'listAdapters',
@@ -159,6 +161,7 @@ describe('module edges', () => {
       'parseVariantFile',
       'planE2eIngest',
       'readInstalledVersion',
+      'renderComment',
       'runFlow',
       'scenarioFile',
       'scenariosDir',
@@ -213,10 +216,15 @@ describe('module edges', () => {
   it('listAdapters reports the real registry, so `vdiff install` cannot list a fiction', async () => {
     const ports = createPorts();
     await expect(ports.listAdapters()).resolves.toEqual(
+      // Read off the adapter, not out of `HARNESS_NOTES`: the CI target is not in that table
+      // (CI spec D34), and a lookup that missed it would report a workflow installer with no caveats.
       adaptersModule.ADAPTERS.map((adapter) => ({
         id: adapter.id,
         label: adapter.label,
-        notes: adaptersModule.HARNESS_NOTES[adapter.id],
+        kinds: adapter.kinds,
+        scopes: adapter.scopes,
+        notes: adapter.notes,
+        next: adapter.next,
       })),
     );
   });

@@ -22,6 +22,16 @@ import {
   type ScenarioName,
   type ViewportId,
 } from '../types.js';
+import {
+  DEFAULT_IMAGE_SELECTION,
+  GATE_LEVELS,
+  GATE_NONE,
+  IMAGE_SELECTIONS,
+  isGateLevel,
+  isImageSelection,
+  type GateLevel,
+  type ImageSelection,
+} from './ci.js';
 import { E2E_SOURCE_FORMATS, isE2eSourceFormat, type E2eSourceFormat } from './e2e.js';
 import { VARIANT_NONE, type VariantName } from './variant.js';
 
@@ -108,6 +118,51 @@ export type Invocation =
        * outright still crosses the axis if that is what was asked for, and the pair is then flagged.
        */
       e2e: boolean;
+      json: boolean;
+    }
+  | {
+      /**
+       * `vdiff comment <flow> [base] [head]` — render a stored diff as pull-request markdown
+       * (CI spec §6, §7). Writes no comment anywhere: the markdown goes to stdout or `--out`, and
+       * whatever transports it does the posting (D29).
+       */
+      kind: 'comment';
+      flow: string;
+      base?: RunId;
+      head?: RunId;
+      scenario?: ScenarioName;
+      variant?: VariantName;
+      e2e: boolean;
+      /** URL prefix the bundle's images are reachable under. Absent means no images at all (D31). */
+      imageBase?: string;
+      artifactUrl?: string;
+      artifactName?: string;
+      /** Opt-in threshold. `none` — the default — never gates (D30). */
+      failOn: GateLevel;
+      maxFindings?: number;
+      maxImages?: number;
+      /** File to write instead of stdout. */
+      out?: string;
+      /** Overrides the marker an upserting transport searches for (D33). */
+      marker?: string;
+      json: boolean;
+    }
+  | {
+      /** `vdiff export <flow> [base] [head]` — write the portable evidence bundle (CI spec §5). */
+      kind: 'export';
+      flow: string;
+      base?: RunId;
+      head?: RunId;
+      scenario?: ScenarioName;
+      variant?: VariantName;
+      e2e: boolean;
+      /** Bundle directory. Defaults to `.visual-diff/exports/<flow>/<base>..<head>`. */
+      out?: string;
+      images: ImageSelection;
+      /** Recorded in the bundle's own `summary.json` and rendered into its `comment.md`. */
+      failOn: GateLevel;
+      artifactUrl?: string;
+      artifactName?: string;
       json: boolean;
     }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
@@ -248,6 +303,44 @@ export const COMMANDS: Record<string, CommandSpec> = {
     minPositionals: 1,
     maxPositionals: 3,
   },
+  comment: {
+    // Only the flags a reader needs to know exist; `vdiff help comment` prints the same line, and the
+    // help table pads every summary to the longest usage string — a 180-character entry pushes every
+    // other command's description off the screen.
+    usage: 'vdiff comment <flow> [base] [head] [--image-base <url>] [--fail-on <level>] [--out <file>]',
+    summary: 'render a stored diff as pull-request markdown',
+    flags: flags({
+      'image-base': { type: 'string' },
+      'artifact-url': { type: 'string' },
+      'artifact-name': { type: 'string' },
+      'fail-on': { type: 'string' },
+      'max-findings': { type: 'number' },
+      'max-images': { type: 'number' },
+      marker: { type: 'string' },
+      out: { type: 'string' },
+      scenario: { type: 'string' },
+      variant: { type: 'string' },
+      e2e: { type: 'boolean' },
+    }),
+    minPositionals: 1,
+    maxPositionals: 3,
+  },
+  export: {
+    usage: 'vdiff export <flow> [base] [head] [--out <dir>] [--images changed|all|none]',
+    summary: 'write a portable evidence bundle: images, JSON, static HTML',
+    flags: flags({
+      out: { type: 'string' },
+      images: { type: 'string' },
+      'artifact-url': { type: 'string' },
+      'artifact-name': { type: 'string' },
+      'fail-on': { type: 'string' },
+      scenario: { type: 'string' },
+      variant: { type: 'string' },
+      e2e: { type: 'boolean' },
+    }),
+    minPositionals: 1,
+    maxPositionals: 3,
+  },
   serve: {
     usage: 'vdiff serve [--open] [--port <n>]',
     summary: 'live local report: filmstrip, side-by-side, findings, feedback',
@@ -278,9 +371,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
   },
   install: {
     usage:
-      'vdiff install <harness> [--global] [--dir <path>] [--force] [--dry-run] | ' +
-      'vdiff install --list [--dir <path>] | vdiff install --check [<harness>] [--dir <path>]',
-    summary: 'write the skill and command files for an agent harness',
+      'vdiff install <target> [--global] [--dir <path>] [--force] [--dry-run] | ' +
+      'vdiff install --list | vdiff install --check [<target>]',
+    summary: 'write the files an agent harness or CI provider reads',
     // `--list` takes no harness, so the arity check moves into the case below — which keeps the
     // `missing-argument` error code identical for a bare `vdiff install`.
     flags: flags({
@@ -556,6 +649,73 @@ function tokenize(
   }
 
   return { ok: true, positionals, values };
+}
+
+/**
+ * The two optional run ids every pair-taking command accepts, in the one position they can occupy.
+ *
+ * `diff`, `comment` and `export` resolve the same pair from the same store, so they take the same
+ * positionals. A command that took them in a different order would be a trap, not a feature.
+ */
+function applyPair(
+  target: { base?: RunId; head?: RunId },
+  positionals: readonly string[],
+): void {
+  const base = positionals[1];
+  const head = positionals[2];
+  if (base !== undefined) target.base = base;
+  if (head !== undefined) target.head = head;
+}
+
+/**
+ * `--scenario` / `--variant` narrowing, and the two combinations that cannot mean anything.
+ *
+ * Shared by every command that resolves a pair, because the refusals are about what the *store* can
+ * answer rather than about which command asked: a scenario shapes responses during capture and a
+ * variant is applied to the page during capture, so neither can narrow a timeline of runs an
+ * external test suite produced (e2e spec §2). Returns null when the invocation was narrowed
+ * successfully, and the failure otherwise.
+ */
+function applyPairFilters(
+  command: string,
+  spec: CommandSpec,
+  values: Record<string, unknown>,
+  wantsE2e: boolean,
+  target: { scenario?: ScenarioName; variant?: VariantName },
+): ParseOutcome | null {
+  const scenario = values['scenario'];
+  if (typeof scenario === 'string') {
+    const invalid = checkScenarioName(command, scenario, 'filter');
+    if (invalid !== null) return invalid;
+    if (wantsE2e && scenario !== SCENARIO_NONE) {
+      return fail(
+        command,
+        'conflicting-flags',
+        `'--e2e' and '--scenario ${scenario}' cannot combine: a scenario shapes responses during capture, and an e2e run was captured by the test suite`,
+        spec.usage,
+      );
+    }
+    target.scenario = scenario;
+  }
+
+  const variant = values['variant'];
+  if (typeof variant === 'string') {
+    const invalid = checkVariantName(command, variant, 'filter');
+    if (invalid !== null) return invalid;
+    // Same refusal as `runs --e2e --variants`, and for the same reason (§2): a variant is applied
+    // to the rendered page during capture, and an e2e capture already happened.
+    if (wantsE2e && variant !== VARIANT_NONE) {
+      return fail(
+        command,
+        'conflicting-flags',
+        `'--e2e' and '--variant ${variant}' cannot combine: a variant is applied during capture, and an e2e run was captured by the test suite`,
+        spec.usage,
+      );
+    }
+    target.variant = variant;
+  }
+
+  return null;
 }
 
 function bool(values: Record<string, unknown>, name: string): boolean {
@@ -890,39 +1050,102 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         e2e: wantsE2e,
         json,
       };
-      const base = positionals[1];
-      const head = positionals[2];
-      if (base !== undefined) invocation.base = base;
-      if (head !== undefined) invocation.head = head;
-      const scenario = values['scenario'];
-      if (typeof scenario === 'string') {
-        const invalid = checkScenarioName('diff', scenario, 'filter');
-        if (invalid !== null) return invalid;
-        if (wantsE2e && scenario !== SCENARIO_NONE) {
-          return fail(
-            'diff',
-            'conflicting-flags',
-            `'--e2e' and '--scenario ${scenario}' cannot combine: a scenario shapes responses during capture, and an e2e run was captured by the test suite`,
-            spec.usage,
-          );
-        }
-        invocation.scenario = scenario;
+      applyPair(invocation, positionals);
+      const narrowed = applyPairFilters('diff', spec, values, wantsE2e, invocation);
+      if (narrowed !== null) return narrowed;
+      return { ok: true, value: invocation };
+    }
+
+    case 'comment': {
+      const wantsE2e = bool(values, 'e2e');
+      const level = values['fail-on'];
+      if (typeof level === 'string' && !isGateLevel(level)) {
+        return fail(
+          'comment',
+          'invalid-fail-on',
+          `unknown --fail-on level '${level}'`,
+          `expected one of: ${GATE_LEVELS.join(', ')}`,
+        );
       }
-      const variant = values['variant'];
-      if (typeof variant === 'string') {
-        const invalid = checkVariantName('diff', variant, 'filter');
-        if (invalid !== null) return invalid;
-        // Same refusal as `runs --e2e --variants`, and for the same reason (§2): a variant is
-        // applied to the rendered page during capture, and an e2e capture already happened.
-        if (wantsE2e && variant !== VARIANT_NONE) {
+      const invocation: Extract<Invocation, { kind: 'comment' }> = {
+        kind: 'comment',
+        flow: positionals[0] as string,
+        e2e: wantsE2e,
+        failOn: typeof level === 'string' ? level : GATE_NONE,
+        json,
+      };
+      applyPair(invocation, positionals);
+      const narrowed = applyPairFilters('comment', spec, values, wantsE2e, invocation);
+      if (narrowed !== null) return narrowed;
+
+      for (const [flag, field] of [
+        ['image-base', 'imageBase'],
+        ['artifact-url', 'artifactUrl'],
+        ['artifact-name', 'artifactName'],
+        ['marker', 'marker'],
+        ['out', 'out'],
+      ] as const) {
+        const value = values[flag];
+        if (typeof value === 'string') invocation[field] = value;
+      }
+      for (const [flag, field] of [
+        ['max-findings', 'maxFindings'],
+        ['max-images', 'maxImages'],
+      ] as const) {
+        const value = values[flag];
+        if (typeof value !== 'number') continue;
+        if (!Number.isInteger(value) || value < 0) {
           return fail(
-            'diff',
-            'conflicting-flags',
-            `'--e2e' and '--variant ${variant}' cannot combine: a variant is applied during capture, and an e2e run was captured by the test suite`,
+            'comment',
+            'invalid-cap',
+            `--${flag} must be a non-negative whole number, got '${value}'`,
             spec.usage,
           );
         }
-        invocation.variant = variant;
+        invocation[field] = value;
+      }
+      return { ok: true, value: invocation };
+    }
+
+    case 'export': {
+      const wantsE2e = bool(values, 'e2e');
+      const images = values['images'];
+      if (typeof images === 'string' && !isImageSelection(images)) {
+        return fail(
+          'export',
+          'invalid-images',
+          `unknown --images selection '${images}'`,
+          `expected one of: ${IMAGE_SELECTIONS.join(', ')}`,
+        );
+      }
+      const level = values['fail-on'];
+      if (typeof level === 'string' && !isGateLevel(level)) {
+        return fail(
+          'export',
+          'invalid-fail-on',
+          `unknown --fail-on level '${level}'`,
+          `expected one of: ${GATE_LEVELS.join(', ')}`,
+        );
+      }
+      const invocation: Extract<Invocation, { kind: 'export' }> = {
+        kind: 'export',
+        flow: positionals[0] as string,
+        e2e: wantsE2e,
+        images: typeof images === 'string' ? images : DEFAULT_IMAGE_SELECTION,
+        failOn: typeof level === 'string' ? level : GATE_NONE,
+        json,
+      };
+      applyPair(invocation, positionals);
+      const narrowed = applyPairFilters('export', spec, values, wantsE2e, invocation);
+      if (narrowed !== null) return narrowed;
+
+      for (const [flag, field] of [
+        ['out', 'out'],
+        ['artifact-url', 'artifactUrl'],
+        ['artifact-name', 'artifactName'],
+      ] as const) {
+        const value = values[flag];
+        if (typeof value === 'string') invocation[field] = value;
       }
       return { ok: true, value: invocation };
     }
