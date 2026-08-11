@@ -36,13 +36,20 @@ import type {
   ValidationResult,
 } from '../types.js';
 import type {
-  HarnessId,
   HarnessInstallDetail,
   HarnessTargets,
   InstallOptions,
   InstallScope,
+  InstallTargetId,
   ManagedFile,
+  TargetKind,
 } from '../adapters/index.js';
+import type {
+  CommentDocument,
+  CommentInput,
+  ExportReport,
+  ExportRequest,
+} from '../ci/index.js';
 import type { E2eOrigin, E2eSourceFormat } from './e2e.js';
 import type { VariantName, VariantSpec } from './variant.js';
 
@@ -124,6 +131,8 @@ export interface StorePort {
   runDir(flow: string, runId: RunId): string;
   /** Absolute path of `diffs/<flow>/<base>..<head>/findings.json`. */
   diffFile(pair: PairRef): string;
+  /** Absolute path of the default export bundle directory for a pair (CI spec §5). */
+  exportDir(pair: PairRef): string;
   /** Cached `findings.json` for the pair, or null when it has never been computed. */
   readDiff(pair: PairRef): Promise<DiffResult | null>;
   /** Persists `findings.json` (plus crops) and returns its absolute path. */
@@ -297,6 +306,21 @@ export interface Ports {
    */
   ingestE2eTraces(config: Config, request: E2eIngestRequest): Promise<E2eIngestReport>;
 
+  /*
+   * The CI edge (`ci/index.ts`). Two calls, both pure functions of a stored diff (CI spec D29): one
+   * renders markdown, one writes a directory. Neither takes a token or opens a socket — posting a
+   * comment and pushing images belong to whatever transports the result, which for GitHub is the
+   * composite action, where the credential already lives.
+   *
+   * Behind the lazy edge like every other module here, and it matters for this one: the bundle
+   * writer pulls in `node:fs` and the store's path builders, and `vdiff runs` must not.
+   */
+
+  /** `ci/index.ts#renderComment` — a stored diff as pull-request markdown (CI spec §6). */
+  renderComment(input: CommentInput): Promise<CommentDocument>;
+  /** `ci/index.ts#exportBundle` — the portable evidence bundle (CI spec §5). */
+  exportBundle(request: ExportRequest): Promise<ExportReport>;
+
   /** `store/index.ts#openStore`. */
   openStore(config: Config): Promise<StorePort>;
   /** `runner/index.ts#runFlow`. */
@@ -352,7 +376,17 @@ export interface Ports {
  * visible in a selector, or the skill mechanism being switched off by configuration.
  */
 export interface HarnessInfo {
-  id: HarnessId;
+  id: InstallTargetId;
   label: string;
+  /**
+   * Which kinds of artifact this target writes (CI spec D34). Install output prints exactly these,
+   * so a harness with no command mechanism is reported as having none (D15) while the GitHub Actions
+   * target is not asked to explain why it ships no skills.
+   */
+  kinds: readonly TargetKind[];
+  /** Scopes it has. `.github/workflows` is per repository, so the CI target has `project` only. */
+  scopes: readonly InstallScope[];
   notes: readonly string[];
+  /** What to do next, printed after a successful install. */
+  next: readonly string[];
 }

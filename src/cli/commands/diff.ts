@@ -20,108 +20,31 @@
  * almost every finding in a mixed pair describes the capture rather than the application.
  */
 
-import {
-  DEFAULTS,
-  DIFF_ENGINE_VERSION,
-  SCENARIO_NONE,
-  type DiffEngineOptions,
-  type DiffResult,
-  type PairLabel,
-  type PairScenarios,
-} from '../../types.js';
+import { SCENARIO_NONE } from '../../types.js';
 import type { Invocation } from '../args.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { classifySourcePair, describeSourcePair, E2E_DEGRADED_SENTENCES } from '../e2e.js';
 import { percent, table } from '../output.js';
-import type { RunFilter } from '../ports.js';
+import { describeLabel, pairLabels, showScenario } from '../pair-notices.js';
 import type { DiffData } from '../shapes.js';
 import { classifyVariantPair, describeVariantPair, VARIANT_NONE } from '../variant.js';
+import { resolveDiff } from './pair.js';
 
 type DiffInvocation = Extract<Invocation, { kind: 'diff' }>;
 
-/** The labels this pair carries, in severity order. Empty for a same-scenario pair. */
-export function pairLabels(scenarios: PairScenarios | undefined): PairLabel[] {
-  if (scenarios === undefined) return [];
-  const labels: PairLabel[] = [];
-  if (scenarios.mockVsRecorded) labels.push('mock-vs-recorded');
-  if (scenarios.crossScenario) labels.push('cross-scenario');
-  return labels;
-}
-
-const showScenario = (name: string): string => (name === SCENARIO_NONE ? 'no scenario' : name);
-
-/**
- * The sentence each label prints. Both state what the tool does not know rather than refusing the
- * comparison (mocking spec §6): a cross-scenario pair is a legitimate question about two states,
- * and a mock-versus-recorded pair compares a fiction to a measurement.
- */
-export function describeLabel(label: PairLabel, scenarios: PairScenarios): string {
-  switch (label) {
-    case 'cross-scenario':
-      return (
-        `cross-scenario: base ran '${showScenario(scenarios.base)}', head ran ` +
-        `'${showScenario(scenarios.head)}' — this compares two states, not two revisions`
-      );
-    case 'mock-vs-recorded':
-      return (
-        'mock-vs-recorded: one side is a mock-only run with no recording behind it — ' +
-        'this compares a fiction to a measurement'
-      );
-  }
-}
+// The three pairing axes are composed in `../pair-notices.ts` so that `vdiff diff`, `vdiff comment`
+// and the exported bundle cannot disagree about what a pair is. This command still assembles its own
+// lines, because the `!` markers and their placement above the step table are its own output
+// contract; only the sentences and the severity rule are shared.
+export { describeLabel, pairLabels };
 
 export async function diff(
   ctx: CommandContext,
   invocation: DiffInvocation,
 ): Promise<CommandResult<DiffData>> {
-  const config = await ctx.ports.loadConfig(ctx.cwd);
-  const store = await ctx.ports.openStore(config);
-  const filter: RunFilter = {};
-  if (invocation.scenario !== undefined) filter.scenario = invocation.scenario;
-  if (invocation.variant !== undefined) filter.variant = invocation.variant;
-  // The source axis constrains which runs a *default* pair may be resolved over, and only that.
-  //
-  //  - `--e2e` asks for the ingested timeline: `only`.
-  //  - No flag and no run named: the store's own default, `exclude`, which is the replay timeline
-  //    and therefore exactly what `vdiff diff <flow>` meant before this slice. Left unset rather
-  //    than restated, so there is one place that decides it.
-  //  - A run named outright is an explicit request for that run whatever it was captured by, so the
-  //    bucket filter stands aside and a mixed pair is allowed to happen — the pairing D27 permits
-  //    and flags rather than forbidding.
-  if (invocation.e2e) filter.e2e = 'only';
-  else if (invocation.base !== undefined || invocation.head !== undefined) filter.e2e = 'include';
-  const pair = await store.resolvePair(
-    invocation.flow,
-    invocation.base,
-    invocation.head,
-    filter,
-  );
-
-  const options: DiffEngineOptions = {
-    minRegionArea: config.diff.minRegionArea,
-    maxRegions: config.diff.maxRegions,
-    antialiasTolerance: config.diff.antialiasTolerance,
-    ignore: config.diff.ignore,
-    engineVersion: DIFF_ENGINE_VERSION,
-    deviceScaleFactor: DEFAULTS.deviceScaleFactor,
-  };
-
-  const stored = await store.readDiff(pair);
-  const reusable = stored !== null && stored.engineVersion === options.engineVersion;
-
-  let result: DiffResult;
-  let path: string;
-  if (reusable && stored !== null) {
-    result = stored;
-    path = store.diffFile(pair);
-  } else {
-    result = await ctx.ports.computeDiff(
-      store.runDir(pair.flow, pair.base),
-      store.runDir(pair.flow, pair.head),
-      options,
-    );
-    path = await store.writeDiff(pair, result);
-  }
+  // Pair resolution and the cache rule are shared with `comment` and `export` (see `./pair.ts`):
+  // three commands describing the same object must not disagree about which object it is.
+  const { pair, result, path, cached: reusable } = await resolveDiff(ctx, invocation);
 
   const summary = result.summary;
   const labels = pairLabels(result.scenarios);

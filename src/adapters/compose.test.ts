@@ -139,6 +139,8 @@ describe('path construction', () => {
       skills: '.agents/skills',
       commands: null,
       instructions: null,
+      // Never a workflow: `.github/workflows` belongs to a CI target, not to an agent (CI spec D34).
+      workflows: null,
     });
   });
 });

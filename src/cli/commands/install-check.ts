@@ -168,6 +168,10 @@ export async function checkHarness(
 ): Promise<InstallCheckHarness> {
   const scopes: InstallCheckScope[] = [];
   for (const scope of SCOPES) {
+    // Only the scopes this target has. Both, for every harness (D16); `project` alone for the
+    // GitHub Actions target, because `.github/workflows` is per repository — and a row saying
+    // "not installed" about a location that cannot exist is worse than no row (CI spec §7).
+    if (!harness.scopes.includes(scope)) continue;
     scopes.push(await checkScope(ctx, harness.id, scope, scopeRoot(scope, cwd, home, dir)));
   }
 

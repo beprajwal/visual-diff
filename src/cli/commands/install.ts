@@ -22,7 +22,7 @@
 import { homedir } from 'node:os';
 
 import { EXIT } from '../../types.js';
-import type { HarnessTargets, InstallScope } from '../../adapters/index.js';
+import type { HarnessTargets, InstallScope, TargetKind } from '../../adapters/index.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import type { Invocation } from '../args.js';
 import { configError, isCliErrorLike } from '../error.js';
@@ -49,11 +49,12 @@ const STATUS_LABEL: Record<string, string> = {
 /** Filesystem errors that mean "this path is not yours to write" rather than "the disk broke". */
 const NOT_WRITABLE = new Set(['EACCES', 'EPERM', 'EROFS', 'ENOSPC', 'ENOTDIR', 'EISDIR']);
 
-/** The three kinds of target a harness may have, in install order. */
-const TARGET_KINDS: ReadonlyArray<['skills' | 'commands' | 'instructions', string]> = [
+/** The kinds of target an install can write, in install order. */
+const TARGET_KINDS: ReadonlyArray<[TargetKind, string]> = [
   ['skills', 'skills'],
   ['commands', 'commands'],
   ['instructions', 'instructions'],
+  ['workflows', 'workflows'],
 ];
 
 export async function install(
@@ -92,6 +93,19 @@ async function installHarness(
 ): Promise<CommandResult<InstallData>> {
   const match = requireHarness(harnesses, invocation.harness);
   const target = resolveTarget(invocation, ctx.cwd, home);
+  // A scope this target does not have is refused here rather than written somewhere invented:
+  // `.github/workflows` exists per repository, and there is no `~/.github/workflows` (CI spec §7).
+  if (!match.scopes.includes(target.scope)) {
+    throw configError(
+      'unsupported-scope',
+      `${match.label} has no ${target.scope} target`,
+      {
+        hint:
+          `it writes ${match.kinds.join(', ')}, which exist per ` +
+          `${match.scopes.join(' and ')}; re-run without --global`,
+      },
+    );
+  }
   const targets = await ctx.ports.adapterTargets(match.id, target.scope);
 
   let report;
@@ -112,7 +126,7 @@ async function installHarness(
       ? `dry run — nothing written (${match.label}, ${target.scope}: ${target.root})`
       : `${match.label} → ${target.root} (${target.scope})`,
   );
-  for (const line of targetLines(match.label, targets)) human.push(line);
+  for (const line of targetLines(match.label, targets, match.kinds)) human.push(line);
   human.push('');
 
   for (const file of report.files) {
@@ -134,13 +148,19 @@ async function installHarness(
     for (const note of match.notes) human.push(`note: ${note}`);
   }
 
-  if (!invocation.dryRun) {
+  // What to do next comes from the target, not from this file: after a harness install it is
+  // `vdiff init`; after a workflow install it is committing the file, because a workflow GitHub has
+  // never seen never runs.
+  if (!invocation.dryRun && match.next.length > 0) {
     human.push('');
-    human.push('Next: `vdiff init` to scaffold .visual-diff/, then `vdiff run <flow>`.');
+    for (const [index, step] of match.next.entries()) {
+      human.push(index === 0 ? `Next: ${step}` : `      ${step}`);
+    }
   }
 
   const data: InstallData = {
     harness: match.id,
+    kinds: match.kinds,
     label: match.label,
     scope: target.scope,
     root: target.root,
@@ -165,10 +185,22 @@ async function installHarness(
     : { data, human, warnings, exitCode: EXIT.OK };
 }
 
-/** `skills → .claude/skills`, and a plain statement for a mechanism the harness does not have. */
-function targetLines(label: string, targets: HarnessTargets): string[] {
+/**
+ * `skills → .claude/skills`, and a plain statement for a mechanism the harness does not have (D15).
+ *
+ * Only the kinds this target is *about* are listed. A harness with no command directory says so,
+ * because a user who expected slash commands needs to be told they are not coming; the GitHub
+ * Actions target is not asked to explain why it ships no skills, because nobody expected any from a
+ * workflow installer (CI spec D34).
+ */
+function targetLines(
+  label: string,
+  targets: HarnessTargets,
+  kinds: readonly TargetKind[],
+): string[] {
   const lines: string[] = [];
   for (const [key, name] of TARGET_KINDS) {
+    if (!kinds.includes(key)) continue;
     const path = targets[key];
     lines.push(
       path === null
@@ -195,6 +227,8 @@ async function otherScopeWarnings(
   home: string,
 ): Promise<string[]> {
   const other: InstallScope = installed === 'project' ? 'global' : 'project';
+  // A target with one scope has no other copy to notice — there is no `~/.github/workflows`.
+  if (!harness.scopes.includes(other)) return [];
   const scope = await checkScope(ctx, harness.id, other, scopeRoot(other, ctx.cwd, home));
   if (!isInstalled(scope)) return [];
   if (scope.status === 'current') {
@@ -260,6 +294,8 @@ async function listHarnesses(
   for (const harness of harnesses) {
     const scopes: InstallListScope[] = [];
     for (const scope of SCOPES) {
+      // Same rule as `--check`: list the scopes this target actually has (CI spec §7).
+      if (!harness.scopes.includes(scope)) continue;
       const files = await ctx.ports.adapterFiles(harness.id, scope);
       scopes.push({
         scope,
@@ -282,7 +318,9 @@ async function listHarnesses(
     human.push('');
   }
 
-  human.push('Install one with `vdiff install <harness>`; add --global for the user-level target.');
+  human.push(
+    'Install one with `vdiff install <target>`; add --global for a user-level target that has one.',
+  );
 
   return { data: { harnesses: rows }, human, exitCode: EXIT.OK };
 }

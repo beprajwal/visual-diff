@@ -17,6 +17,36 @@ import {
 } from './files.js';
 import { BLOCK_END, BLOCK_START, MalformedBlockError } from './blocks.js';
 
+describe('stamp comment styles (CI spec D34)', () => {
+  it('writes the hash style for a file that cannot carry an HTML comment', () => {
+    expect(stampLine('a'.repeat(64), 'hash')).toBe(
+      `# vdiff:managed ${MANAGED_STAMP_VERSION} sha256:${'a'.repeat(64)}`,
+    );
+    expect(renderManaged('name: x\n', 'hash')).toMatch(/^name: x\n\n# vdiff:managed v1 sha256:[0-9a-f]{64}\n$/);
+  });
+
+  it('reads either style back, whichever the caller expected', () => {
+    for (const style of ['html', 'hash'] as const) {
+      const rendered = renderManaged('body\n', style);
+      expect(isUnmodifiedManaged(rendered), style).toBe(true);
+      expect(parseManaged(rendered)?.body, style).toBe('body\n');
+      expect(planFile(rendered, 'body\n', false, style), style).toBe('unchanged');
+    }
+  });
+
+  it('treats a stamp in the other style as ours, so a style change is not a lost edit', () => {
+    // The bytes differ, so the file is rewritten — but it is `updated`, not `preserved`: nothing a
+    // human wrote is at risk, and refusing to touch it would freeze the install forever.
+    const htmlStamped = renderManaged('body\n', 'html');
+    expect(planFile(htmlStamped, 'body\n', false, 'hash')).toBe('updated');
+  });
+
+  it('an edited file is still preserved, whatever the style', () => {
+    const edited = `${renderManaged('body\n', 'hash')}extra\n`;
+    expect(planFile(edited, 'body\n', false, 'hash')).toBe('preserved');
+  });
+});
+
 describe('normalizeBody', () => {
   it('converts CRLF to LF and ends with exactly one newline', () => {
     expect(normalizeBody('a\r\nb\r\n')).toBe('a\nb\n');

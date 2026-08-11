@@ -16,8 +16,9 @@ const HEADER = [
 const FOOTER = [
   '',
   'Every command accepts --json and emits a single envelope object on stdout.',
-  'Exit codes: 0 success, 1 run or replay failure, 2 config or spec error.',
+  'Exit codes: 0 success, 1 run or replay failure, 2 config or spec error, 3 gate tripped.',
   '`vdiff diff` exits 0 even when findings exist — findings are information, not a gate.',
+  'Exit 3 is reachable only from `vdiff comment --fail-on high|any`, which nothing sets by default.',
 ];
 
 export function help(topic?: string): CommandResult<HelpData> {

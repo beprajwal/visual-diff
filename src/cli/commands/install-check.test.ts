@@ -23,7 +23,20 @@ import { checkScope, driftNotice, installCheck, isInstalled, statusLabel } from 
 const HARNESS: HarnessInfo = {
   id: 'claude-code',
   label: 'Claude Code',
+  kinds: ['skills', 'commands', 'instructions'],
+  scopes: ['project', 'global'],
   notes: ['a personal copy overrides the project one'],
+  next: ['`vdiff init`'],
+};
+
+/** A target with one scope, so `--check` reports one row rather than a row about `~/.github` (D34). */
+const CI_TARGET: HarnessInfo = {
+  id: 'github-actions',
+  label: 'GitHub Actions',
+  kinds: ['workflows'],
+  scopes: ['project'],
+  notes: ['nothing is committed for you'],
+  next: ['commit the workflow'],
 };
 
 const PATHS = fakeManagedFiles().map((file) => file.path);
@@ -207,6 +220,17 @@ describe('installCheck', () => {
     ]);
     expect(result.data.harnesses[0]?.notes).toEqual(HARNESS.notes);
     expect(result.data.version).toBe('1.0.0');
+  });
+
+  it('reports only the scopes a target has (CI spec §7)', async () => {
+    const result = await installCheck(
+      context(portsReporting(['created'])),
+      [CI_TARGET],
+      '/home/u',
+    );
+
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(result.data.harnesses[0]?.scopes.map((scope) => scope.scope)).toEqual(['project']);
   });
 
   it('calls a missing install "not drift" and a modified one drift', async () => {
