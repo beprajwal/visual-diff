@@ -106,7 +106,7 @@ async function loadModule(specifier: string): Promise<Record<string, unknown>> {
     throw runFailure(
       'module-missing',
       `internal module '${specifier}' could not be loaded`,
-      { hint: 'reinstall @beprajwal/visual-diff, or run `npm run build` in a source checkout', cause },
+      { hint: 'reinstall @beprajwal/visual-diff, or run `pnpm build` in a source checkout', cause },
     );
   }
 }

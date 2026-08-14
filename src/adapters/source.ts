@@ -109,7 +109,7 @@ export async function resolveSkillsDir(
   );
   throw new Error(
     `visual-diff skill sources not found: no ${MANIFEST_FILE} under any of ${looked}. ` +
-      'Reinstall @beprajwal/visual-diff, or run `npm run build` in a source checkout.',
+      'Reinstall @beprajwal/visual-diff, or run `pnpm build` in a source checkout.',
   );
 }
 

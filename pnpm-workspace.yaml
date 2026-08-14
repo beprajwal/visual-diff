@@ -1,0 +1,8 @@
+# The workspace, which pnpm reads instead of `package.json#workspaces` (pnpm ignores that field).
+#
+# `fixtures/app` is a member. `fixtures/storefront` deliberately is NOT: the dogfood pipeline and
+# `vdiff run` treat it as a *user project* and install its dependencies themselves through
+# `src/runner/deps.ts`, so a `fixtures/*` glob here would hand it a workspace `node_modules` and
+# quietly stop testing the install path that every real consumer takes.
+packages:
+  - fixtures/app

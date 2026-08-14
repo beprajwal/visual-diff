@@ -54,7 +54,7 @@ export async function loadPlaywright(): Promise<PlaywrightModule> {
       code: 'playwright-missing',
       message: 'playwright-core is not installed',
       kind: 'browser-missing',
-      hint: 'reinstall @beprajwal/visual-diff, or run `npm install` in a source checkout',
+      hint: 'reinstall @beprajwal/visual-diff, or run `pnpm install` in a source checkout',
       cause,
     });
   }

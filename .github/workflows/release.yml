@@ -2,7 +2,7 @@ name: Release
 
 # Dormant until you push a version tag. Nothing here runs on a normal push.
 #
-#   npm version minor        # bumps package.json and creates the tag
+#   pnpm version minor       # bumps package.json, runs sync-version.mjs, creates the tag
 #   git push --follow-tags   # this workflow takes it from there
 #
 # Publishing uses npm provenance: the registry records a signed, verifiable link from the
@@ -39,13 +39,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before setup-node: `cache: pnpm` shells out to pnpm to find the store, so pnpm must exist.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       # A tag that disagrees with package.json publishes a version nobody can trace back to a
       # commit, which is exactly what provenance is supposed to prevent.
@@ -61,10 +64,10 @@ jobs:
           fi
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Resolve playwright-core version
         id: pw
@@ -99,8 +102,14 @@ jobs:
       # The full suite gates the release. A version that cannot pass its own determinism test has
       # no business being published.
       - name: Test
-        run: npm test
+        run: pnpm test
 
+      # Installing and running scripts is pnpm's job in this repo; publishing stays npm's. The
+      # trusted-publisher registration on the registry names this repo and this workflow and expects
+      # an `npm publish` OIDC exchange, npm ships with the runner regardless, and the tarball a
+      # consumer installs should be produced by the tool that publishes it. `npm publish` runs
+      # `prepack`, which is `pnpm run build` — pnpm is on PATH from action-setup above.
+      #
       # Trusted publishing needs a newer npm than Node 20 bundles. It exchanges the OIDC token
       # minted by `id-token: write` above for a short-lived credential, so there is no NPM_TOKEN
       # secret in this repo — nothing to leak, nothing to rotate, and only this workflow file can

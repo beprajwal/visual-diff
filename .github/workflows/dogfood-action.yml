@@ -54,19 +54,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      # The tarball, not the source tree: `npm pack` runs the real build through `prepack`, so what
-      # gets exercised below is what a user would have installed.
+      # The tarball, not the source tree: what gets exercised below is what a user would have
+      # installed, so the pack and the global install stay on npm even though this repo installs its
+      # own dependencies with pnpm — a consumer reaches this build through the npm registry.
       - name: Pack and install this build globally
         run: |
           set -euo pipefail
-          npm run build
+          pnpm run build
           npm pack --ignore-scripts
           tarball=$(ls -t ./*.tgz | head -1)
           echo "installing $tarball"
