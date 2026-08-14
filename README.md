@@ -1,4 +1,16 @@
-# visual-diff
+<p align="center">
+  <img src="assets/cover.png" alt="visual-diff — replay an agent-authored UI flow across revisions; pixels say where changed, the DOM says what changed" width="900">
+</p>
+
+<h1 align="center">visual-diff</h1>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@beprajwal/visual-diff"><img alt="npm version" src="https://img.shields.io/npm/v/%40beprajwal%2Fvisual-diff?style=flat-square&logo=npm&logoColor=white&label=npm&color=ff6ab2"></a>
+  <a href="https://github.com/beprajwal/visual-diff/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/beprajwal/visual-diff/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI"></a>
+  <a href="#on-a-pull-request"><img alt="GitHub Action" src="https://img.shields.io/badge/GitHub%20Action-composite-6ea8ff?style=flat-square&logo=github&logoColor=white"></a>
+  <a href="#quickstart-no-install"><img alt="node" src="https://img.shields.io/node/v/%40beprajwal%2Fvisual-diff?style=flat-square&logo=nodedotjs&logoColor=white&label=node"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/npm/l/%40beprajwal%2Fvisual-diff?style=flat-square&color=56d364"></a>
+</p>
 
 Replay an agent-authored UI workflow against one or more revisions of a frontend, capture full
 evidence per step, compute annotated visual and semantic diffs between any two runs, and review
@@ -191,6 +203,12 @@ a composite action, so `.github/workflows/dogfood-action.yml` does: dispatch it 
 runs the whole pipeline against `fixtures/storefront`, capturing a baseline, restoring it from the
 cache with the runs directory deleted, diffing a real overlay commit, and checking the bundle it
 produced. It is `workflow_dispatch` only, for the same reason the slow-path job is.
+
+The README artwork lives in `assets/`: `logo.svg` is the mark (also good as the repository avatar and
+social preview), `cover.svg` is the banner, and `node scripts/render-assets.mjs` rasterises both to
+the PNGs the README embeds. The README points at PNGs, not the SVGs, because npm rewrites relative
+image paths to raw.githubusercontent.com, which serves SVG as `text/plain` — an SVG banner renders on
+GitHub and breaks on the npm page. `assets/` is development-only and is not published.
 
 `npm pack` runs the build (`prepack`) and produces the tarball a consumer actually gets;
 `tests/packaging/pack.test.ts` asserts its shape — executable bin with a shebang, `.d.ts` present,

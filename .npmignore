@@ -9,6 +9,7 @@ tests/
 fixtures/
 scripts/
 docs/
+assets/
 .superpowers/
 .visual-diff/
 

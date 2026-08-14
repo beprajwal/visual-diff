@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="visual-diff">
+  <title>visual-diff</title>
+  <defs>
+    <linearGradient id="vd-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c1f1e"/>
+      <stop offset="1" stop-color="#0b0d0c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- tile: self-contained so the mark reads on a light or a dark page -->
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="14" fill="url(#vd-tile)" stroke="#2a2f2c" stroke-width="1.5"/>
+
+  <!-- the side-by-side seam -->
+  <line x1="32" y1="15" x2="32" y2="49" stroke="#3d4441" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3 4"/>
+
+  <!-- base pane: three elements, the middle one short -->
+  <g fill="#6e756f">
+    <rect x="10" y="19" width="19" height="6" rx="2"/>
+    <rect x="10" y="29" width="12" height="6" rx="2"/>
+    <rect x="10" y="39" width="19" height="6" rx="2"/>
+  </g>
+
+  <!-- head pane: same layout, the middle element grew -->
+  <g fill="#6e756f">
+    <rect x="35" y="19" width="19" height="6" rx="2"/>
+    <rect x="35" y="39" width="19" height="6" rx="2"/>
+  </g>
+  <rect x="35" y="29" width="19" height="6" rx="2" fill="#ff6ab2"/>
+
+  <!-- the named changed region -->
+  <rect x="32.5" y="25.5" width="24" height="13" rx="3.5" fill="#ff6ab2" fill-opacity="0.12" stroke="#ff6ab2" stroke-width="1.5" stroke-opacity="0.85"/>
+</svg>
