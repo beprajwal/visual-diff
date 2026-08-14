@@ -1,0 +1,68 @@
+src/cli/deps.ts
+  s_cd149a35225b79::t_177bdf5163d4f7 109
+.npmignore
+  s_cd149a35225b79::t_25c78b1aae5b18 25-29
+src/report/server/routes.ts
+  s_cd149a35225b79::t_177bdf5163d4f7 104
+.github/workflows/dogfood-action.yml
+  s_cd149a35225b79::t_9525b7054be124 57-58,62,64,66-68,72
+src/runner/browser.ts
+  s_cd149a35225b79::t_177bdf5163d4f7 57
+tests/packaging/package-name.test.ts
+  s_cd149a35225b79::t_d9e633c079e777 39-42
+  s_cd149a35225b79::t_9a80da2acbbf21 101-102
+  s_cd149a35225b79::t_aed02282f38c42 118-119
+package.json
+  s_cd149a35225b79::t_47dbac5fc70af0 40-45
+  s_cd149a35225b79::t_a4b52c9a2720fb 61
+  s_cd149a35225b79::t_1f770dd2023452 47
+  s_cd149a35225b79::t_8794cab43eef14 60
+.github/workflows/release.yml
+  s_cd149a35225b79::t_6af994f00fc272 42-44,48,51
+  s_cd149a35225b79::t_95fd558ce66571 5
+  s_cd149a35225b79::t_2c1b91c1bb1b6f 107-112
+  s_cd149a35225b79::t_644a25b8f39c4e 67,70,105
+  s_cd466549aed33c::t_a167923a62ac94 106
+pnpm-workspace.yaml
+  s_cd149a35225b79::t_b3a4c9c028d070 1-8
+README.md
+  s_cd149a35225b79::t_4bc36da09bf93f 193-194
+  s_cd149a35225b79::t_267482a0e4a7ba 216
+  s_cd149a35225b79::t_41c0456ba89fd1 170-172,174-178,181-192,195-197
+  s_cd466549aed33c::t_cadab3d4425cd6 198
+src/adapters/source.ts
+  s_cd149a35225b79::t_177bdf5163d4f7 112
+.github/workflows/ci.yml
+  s_cd149a35225b79::t_76a2d32aea1180 37,40,79,83
+  s_cd149a35225b79::t_cb45e6e502fecb 90,94-95
+  s_cd149a35225b79::t_9f227c0e94be5f 137,141-143,145
+  s_cd149a35225b79::t_60c3fbf523edd6 25-28,32,34
+  s_cd149a35225b79::t_aceb3274694f8c 99-100,104
+  s_cd149a35225b79::t_124af291ef4865 81-82
+pnpm-lock.yaml
+  s_cd149a35225b79::t_75ccf8baffaafd 1-1935
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "11df95bfa5e5fe1ef3fa49f0a826dc0b4f5152eb",
+  "prompts": {},
+  "sessions": {
+    "s_cd149a35225b79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51355575-a208-41c2-8af4-504ba1d9547b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_cd466549aed33c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce641824-605e-4b5c-a251-2d7cd845c715",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
