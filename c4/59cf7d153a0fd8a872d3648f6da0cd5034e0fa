@@ -1,0 +1,30 @@
+assets/cover.svg
+  s_cd149a35225b79::t_8ccaf35267ca0a 69,87-88,92-93
+  s_cd149a35225b79::t_db70b042e07bfe 1-68,70-86,89-91,94-99
+.npmignore
+  s_cd149a35225b79::t_2e6794774b0fab 12
+scripts/render-assets.mjs
+  s_cd149a35225b79::t_366b1c16d581f7 1-39
+  s_cd149a35225b79::t_b28417fe2feb5f 40
+assets/logo.svg
+  s_cd149a35225b79::t_bef10bfdcf000f 1-32
+README.md
+  s_cd149a35225b79::t_7ec86dbb63daac 1-13
+  s_cd149a35225b79::t_c836a068518217 207-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "c459cf7d153a0fd8a872d3648f6da0cd5034e0fa",
+  "prompts": {},
+  "sessions": {
+    "s_cd149a35225b79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51355575-a208-41c2-8af4-504ba1d9547b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
