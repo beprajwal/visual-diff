@@ -37,11 +37,14 @@
   "engines": {
     "node": ">=20"
   },
-  "workspaces": [
-    "fixtures/app"
-  ],
+  "packageManager": "pnpm@10.11.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "scripts": {
-    "build": "npm run clean && npm run build:ts && npm run build:ui && npm run build:skills && npm run build:bin",
+    "build": "pnpm run clean && pnpm run build:ts && pnpm run build:ui && pnpm run build:skills && pnpm run build:bin",
     "clean": "node scripts/clean.mjs",
     "build:ts": "tsc -p tsconfig.json",
     "build:ui": "node scripts/build-ui.mjs",
@@ -54,8 +57,8 @@
     "test:slow": "vitest run --config tests/slow/vitest.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "tsc -p tsconfig.test.json --noEmit",
-    "prepack": "npm run build",
-    "version": "node scripts/sync-version.mjs && git add src/version.ts"
+    "prepack": "pnpm run build",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts action.yml"
   },
   "keywords": [
     "visual-diff",

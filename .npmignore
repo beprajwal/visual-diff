@@ -22,6 +22,11 @@ tsconfig.json
 tsconfig.test.json
 vitest.config.ts
 
+# Development install metadata. pnpm manages this repo; the package it publishes is manager-agnostic,
+# and a consumer resolving their own tree has no use for ours.
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
 *.test.ts
 *.test.tsx
 *.tsbuildinfo

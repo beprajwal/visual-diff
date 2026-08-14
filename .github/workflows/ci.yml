@@ -22,18 +22,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before setup-node, not after: `cache: pnpm` resolves the store path by running pnpm, so pnpm
+      # has to be on PATH already. The version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       # Chromium lives outside node_modules, so it needs its own cache. The key is tied to the
       # playwright-core version: a bumped dependency must fetch a matching browser build, and a
@@ -72,29 +76,32 @@ jobs:
           "
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
-      # The slow suite (real worktree + npm install + replay at a historical SHA) is deliberately
-      # excluded: it takes minutes and needs network inside the worktree. Run it with
-      # `npm run test:slow` locally, or via workflow_dispatch on the slow-path job below.
+      # The slow suite (real worktree + a dependency install + replay at a historical SHA) is
+      # deliberately excluded: it takes minutes and needs network inside the worktree. Run it with
+      # `pnpm run test:slow` locally, or via workflow_dispatch on the slow-path job below.
 
   pack:
     name: pack
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
 
       # Guards the npx story: the tarball must stay small, must not leak sources or sourcemaps,
       # and must actually contain the skills that ship alongside the CLI.
+      # `npm pack`, not `pnpm pack`: the tarball a consumer installs is the one npm publishes, so the
+      # thing under test has to be produced by the same tool that produces the release.
       - name: Pack and inspect the tarball
         run: |
           npm pack --dry-run --json --ignore-scripts > /dev/null || true
-          npm run build
+          pnpm run build
           npm pack --ignore-scripts
           TARBALL=$(ls -t ./*.tgz | head -1)
           echo "tarball: $TARBALL"
@@ -127,11 +134,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
       - run: node dist/cli/index.js install-browser
-      - run: npm run test:slow
+      - run: pnpm run test:slow

@@ -101,7 +101,7 @@ async function serveUiAsset(
       404,
       'ui-not-built',
       'The report UI bundle is missing from this installation.',
-      'Rebuild the package with `npm run build`.',
+      'Rebuild the package with `pnpm build`.',
     );
   }
   const file = assetPathFor(ctx.uiDir, pathname);

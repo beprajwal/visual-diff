@@ -36,6 +36,10 @@ const SCANNED = /\.(ts|tsx|mts|mjs|js|md|json)$/;
 const UNSCOPED = [
   { label: 'npx', re: /\bnpx\s+(?:-y\s+|--yes\s+)?visual-diff\b/g },
   { label: 'npm install', re: /\bnpm\s+(?:i|install|add)\s+(?:-g\s+|--global\s+)?visual-diff\b/g },
+  // The repo is developed with pnpm, so its docs and hints reach for pnpm verbs too. Without these
+  // the guard would keep passing while a new unscoped `pnpm add visual-diff` sat in the README.
+  { label: 'pnpm dlx', re: /\bpnpm\s+dlx\s+visual-diff\b/g },
+  { label: 'pnpm add', re: /\bpnpm\s+(?:i|install|add)\s+(?:-g\s+|--global\s+)?visual-diff\b/g },
   { label: 'reinstall hint', re: /\b[Rr]einstall\s+visual-diff\b/g },
   { label: 'import specifier', re: /\bfrom\s+['"]visual-diff['"/]/g },
   { label: 'require specifier', re: /\brequire\(\s*['"]visual-diff['"/]/g },
@@ -94,6 +98,8 @@ describe('the published package name', () => {
       'Run `npx visual-diff init` to start.',
       'npm install -g visual-diff',
       'npm i visual-diff',
+      'pnpm add -g visual-diff',
+      'pnpm dlx visual-diff init',
       'Reinstall visual-diff, or run `npm run build`.',
       "import { runFlow } from 'visual-diff';",
       'const v = require("visual-diff");',
@@ -109,7 +115,8 @@ describe('the published package name', () => {
     const good = [
       'Run `npx @beprajwal/visual-diff init` to start.',
       'npm install -g @beprajwal/visual-diff',
-      'Reinstall @beprajwal/visual-diff, or run `npm run build`.',
+      'pnpm add -g @beprajwal/visual-diff',
+      'Reinstall @beprajwal/visual-diff, or run `pnpm build`.',
       "import { runFlow } from '@beprajwal/visual-diff';",
       'The visual-diff skill teaches the loop.', // product name in prose
       'writes .claude/skills/visual-diff/SKILL.md', // a path

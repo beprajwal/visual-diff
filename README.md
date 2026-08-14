@@ -167,13 +167,34 @@ and `.visual-diff/config.yaml` must be committed; runs, diffs, cache and feedbac
 
 ## Development
 
+The repo is managed with pnpm, pinned by `packageManager` in `package.json` — run `corepack enable`
+once and the right version is used automatically.
+
 ```sh
-npm install
-npm run test        # everything
-npm run test:unit   # colocated unit + golden tests, no browser
-npm run typecheck
-npm run build       # clean dist + tsc emit + report UI bundle + skills + executable bin
+pnpm install
+pnpm test            # everything
+pnpm test:unit       # colocated unit + golden tests, no browser
+pnpm typecheck
+pnpm build           # clean dist + tsc emit + report UI bundle + skills + executable bin
 ```
+
+pnpm is the *development* package manager only. Nothing about the published artifact changes: the
+package still lives on the npm registry, `npx @beprajwal/visual-diff` still works, and consumers can
+install it with any client. Two steps stay on npm deliberately — `npm pack` and `npm publish` —
+because the tarball under test must be the one the registry serves, and npm's trusted publishing is
+what signs the release (see the comments in `.github/workflows/release.yml`). Consumers using pnpm
+are handled independently: `src/runner/deps.ts` ranks `pnpm-lock.yaml` first when replaying a project,
+and the composite action detects it too.
+
+The workspace is declared in `pnpm-workspace.yaml`, and it lists `fixtures/app` only. `fixtures/storefront`
+is deliberately left out: the dogfood pipeline points `vdiff` at it as if it were a stranger's project
+and lets the tool install its dependencies, which is the code path every real consumer takes.
+
+Bump a version with `pnpm version <patch|minor|major>` (`npm version` behaves identically — both run
+the lifecycle script and commit the three files it touches) — the `version` lifecycle script runs
+`scripts/sync-version.mjs`, which is the only thing that should ever write `TOOL_VERSION` in
+`src/version.ts` and the `version` input default in `action.yml`. Editing `package.json` by hand
+skips it, and the release then fails on `src/version.test.ts` after publishing nothing.
 
 `build` empties `dist/` first. `tsc` only ever adds to its `outDir`, so without that step the
 compiled remains of a deleted module stay on disk and ship to every consumer — the published tree
@@ -192,7 +213,7 @@ PNG. It is pure JavaScript with no dependencies of its own and no install script
 reintroduce the postinstall `playwright` was dropped for.
 
 The skills live in `skills/` as plain markdown — `manifest.json` naming the ids, one
-`<id>/SKILL.md` each. `npm run build:skills` copies that tree to `dist/skills/` so it ships with the
+`<id>/SKILL.md` each. `pnpm build:skills` copies that tree to `dist/skills/` so it ships with the
 CLI, and fails the build if the manifest names a skill that is not on disk. A harness plugin is only
 an envelope around this markdown, which is why the markdown is what the package carries.
 
