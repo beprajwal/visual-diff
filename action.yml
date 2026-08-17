@@ -84,7 +84,7 @@ inputs:
   version:
     description: 'Version of @beprajwal/visual-diff to install. Ignored when `cli` is set.'
     required: false
-    default: '0.5.1'
+    default: '0.5.2'
   cli:
     description: >-
       Command that invokes the CLI. Empty — the default — installs the package globally and calls
