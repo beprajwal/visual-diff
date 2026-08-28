@@ -227,7 +227,9 @@ form staying stable, and records the auth exchange into the HAR (scrubbed, but p
 **The host matters.** Cookies are bound to a host. If the session was captured against a named
 local host (`app.lvh.me`, `myapp.localhost`), write the flow's `baseUrl` with the port placeholder
 — `baseUrl: http://app.lvh.me:$PORT` — and spawn mode reaches the dev server through that host
-instead of `127.0.0.1`. Producing the file without a Playwright project:
+instead of `127.0.0.1`. Behind a local proxy on a fixed port (the app's CORS and cookie settings
+usually name that one origin), write `readyOn` and `baseUrl` both without `$PORT` and spawn mode
+drives the proxied origin as written. Producing the file without a Playwright project:
 
 ```sh
 npx playwright open --save-storage=.visual-diff/auth/state.json http://app.lvh.me:3000

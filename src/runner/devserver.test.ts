@@ -160,6 +160,14 @@ describe('spawnedBaseUrl', () => {
 
   it('falls back to loopback when no host was asked for', () => {
     expect(spawnedBaseUrl(undefined, 4321)).toBe('http://127.0.0.1:4321');
-    expect(spawnedBaseUrl('http://localhost:5173', 4321)).toBe('http://127.0.0.1:4321');
+    expect(spawnedBaseUrl('http://localhost:5173', 4321, 'http://localhost:$PORT/')).toBe(
+      'http://127.0.0.1:4321',
+    );
+  });
+
+  it('drives a fixed baseUrl when readyOn names a fixed origin too', () => {
+    expect(
+      spawnedBaseUrl('http://app.lvh.me:8848/core', 4321, 'http://app.lvh.me:8848/core/403'),
+    ).toBe('http://app.lvh.me:8848/core');
   });
 });

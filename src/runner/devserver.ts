@@ -29,12 +29,23 @@ const HAS_PORT_PLACEHOLDER = /\$\{PORT\}|\$PORT\b/;
  * flow should reach the server by, and gets the allocated port substituted in. Cookies are scoped
  * to a host, so a storage state captured against `app.lvh.me` never applies to `127.0.0.1`; the
  * loopback default only serves when no host was asked for. `readyOn` decides the port; this only
- * decides the origin.
+ * decides the origin — and when `readyOn` itself names a fixed origin, so does `baseUrl`.
  */
-export function spawnedBaseUrl(configuredBase: string | undefined, port: number): string {
-  return configuredBase !== undefined && HAS_PORT_PLACEHOLDER.test(configuredBase)
-    ? substitutePort(configuredBase, port)
-    : `http://127.0.0.1:${port}`;
+export function spawnedBaseUrl(
+  configuredBase: string | undefined,
+  port: number,
+  readyOn?: string,
+): string {
+  if (configuredBase !== undefined && HAS_PORT_PLACEHOLDER.test(configuredBase)) {
+    return substitutePort(configuredBase, port);
+  }
+  // A `readyOn` without the placeholder means the dev command listens on a fixed origin — behind
+  // a local proxy, say, where the app's CORS and cookie settings name that one origin. The flow's
+  // `baseUrl` is then the origin to drive, not a loopback address the app has never heard of.
+  if (configuredBase !== undefined && readyOn !== undefined && !HAS_PORT_PLACEHOLDER.test(readyOn)) {
+    return configuredBase;
+  }
+  return `http://127.0.0.1:${port}`;
 }
 
 /** Port of a base URL, falling back to the scheme default. */

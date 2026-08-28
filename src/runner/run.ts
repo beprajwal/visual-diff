@@ -438,7 +438,11 @@ async function bindServer(
     readyOn: config.app.readyOn,
     readyTimeoutMs: config.app.readyTimeoutMs,
   });
-  return { mode: 'spawn', baseUrl: spawnedBaseUrl(configuredBase, handle.port), handle };
+  return {
+    mode: 'spawn',
+    baseUrl: spawnedBaseUrl(configuredBase, handle.port, config.app.readyOn),
+    handle,
+  };
 }
 
 /**
