@@ -80,12 +80,16 @@ export function allocatePort(): Promise<number> {
 }
 
 /** One readiness probe. Any HTTP answer counts — a 404 still proves the server is listening. */
+const GATEWAY_DOWN = new Set([502, 503, 504]);
+
 export async function probe(url: string, timeoutMs = 2_000): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    await fetch(url, { signal: controller.signal, redirect: 'manual' });
-    return true;
+    const response = await fetch(url, { signal: controller.signal, redirect: 'manual' });
+    // A proxy in front of the dev server answers on its own even while the upstream is down or
+    // still compiling; those answers are gateway statuses, and they are not "ready".
+    return !GATEWAY_DOWN.has(response.status);
   } catch {
     return false;
   } finally {

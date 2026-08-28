@@ -171,3 +171,20 @@ describe('spawnedBaseUrl', () => {
     ).toBe('http://app.lvh.me:8848/core');
   });
 });
+
+describe('probe through a proxy', () => {
+  it('does not count a gateway error as ready', async () => {
+    const server = createServer((_request, response) => {
+      response.statusCode = 502;
+      response.end('Bad Gateway');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('no port');
+      expect(await probe(`http://127.0.0.1:${address.port}/`)).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
