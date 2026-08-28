@@ -1,0 +1,22 @@
+docs/superpowers/specs/2026-08-28-authenticated-replay-design.md
+  h_d568a51a780fb5 69-73
+skills/visual-diff-flows/SKILL.md
+  h_d568a51a780fb5 230-232
+src/runner/devserver.test.ts
+  h_d568a51a780fb5 163-171
+src/runner/devserver.ts
+  h_d568a51a780fb5 32,34-48
+src/runner/run.ts
+  h_d568a51a780fb5 441-445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "bda42ce0a4e6b04cc69b09833ca424831d20ccce",
+  "prompts": {},
+  "humans": {
+    "h_d568a51a780fb5": {
+      "author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
