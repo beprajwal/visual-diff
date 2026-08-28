@@ -72,6 +72,10 @@ proxy whose port the app's CORS and cookie settings name — and spawn mode driv
 as written. Attach mode is unchanged: a `baseUrl` with a literal port is probed and, if it answers,
 driven as before.
 
+A proxy answers on its own while its upstream is down or still compiling, with a gateway status;
+`readyOn` probing now treats 502/503/504 as not ready, so a fixed-origin setup neither attaches to a
+dead upstream nor starts shooting before the first route has compiled.
+
 ## 5. Not in scope
 
 - A `login:` step verb or a `--storage-state` flag. Config-level state covers the recurring case;
