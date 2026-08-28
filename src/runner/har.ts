@@ -17,6 +17,12 @@ export const REDACTED = '__REDACTED__';
 export interface ScrubOptions {
   /** Extra header/cookie/query names to redact, from `config.network.redact`. */
   redact?: readonly string[];
+  /**
+   * Literal values to redact wherever they appear — URLs, query strings, post bodies, response
+   * bodies. The resolved `${VAR}` values a flow typed into a form (auth spec §3): a login body is
+   * exactly what a recorded HAR would otherwise commit. Empty strings are ignored.
+   */
+  values?: readonly string[];
 }
 
 export interface ScrubResult {
@@ -58,6 +64,7 @@ function scrubList(list: unknown, names: Set<string>, drop: boolean): number {
  */
 export function scrubHarObject(har: unknown, options: ScrubOptions = {}): number {
   const names = namesToRedact(options);
+  const values = (options.values ?? []).filter((value) => value !== '');
   let redacted = 0;
   const log = (har as { log?: { entries?: unknown } } | undefined)?.log;
   const entries = log?.entries;
@@ -79,7 +86,39 @@ export function scrubHarObject(har: unknown, options: ScrubOptions = {}): number
       redacted += scrubList(record.response.headers, names, true);
       redacted += scrubList(record.response.cookies, names, true);
     }
+    if (values.length > 0) redacted += scrubValues(entry as Record<string, unknown>, values);
   }
+  return redacted;
+}
+
+/**
+ * Replace every occurrence of a secret value in the places a request or response can carry it.
+ * Counted per field, not per occurrence: the number answers "how many fields held a secret".
+ */
+function scrubValues(entry: Record<string, unknown>, values: readonly string[]): number {
+  let redacted = 0;
+  const scrubText = (holder: Record<string, unknown> | undefined, key: string): void => {
+    const text = holder?.[key];
+    if (typeof text !== 'string') return;
+    let next = text;
+    for (const value of values) next = next.split(value).join(REDACTED);
+    if (next !== text) {
+      (holder as Record<string, unknown>)[key] = next;
+      redacted += 1;
+    }
+  };
+  const scrubEntries = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) scrubText(item as Record<string, unknown>, 'value');
+  };
+  const request = entry.request as Record<string, unknown> | undefined;
+  const response = entry.response as Record<string, unknown> | undefined;
+  scrubText(request, 'url');
+  scrubEntries(request?.queryString);
+  const postData = request?.postData as Record<string, unknown> | undefined;
+  scrubText(postData, 'text');
+  scrubEntries(postData?.params);
+  scrubText(response?.content as Record<string, unknown> | undefined, 'text');
   return redacted;
 }
 

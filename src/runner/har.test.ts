@@ -145,6 +145,49 @@ function indexable(entries: IndexEntry[]): string {
 
 const FORECAST = 'https://api.example.test/v1/forecast?lat=1&lon=2';
 
+describe('scrubHar values', () => {
+  it('redacts a resolved secret wherever a request or response can carry it', () => {
+    const source = har({
+      entries: [
+        {
+          request: {
+            method: 'POST',
+            url: 'https://app.example.com/login?next=hunter2',
+            headers: [],
+            cookies: [],
+            queryString: [{ name: 'next', value: 'hunter2' }],
+            postData: {
+              mimeType: 'application/json',
+              text: '{"email":"me@example.com","password":"hunter2"}',
+              params: [{ name: 'password', value: 'hunter2' }],
+            },
+          },
+          response: {
+            status: 200,
+            headers: [],
+            cookies: [],
+            content: { mimeType: 'text/plain', text: 'welcome me@example.com, hunter2 accepted' },
+          },
+        },
+      ],
+    });
+    const { har: scrubbed, redacted } = scrubHar(source, { values: ['hunter2', 'me@example.com', ''] });
+    expect(scrubbed).not.toContain('hunter2');
+    expect(scrubbed).not.toContain('me@example.com');
+    const entry = JSON.parse(scrubbed).log.entries[0];
+    expect(entry.request.url).toBe(`https://app.example.com/login?next=${REDACTED}`);
+    expect(entry.request.postData.text).toBe(`{"email":"${REDACTED}","password":"${REDACTED}"}`);
+    expect(entry.response.content.text).toBe(`welcome ${REDACTED}, ${REDACTED} accepted`);
+    expect(redacted).toBe(5);
+  });
+
+  it('is a no-op without values', () => {
+    const before = har();
+    const { redacted } = scrubHar(before, { values: [] });
+    expect(redacted).toBeGreaterThanOrEqual(0);
+  });
+});
+
 describe('indexHar', () => {
   it('finds a recorded response by method and full URL, decoded and ready to patch', () => {
     const index = indexHar(indexable([{ url: FORECAST, text: '{"ok":true}' }]));

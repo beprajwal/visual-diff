@@ -41,6 +41,12 @@ app:
   readyOn: http://localhost:$PORT/
   readyTimeout: 90s
 
+# browser:
+#   # A Playwright storage state (cookies + localStorage) every replay starts from, for flows that
+#   # sit behind a login. Relative to the project root; it is a session, keep it out of git — the
+#   # gitignore block above already leaves it untracked under .visual-diff/.
+#   storageState: .visual-diff/auth/state.json
+
 diff:
   # Noise control is a feature, not an afterthought: a tool that cries wolf gets turned off.
   minRegionArea: 64        # ignore changed regions smaller than this many pixels

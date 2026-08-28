@@ -21,6 +21,27 @@ function parse(source: string) {
 }
 
 describe('parseConfigSource', () => {
+  it('resolves browser.storageState against the project root', () => {
+    const result = parse(`${MINIMAL}\nbrowser:\n  storageState: .visual-diff/auth/state.json`);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.browser).toEqual({
+      storageState: path.resolve(ROOT, '.visual-diff/auth/state.json'),
+    });
+  });
+
+  it('leaves browser absent when the file does not set it', () => {
+    const result = parse(MINIMAL);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.browser).toBeUndefined();
+  });
+
+  it('rejects an unknown browser key with its path', () => {
+    const result = parse(`${MINIMAL}\nbrowser:\n  cookies: x`);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(JSON.stringify(result.issues)).toContain('cookies');
+  });
+
   it('accepts the spec §6 example verbatim', () => {
     const source = [
       'app:',

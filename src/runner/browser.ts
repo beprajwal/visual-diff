@@ -87,6 +87,8 @@ export async function launchChromium(): Promise<Browser> {
 export interface ContextOptions {
   viewport: Viewport;
   deviceScaleFactor?: number;
+  /** Absolute path of the Playwright storage state every context starts from (auth spec §2). */
+  storageState?: string;
   network: NetworkMode;
   /** Absolute HAR path. **Required** for 'record' and 'replay'; absent is a hard error. */
   har?: string;
@@ -141,6 +143,7 @@ export function contextOptions(options: ContextOptions): BrowserContextOptions {
     bypassCSP: true,
   };
   if (options.baseUrl !== undefined) base.baseURL = options.baseUrl;
+  if (options.storageState !== undefined) base.storageState = options.storageState;
   if (options.network === 'record') {
     // Recording is the one mode that legitimately reaches the live network — but only because
     // every response is being written to `recordHar`. Without it the run is a live-network run

@@ -363,6 +363,18 @@ export interface RetentionConfig {
   keepRuns: number;
 }
 
+/**
+ * `browser:` — what every replay context starts from (auth spec §2).
+ *
+ * `storageState` is the absolute path of a Playwright storage-state file (cookies + localStorage)
+ * loaded into each context before its first navigation, so a flow behind a login replays without
+ * a credentials step. Resolved against the working tree's project root at load time: a historical
+ * replay reads its flow from git but its session from the machine it runs on.
+ */
+export interface BrowserConfig {
+  storageState?: string;
+}
+
 export interface Config {
   /** Absolute path to the project root (the directory containing .visual-diff). */
   root: string;
@@ -371,6 +383,7 @@ export interface Config {
   /** Default base URL when a flow does not set one. */
   baseUrl?: string;
   app: AppConfig;
+  browser?: BrowserConfig;
   diff: DiffConfig;
   network: NetworkConfigFile;
   retention: RetentionConfig;
@@ -414,7 +427,11 @@ export type RunFailureKind =
    * A rule could not be applied at run time and the run fails naming it: it matched a request with
    * no recorded response, or patched a non-JSON body (mocking spec §8).
    */
-  | 'scenario-failed';
+  | 'scenario-failed'
+  /** `browser.storageState` names a file that is not on disk (auth spec §2). */
+  | 'auth-state-missing'
+  /** A `${VAR}` reference in a `fill` value has no value in the environment (auth spec §3). */
+  | 'env-missing';
 
 export interface RunFailure {
   kind: RunFailureKind;
@@ -482,6 +499,11 @@ export interface RunMeta {
   viewports: ViewportId[];
   status: RunStatus;
   failedSteps: StepId[];
+  /**
+   * The contexts started from `browser.storageState` (auth spec §2). Optional so earlier
+   * `meta.json` files read back unchanged; absent means an anonymous run.
+   */
+  authenticated?: boolean;
   env: RunEnv;
   startedAt: IsoDate;
   finishedAt: IsoDate;

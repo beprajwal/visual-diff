@@ -129,6 +129,14 @@ Run warnings arrive on the `run` envelope, each with a `kind`:
 only simple compound selectors (tag, `#id`, `.class`, `[attr=value]`, and comma-separated lists of
 those) are understood. Fix the rule; a silently dead ignore makes you read noise as regression.
 
+## Runs that need a login
+
+A run whose shots are all a login page is not a finding, it is a missing session. Point
+`browser.storageState` in `config.yaml` at a Playwright storage-state file, or add a sign-in step
+that fills `${VAR}` references (see the visual-diff-flows skill). Two failure kinds belong to this:
+`auth-state-missing` (the configured file is not on disk) and `env-missing` (a referenced variable is
+unset); both exit 2 before anything launches.
+
 ## Exit codes
 
 `0` success · `1` run or replay failure · `2` config or spec error · `3` an opt-in gate tripped

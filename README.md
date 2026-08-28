@@ -165,6 +165,40 @@ steps:
 Step `id`s are stable and load-bearing: diffs align runs by `id`, never by index. `.visual-diff/flows/`
 and `.visual-diff/config.yaml` must be committed; runs, diffs, cache and feedback are ignored.
 
+### Flows behind a login
+
+Every replay runs in a clean browser context. Two ways to get past a login screen, neither of which
+puts a credential in a committed file:
+
+```yaml
+# .visual-diff/config.yaml — a Playwright storage state (cookies + localStorage) every context
+# starts from. Relative to the project root; it is a session, so it lives in the untracked part
+# of .visual-diff/. A historical replay reads its flow from git and its session from this file.
+browser:
+  storageState: .visual-diff/auth/state.json
+```
+
+```yaml
+# .visual-diff/flows/login.yaml — or log in as a step. `${VAR}` in a fill value is read from the
+# environment at replay time; the flow keeps the reference, the recorded HAR has the value
+# scrubbed, and `vdiff run` refuses to start if a referenced variable is unset.
+steps:
+  - id: sign-in
+    goto: /login
+    fill: { "[name=email]": "${VDIFF_EMAIL}", "[name=password]": "${VDIFF_PASSWORD}" }
+    click: "[type=submit]"
+    waitFor: "[data-test=account-menu]"
+    shoot: false
+```
+
+The storage-state file is what Playwright's `context.storageState({ path })` writes after a login;
+an existing Playwright auth setup project produces one already, and
+`npx playwright open --save-storage=.visual-diff/auth/state.json <url>` produces one by hand.
+`meta.json` records `authenticated: true` on runs that used it. Cookies are bound to a host, so a
+session captured against `app.lvh.me` needs the flow's `baseUrl` written as
+`http://app.lvh.me:$PORT` — spawn mode then reaches the dev server through that host rather than
+`127.0.0.1`.
+
 ## Development
 
 The repo is managed with pnpm, pinned by `packageManager` in `package.json` — run `corepack enable`

@@ -52,8 +52,16 @@ import type { RunDraft } from '../store/run-store.js';
 
 import { describeSettle, launchChromium, loadPlaywright } from './browser.js';
 import { ensureDeps, linkNodeModules } from './deps.js';
-import { startDevServer, portOfUrl, probe, substitutePort, type DevServerHandle } from './devserver.js';
+import {
+  startDevServer,
+  portOfUrl,
+  probe,
+  spawnedBaseUrl,
+  substitutePort,
+  type DevServerHandle,
+} from './devserver.js';
 import { RunnerError, errorMessage } from './errors.js';
+import { resolveFlowEnv } from './env-template.js';
 import { indexHarFile, retargetHarFile, scrubHarFile, type HarIndex } from './har.js';
 import { readGitStateSafe, repoRoot, resolveRef, sameGitState, showFileAtRev, toRevision } from './git.js';
 import { replayViewport, selectorOf, type StepOutcome, type ViewportReplay } from './replay.js';
@@ -181,6 +189,28 @@ export async function readPlaywrightVersion(from: string | URL = import.meta.url
     }
   }
   return 'unknown';
+}
+
+/**
+ * The storage state every context of this run starts from (auth spec §2), or nothing. The file is
+ * a live session on this machine, so it is checked here rather than trusted: a missing file would
+ * otherwise surface as a login page in every shot, which reads as a regression in the app.
+ */
+async function resolveStorageState(store: Store): Promise<string | undefined> {
+  const file = store.config.browser?.storageState;
+  if (file === undefined) return undefined;
+  try {
+    await access(file);
+  } catch {
+    throw new RunnerError({
+      code: 'auth-state-missing',
+      kind: 'auth-state-missing',
+      exitCode: EXIT.CONFIG_ERROR,
+      message: `browser.storageState points at ${file}, which does not exist`,
+      hint: 'export a Playwright storage state to that path (`context.storageState({ path })` after logging in), or remove the key for an anonymous run',
+    });
+  }
+  return file;
 }
 
 async function runEnv(deviceScaleFactor: number): Promise<RunEnv> {
@@ -408,7 +438,7 @@ async function bindServer(
     readyOn: config.app.readyOn,
     readyTimeoutMs: config.app.readyTimeoutMs,
   });
-  return { mode: 'spawn', baseUrl: `http://127.0.0.1:${handle.port}`, handle };
+  return { mode: 'spawn', baseUrl: spawnedBaseUrl(configuredBase, handle.port), handle };
 }
 
 /**
@@ -592,6 +622,20 @@ export async function runFlow(
       options,
       scenario === undefined ? undefined : { name: scenario.name, mode: scenario.mode },
     );
+    const storageState = await resolveStorageState(store);
+    // Every `${VAR}` a fill step references must resolve now: a run that fails on step 4 for a
+    // typo in a variable name has already spent the install, the dev server and three shots.
+    const flowEnv = resolveFlowEnv(spec, process.env);
+    if (flowEnv.missing.length > 0) {
+      const refs = flowEnv.missing.map((name) => '${' + name + '}').join(', ');
+      throw new RunnerError({
+        code: 'env-missing',
+        kind: 'env-missing',
+        exitCode: EXIT.CONFIG_ERROR,
+        message: `flow '${options.flow}' references ${refs} but the environment does not set ${flowEnv.missing.length === 1 ? 'it' : 'them'}`,
+        hint: 'export the variable before `vdiff run`; the value is typed into the page and scrubbed from the recording, never written to the flow',
+      });
+    }
     const warnings: RunWarning[] = [];
 
     draft = await store.beginRun(options.flow);
@@ -742,6 +786,7 @@ export async function runFlow(
           // target's counters (D23, mocking spec §11).
           ...(scenarioInForce ? { newScenarioRuntime } : {}),
           ...(options.continueOnError === undefined ? {} : { continueOnError: options.continueOnError }),
+          ...(storageState === undefined ? {} : { storageState }),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
         });
       });
@@ -795,7 +840,10 @@ export async function runFlow(
             await rename(source, destination);
           });
           if (options.noScrub !== true) {
-            await scrubHarFile(destination, { redact: store.config.network.redact });
+            await scrubHarFile(destination, {
+              redact: store.config.network.redact,
+              values: flowEnv.values,
+            });
           }
           warnings.push({
             kind: 'har-recorded',
@@ -1030,6 +1078,7 @@ export async function runFlow(
       viewports: viewports.map((viewport) => viewport.id),
       status: statusOf(steps),
       failedSteps,
+      ...(storageState === undefined ? {} : { authenticated: true }),
       env,
       startedAt,
       finishedAt: isoNow(),

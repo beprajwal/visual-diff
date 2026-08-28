@@ -186,6 +186,54 @@ are scrubbed of `Authorization`, `Cookie` and `Set-Cookie` before being written,
 in `config.network.redact` — add your app's custom auth headers there. `--no-scrub` skips that pass;
 do not use it on a HAR you intend to commit.
 
+## Flows behind a login
+
+Replays run in a clean browser context, so a flow over an authenticated screen shows the login page
+on every shot unless one of these is in place. Neither writes a credential into a committed file.
+
+**Storage state (preferred).** `browser.storageState` in `config.yaml` names a Playwright
+storage-state file (cookies + localStorage) every context starts from — the file
+`context.storageState({ path })` writes after a login, which an existing Playwright auth setup
+project usually already produces. Path is relative to the project root; keep it in the untracked
+part of `.visual-diff/` (`.visual-diff/auth/` is a fine home). `vdiff run` fails before launching
+anything if the file is missing (`auth-state-missing`), and the run's `meta.json` carries
+`authenticated: true`. A historical replay (`--at`) reads the flow from git and the session from this
+file, so the same state serves both sides of a diff.
+
+```yaml
+browser:
+  storageState: .visual-diff/auth/state.json
+```
+
+**Environment references in `fill`.** A `fill` value may contain `${NAME}` (uppercase identifier);
+it is replaced from the environment when the step runs. The flow keeps the reference, the structural
+diff compares the reference, and every resolved value is scrubbed from the recorded HAR (request
+URL, query, body, response body) so the recording can be committed. `vdiff run` refuses to start
+(`env-missing`) when a referenced variable is unset — set it before running, never in the flow.
+Anything other than `${UPPER_CASE}` is literal text, so a `$` in ordinary copy needs no escaping.
+
+```yaml
+  - id: sign-in
+    goto: /login
+    fill: { "[name=email]": "${VDIFF_EMAIL}", "[name=password]": "${VDIFF_PASSWORD}" }
+    click: "[type=submit]"
+    waitFor: "[data-test=account-menu]"
+    shoot: false
+```
+
+Prefer storage state: a login step costs a round trip per viewport per run, depends on the login
+form staying stable, and records the auth exchange into the HAR (scrubbed, but present).
+
+**The host matters.** Cookies are bound to a host. If the session was captured against a named
+local host (`app.lvh.me`, `myapp.localhost`), write the flow's `baseUrl` with the port placeholder
+— `baseUrl: http://app.lvh.me:$PORT` — and spawn mode reaches the dev server through that host
+instead of `127.0.0.1`. Producing the file without a Playwright project:
+
+```sh
+npx playwright open --save-storage=.visual-diff/auth/state.json http://app.lvh.me:3000
+# log in in the window that opens, then close it — the state is written on exit
+```
+
 ## Commit the spec
 
 `.visual-diff/flows/` and `.visual-diff/config.yaml` are committed. Historical replay reads the flow
