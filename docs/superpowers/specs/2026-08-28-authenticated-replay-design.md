@@ -66,8 +66,11 @@ Cookies are scoped to a host. A storage state captured against `app.lvh.me` does
 server reached at `127.0.0.1`, which is where spawn mode used to point every replay. A flow (or
 `config.yaml`) may now write its `baseUrl` with the port placeholder — `http://app.lvh.me:$PORT` —
 and spawn mode substitutes the allocated port into *that* URL instead of the loopback default.
-`readyOn` still decides the port; `baseUrl` only decides the origin the flow sees. Attach mode is
-unchanged: a `baseUrl` with a literal port is probed and, if it answers, driven as before.
+`readyOn` still decides the port; `baseUrl` only decides the origin the flow sees. When `readyOn`
+itself carries no placeholder, the dev command listens on a fixed origin — typically behind a local
+proxy whose port the app's CORS and cookie settings name — and spawn mode drives the flow's `baseUrl`
+as written. Attach mode is unchanged: a `baseUrl` with a literal port is probed and, if it answers,
+driven as before.
 
 ## 5. Not in scope
 
