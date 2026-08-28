@@ -20,6 +20,23 @@ export function substitutePort(template: string, port: number): string {
   return template.replace(/\$\{PORT\}|\$PORT\b/g, String(port));
 }
 
+const HAS_PORT_PLACEHOLDER = /\$\{PORT\}|\$PORT\b/;
+
+/**
+ * The origin a spawned dev server is driven through (auth spec §4).
+ *
+ * A `baseUrl` written with the port placeholder — `http://app.lvh.me:$PORT` — names the host the
+ * flow should reach the server by, and gets the allocated port substituted in. Cookies are scoped
+ * to a host, so a storage state captured against `app.lvh.me` never applies to `127.0.0.1`; the
+ * loopback default only serves when no host was asked for. `readyOn` decides the port; this only
+ * decides the origin.
+ */
+export function spawnedBaseUrl(configuredBase: string | undefined, port: number): string {
+  return configuredBase !== undefined && HAS_PORT_PLACEHOLDER.test(configuredBase)
+    ? substitutePort(configuredBase, port)
+    : `http://127.0.0.1:${port}`;
+}
+
 /** Port of a base URL, falling back to the scheme default. */
 export function portOfUrl(url: string): number | null {
   let parsed: URL;

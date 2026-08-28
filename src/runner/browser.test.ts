@@ -183,6 +183,12 @@ describe('contextOptions', () => {
     expect(options.recordHar).toBeUndefined();
   });
 
+  it('starts the context from the storage state when one is configured', () => {
+    const options = contextOptions({ viewport, network: 'off', storageState: '/tmp/state.json' });
+    expect(options.storageState).toBe('/tmp/state.json');
+    expect(contextOptions({ viewport, network: 'off' }).storageState).toBeUndefined();
+  });
+
   it('records to the HAR when the mode is record', () => {
     const options = contextOptions({ viewport, network: 'record', har: '/tmp/checkout.har' });
     expect(options.recordHar).toEqual({ path: '/tmp/checkout.har', mode: 'minimal', content: 'embed' });

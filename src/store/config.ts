@@ -127,10 +127,22 @@ const e2eSchema = z
   })
   .strict();
 
+/**
+ * `browser:` — the context every replay starts from (auth spec §2). One key today: the path of a
+ * Playwright storage-state file, relative to the project root. It is a session, so it stays under
+ * the part of `.visual-diff/` that `vdiff init`'s gitignore block leaves untracked.
+ */
+const browserSchema = z
+  .object({
+    storageState: z.string().min(1).optional(),
+  })
+  .strict();
+
 const configSchema = z
   .object({
     baseUrl: z.string().min(1).optional(),
     app: appSchema,
+    browser: browserSchema.optional(),
     diff: diffSchema.optional(),
     network: networkSchema.optional(),
     retention: retentionSchema.optional(),
@@ -225,6 +237,11 @@ export function buildConfig(
   };
   if (file.app.install !== undefined) config.app.install = file.app.install;
   if (file.baseUrl !== undefined) config.baseUrl = file.baseUrl;
+  if (file.browser?.storageState !== undefined) {
+    // Against the working tree's root on purpose: a historical replay reads its flow from git but
+    // its session from the machine it runs on.
+    config.browser = { storageState: path.resolve(root, file.browser.storageState) };
+  }
 
   // Only what was written. An absent key stays absent all the way to `e2eNoiseSettings`, which is
   // the single place `E2E_DIFF_DEFAULTS` is read — so "what is the e2e minimum region area?" has

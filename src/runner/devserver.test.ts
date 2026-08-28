@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  spawnedBaseUrl,
   LogTail,
   allocatePort,
   portOfUrl,
@@ -148,5 +149,17 @@ describe('startDevServer', () => {
     expect(runnerError.kind).toBe('server-not-ready');
     expect(runnerError.logName).toBe('server.log');
     expect(runnerError.log).toContain('boom: missing dependency');
+  });
+});
+
+describe('spawnedBaseUrl', () => {
+  it('reaches the spawned server through the host a $PORT baseUrl names', () => {
+    expect(spawnedBaseUrl('http://app.lvh.me:$PORT', 4321)).toBe('http://app.lvh.me:4321');
+    expect(spawnedBaseUrl('http://app.lvh.me:${PORT}/core', 4321)).toBe('http://app.lvh.me:4321/core');
+  });
+
+  it('falls back to loopback when no host was asked for', () => {
+    expect(spawnedBaseUrl(undefined, 4321)).toBe('http://127.0.0.1:4321');
+    expect(spawnedBaseUrl('http://localhost:5173', 4321)).toBe('http://127.0.0.1:4321');
   });
 });

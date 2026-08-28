@@ -36,6 +36,7 @@ import {
 } from '../types.js';
 import { newContext, settle, type ContextOptions } from './browser.js';
 import { captureA11ySnapshot, collectArgs, collectDom, toDomSnapshot } from './capture.js';
+import { interpolateEnv } from './env-template.js';
 import { RunnerError, errorMessage, errorStack } from './errors.js';
 import type { ScenarioError } from '../mocking/index.js';
 import type { ScenarioRuntime } from './scenario.js';
@@ -101,6 +102,8 @@ export interface ReplayOptions {
   har?: string;
   continueOnError?: boolean;
   deviceScaleFactor?: number;
+  /** Absolute path of the storage state this viewport's contexts start from (auth spec §2). */
+  storageState?: string;
   maxDomNodes?: number;
   /** Per-action timeout. */
   timeoutMs?: number;
@@ -283,7 +286,11 @@ export async function performStep(page: Page, step: Step, timeoutMs: number): Pr
   }
   if (step.fill !== undefined) {
     for (const [selector, value] of Object.entries(step.fill)) {
-      await page.locator(selector).first().fill(value, { timeout: timeoutMs });
+      // run.ts has already refused a flow whose references the environment cannot satisfy.
+      await page
+        .locator(selector)
+        .first()
+        .fill(interpolateEnv(value, process.env), { timeout: timeoutMs });
     }
   }
   if (step.press !== undefined) {
@@ -435,6 +442,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     baseUrl: options.baseUrl,
     ...(options.har === undefined ? {} : { har: options.har }),
     ...(options.deviceScaleFactor === undefined ? {} : { deviceScaleFactor: options.deviceScaleFactor }),
+    ...(options.storageState === undefined ? {} : { storageState: options.storageState }),
   };
 
   const contextOpts: ContextOptions = {
