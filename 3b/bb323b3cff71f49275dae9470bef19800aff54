@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-08-28-authenticated-replay-design.md
+  s_6386bf2be42aed::t_8589baa5880923 75-78
+src/runner/devserver.test.ts
+  s_6386bf2be42aed::t_16676927f7913d 174-190
+src/runner/devserver.ts
+  s_6386bf2be42aed::t_8d86a4c4b2c499 83-84,89-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3bbb323b3cff71f49275dae9470bef19800aff54",
+  "prompts": {},
+  "sessions": {
+    "s_6386bf2be42aed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c66941ed-da3d-458f-9911-4a6062ee1cb3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
