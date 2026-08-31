@@ -49,6 +49,12 @@ export interface CommentInput {
   imageBase?: string;
   /** Link to the uploaded evidence bundle. Every truncation notice points at it. */
   artifactUrl?: string;
+  /**
+   * Link to a hosted rendering of the full report page — a published Claude artifact, a Pages
+   * deployment, anywhere `report.html` is readable as a page. Unlike `artifactUrl`, which is a
+   * footer credit to a zip, this is the comment's call to action, so it renders with the verdict.
+   */
+  reportUrl?: string;
   /** Shown when there is no `artifactUrl` — an artifact a reader has to find by name is still a lead. */
   artifactName?: string;
   /** The gate this job was configured with. Omitted renders no gate line at all. */
@@ -185,6 +191,11 @@ function verdictLines(input: CommentInput): string[] {
   if (gate !== undefined && gate.level !== GATE_NONE) {
     lines.push('');
     lines.push(gate.tripped ? `❌ **Gate failed** — ${gate.reason}` : `✅ Gate passed — ${gate.reason}`);
+  }
+
+  if (input.reportUrl !== undefined) {
+    lines.push('');
+    lines.push(`📊 **[Open the full report](${input.reportUrl})** — every shot, side by side`);
   }
 
   return lines;

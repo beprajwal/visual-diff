@@ -181,6 +181,7 @@ describe('path map (harness-packaging spec §4)', () => {
       '.claude/skills/visual-diff/SKILL.md',
       '.claude/skills/visual-diff-flows/SKILL.md',
       '.claude/skills/visual-diff-review/SKILL.md',
+      '.claude/skills/visual-diff-report/SKILL.md',
       '.claude/commands/vdiff.md',
       '.claude/commands/vdiff-review.md',
     ],
@@ -188,12 +189,14 @@ describe('path map (harness-packaging spec §4)', () => {
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
       'AGENTS.md',
     ],
     opencode: [
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
       '.opencode/commands/vdiff.md',
       '.opencode/commands/vdiff-review.md',
       'AGENTS.md',
@@ -202,6 +205,7 @@ describe('path map (harness-packaging spec §4)', () => {
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
       'AGENTS.md',
     ],
   };
@@ -213,12 +217,14 @@ describe('path map (harness-packaging spec §4)', () => {
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
       '.codex/AGENTS.md',
     ],
     opencode: [
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
       '.config/opencode/commands/vdiff.md',
       '.config/opencode/commands/vdiff-review.md',
       '.config/opencode/AGENTS.md',
@@ -228,6 +234,7 @@ describe('path map (harness-packaging spec §4)', () => {
       '.agents/skills/visual-diff/SKILL.md',
       '.agents/skills/visual-diff-flows/SKILL.md',
       '.agents/skills/visual-diff-review/SKILL.md',
+      '.agents/skills/visual-diff-report/SKILL.md',
     ],
   };
 
@@ -352,7 +359,7 @@ describe('installAdapter', () => {
 
   it('does not let the .agents/skills harnesses rewrite each other files (D18)', async () => {
     const codex = await installAdapter('codex', root);
-    expect(codex.written.filter((path) => path.startsWith('.agents/skills/'))).toHaveLength(3);
+    expect(codex.written.filter((path) => path.startsWith('.agents/skills/'))).toHaveLength(4);
 
     for (const id of ['opencode', 'pi'] as HarnessId[]) {
       const later = await installAdapter(id, root);

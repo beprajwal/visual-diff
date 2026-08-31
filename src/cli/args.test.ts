@@ -214,6 +214,13 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     });
   });
 
+  it('parses comment --report-url', () => {
+    expect(ok(['comment', 'checkout', '--report-url', 'https://claude.ai/artifacts/abc'])).toMatchObject({
+      kind: 'comment',
+      reportUrl: 'https://claude.ai/artifacts/abc',
+    });
+  });
+
   it('parses export --html and rejects an unknown mode', () => {
     expect(ok(['export', 'checkout'])).toMatchObject({
       kind: 'export',

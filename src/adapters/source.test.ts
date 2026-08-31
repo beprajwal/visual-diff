@@ -230,6 +230,7 @@ describe('the manifest this package actually ships', () => {
       'visual-diff',
       'visual-diff-flows',
       'visual-diff-review',
+      'visual-diff-report',
     ]);
     expect(bundle.manifest.commands.map((c) => c.id)).toEqual(['vdiff', 'vdiff-review']);
   });
