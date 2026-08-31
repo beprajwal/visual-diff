@@ -1,0 +1,45 @@
+src/adapters/index.test.ts
+  s_03a613a5d6b57f::t_76cb19ff749d97 362
+  s_03a613a5d6b57f::t_9e6427f5b7dbdd 184,192,199,208,220,227,237
+src/adapters/source.test.ts
+  s_03a613a5d6b57f::t_8f9d08c731fccc 233
+src/cli/args.ts
+  s_03a613a5d6b57f::t_369ef5e342b901 1096
+  s_03a613a5d6b57f::t_65d29564cbf1c9 324
+  s_03a613a5d6b57f::t_851eca79c9bc1a 144-145
+src/cli/commands/comment.ts
+  s_03a613a5d6b57f::t_0646a46fc3a51c 56
+src/adapters/claude-code/index.test.ts
+  s_03a613a5d6b57f::t_4843b34dcc7a78 29,51
+src/cli/commands/install.test.ts
+  s_03a613a5d6b57f::t_a2031355965c3b 728-730,762,784,802,855-859,894-896
+  s_03a613a5d6b57f::t_de0499534a2fdc 727,897-898
+src/ci/comment.test.ts
+  s_03a613a5d6b57f::t_578097d43cb6d2 98-114
+src/cli/args.test.ts
+  s_03a613a5d6b57f::t_a7189be6f6c31f 217-223
+src/ci/comment.ts
+  s_03a613a5d6b57f::t_cceacb3c383f0f 52-57
+  s_03a613a5d6b57f::t_e6a83661020e01 196-200
+skills/manifest.json
+  s_03a613a5d6b57f::t_70d117eab8c451 22-27
+skills/visual-diff-report/SKILL.md
+  s_03a613a5d6b57f::t_92f4da515ddaf9 8-9
+  s_03a613a5d6b57f::t_d304b74bbd48c9 1-7,10-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "e7a3833949da1b19c8631208c7720de61426c0a1",
+  "prompts": {},
+  "sessions": {
+    "s_03a613a5d6b57f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea57df4-484e-4ffe-bd62-c8792ac581f0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
