@@ -18,6 +18,7 @@
 import { EXIT } from '../../types.js';
 import * as path from 'node:path';
 
+import { resolveAppScript } from '../../ci/app-script.js';
 import type { ExportRequest } from '../../ci/index.js';
 import type { Invocation } from '../args.js';
 import { evaluateGate } from '../ci.js';
@@ -43,12 +44,15 @@ export async function exportCommand(
   const outDir =
     invocation.out === undefined ? exportDir : path.resolve(ctx.cwd, invocation.out);
 
+  const appScript = await resolveAppScript();
+
   const request: ExportRequest = {
     root: config.root,
     result,
     outDir,
     images: invocation.images,
     html: invocation.html,
+    appScript,
     version: ctx.version,
     generatedAt: new Date().toISOString(),
     notices,
@@ -74,6 +78,12 @@ export async function exportCommand(
   }
 
   const warnings: string[] = [...composed.warnings];
+  if (appScript === null) {
+    warnings.push(
+      'report UI bundle not found (dist/ui/report-static.js): report.html carries the data but ' +
+        'not the interactive app — build it with `pnpm build:ui`, or export from an installed package',
+    );
+  }
   if (report.missing.length > 0) {
     warnings.push(
       `${report.missing.length} expected image(s) were not on disk and are absent from the bundle: ` +

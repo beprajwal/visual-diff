@@ -64,6 +64,30 @@ async function buildOnce() {
 
   const bytes = Object.values(result.metafile.outputs)[0]?.bytes ?? 0;
   process.stdout.write(`report UI → dist/ui/report.js (${(bytes / 1024).toFixed(1)} kB)\n`);
+
+  // The exported bundle's page (CI spec D38): same app, snapshot client, IIFE so `vdiff export`
+  // can inline it into report.html as a classic <script> with no module resolution to satisfy.
+  const staticResult = await build({
+    entryPoints: [join(root, 'src/report/ui/static-main.tsx')],
+    outfile: join(outDir, 'report-static.js'),
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: ['es2022'],
+    jsx: 'automatic',
+    jsxImportSource: 'preact',
+    minify: !dev,
+    sourcemap: false,
+    legalComments: 'none',
+    external: [],
+    define: { 'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production') },
+    logLevel: 'warning',
+    metafile: true,
+  });
+  const staticBytes = Object.values(staticResult.metafile.outputs)[0]?.bytes ?? 0;
+  process.stdout.write(
+    `static report UI → dist/ui/report-static.js (${(staticBytes / 1024).toFixed(1)} kB)\n`,
+  );
 }
 
 if (!(await exists(entry))) {

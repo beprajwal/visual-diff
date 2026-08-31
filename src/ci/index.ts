@@ -44,5 +44,7 @@ export type { HtmlMode, ImageSelection, ShotCell, ShotSide } from './layout.js';
 export { exportBundle } from './export.js';
 export type { BundleRunInfo, BundleSummary, ExportReport, ExportRequest } from './export.js';
 
-export { escapeHtml, renderReportPage } from './report-html.js';
+export { renderReportPage } from './report-html.js';
 export type { ReportPageInput } from './report-html.js';
+
+export { resolveAppScript } from './app-script.js';
