@@ -20,6 +20,8 @@ export const BUNDLE_FILES = {
   findings: 'findings.json',
   comment: 'comment.md',
   report: 'report.html',
+  /** The self-contained page `html: both` writes next to the linked one. */
+  reportInline: 'report.inline.html',
 } as const;
 
 export const IMAGES_DIR = 'images';
@@ -42,6 +44,24 @@ export const IMAGE_SELECTIONS: readonly ImageSelection[] = ['changed', 'all', 'n
 
 export function isImageSelection(value: string): value is ImageSelection {
   return (IMAGE_SELECTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * How the bundle's page addresses its images.
+ *
+ * - `linked` — `report.html` points at `images/` with relative paths. The default: smallest bundle,
+ *   and the page still opens anywhere the directory travels whole (D31).
+ * - `inline` — `report.html` embeds every image it shows as a `data:` URI. The one file *is* the
+ *   report: mail it, attach it, or serve it from a host that only takes single objects.
+ * - `both`   — the linked page plus a self-contained `report.inline.html` beside it, for a bundle
+ *   that is both an archive and a shareable file.
+ */
+export type HtmlMode = 'linked' | 'inline' | 'both';
+
+export const HTML_MODES: readonly HtmlMode[] = ['linked', 'inline', 'both'];
+
+export function isHtmlMode(value: string): value is HtmlMode {
+  return (HTML_MODES as readonly string[]).includes(value);
 }
 
 /**

@@ -85,6 +85,11 @@ jobs:
           # evidence travels as a workflow artifact and the comment links it — GitHub cannot render
           # an image out of an artifact.
           # publish-branch: visual-diff-reports
+
+          # linked | inline | both. \`inline\` embeds the report's images as data: URIs, so
+          # report.html alone is the whole report; \`both\` adds report.inline.html beside the
+          # linked page.
+          # html: linked
 `;
 }
 

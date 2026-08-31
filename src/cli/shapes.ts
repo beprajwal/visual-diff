@@ -27,7 +27,7 @@ import type {
   InstallTargetId,
   TargetKind,
 } from '../adapters/index.js';
-import type { GateVerdict } from './ci.js';
+import type { GateVerdict, HtmlMode } from './ci.js';
 import type { SourcePair } from './e2e.js';
 import type { E2eIngestPlan, E2eIngestReport } from './ports.js';
 import type { VariantPair } from './variant.js';
@@ -172,6 +172,8 @@ export interface ExportData {
   files: string[];
   /** Image files copied. Counts files, not cells: one cell is up to three of them. */
   images: number;
+  /** How `report.html` addresses those images — and whether a self-contained page was written. */
+  html: HtmlMode;
   /**
    * Sources that were expected and absent — a pruned run has no screenshots, and a step with no
    * base side has no pixel diff. Reported rather than repaired: inventing an image would be worse.

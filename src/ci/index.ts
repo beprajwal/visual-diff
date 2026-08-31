@@ -27,10 +27,12 @@ export type { GateLevel, GateVerdict } from './gate.js';
 export {
   BUNDLE_FILES,
   CROPS_DIR,
+  HTML_MODES,
   IMAGES_DIR,
   IMAGE_SELECTIONS,
   allFindings,
   cropPath,
+  isHtmlMode,
   isImageSelection,
   selectCells,
   shotCells,
@@ -38,7 +40,7 @@ export {
   sortFindings,
   stepScopedFindings,
 } from './layout.js';
-export type { ImageSelection, ShotCell, ShotSide } from './layout.js';
+export type { HtmlMode, ImageSelection, ShotCell, ShotSide } from './layout.js';
 
 export { exportBundle } from './export.js';
 export type { BundleRunInfo, BundleSummary, ExportReport, ExportRequest } from './export.js';

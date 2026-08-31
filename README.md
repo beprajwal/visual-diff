@@ -128,6 +128,11 @@ vdiff comment <flow> [base] [head]   # the diff as markdown: stdout, or --out <f
 vdiff export  <flow> [base] [head]   # a bundle: findings.json, comment.md, report.html, images/
 ```
 
+`export --html inline` makes `report.html` self-contained — every image embedded as a `data:` URI,
+so the one file is the whole report and can be mailed, attached, or served from anywhere that takes
+a single object. `--html both` keeps the linked page and writes `report.inline.html` beside it. The
+action forwards this as its `html:` input.
+
 Neither posts, pushes or uploads anything, and neither takes a token — the CLI renders, the action
 transports. Two consequences worth knowing before you read a comment and wonder:
 

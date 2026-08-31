@@ -214,6 +214,20 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     });
   });
 
+  it('parses export --html and rejects an unknown mode', () => {
+    expect(ok(['export', 'checkout'])).toMatchObject({
+      kind: 'export',
+      images: 'changed',
+      html: 'linked',
+    });
+    expect(ok(['export', 'checkout', '--html', 'inline'])).toMatchObject({ html: 'inline' });
+    expect(ok(['export', 'checkout', '--html=both'])).toMatchObject({ html: 'both' });
+    expect(err(['export', 'checkout', '--html', 'fancy'])).toMatchObject({
+      code: 'invalid-html',
+      exitCode: EXIT.CONFIG_ERROR,
+    });
+  });
+
   it('accepts a comma-separated viewport list and --flag=value form', () => {
     const invocation = ok(['run', 'checkout', '--viewport=1280x800,390x844', '--at=abc123']);
     expect(invocation).toMatchObject({ viewports: ['1280x800', '390x844'], at: 'abc123' });

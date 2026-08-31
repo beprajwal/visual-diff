@@ -226,4 +226,47 @@ describe('exportBundle', () => {
     expect(html).toContain('not in this bundle');
     expect(html).toContain('findings.json');
   });
+
+  it('embeds the shots under html=inline, so report.html alone is the report', async () => {
+    const report = await exportBundle({
+      root,
+      result: fixtureDiff(),
+      outDir: out,
+      images: 'changed',
+      html: 'inline',
+      version: '0.6.0',
+      generatedAt: '2026-08-11T09:00:00.000Z',
+    });
+    const html = await readFile(join(out, 'report.html'), 'utf8');
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).not.toContain('src="images/');
+    // Self-contained means no reference off the file, the footer's findings.json link included.
+    expect(html).not.toContain('findings.json');
+    // The rest of the bundle is untouched: images/ still ships, and no second page appears.
+    expect(report.files).toContain('images/pay-form/1280x800/base.png');
+    expect(report.files).not.toContain('report.inline.html');
+  });
+
+  it('writes the linked page plus report.inline.html under html=both', async () => {
+    const report = await exportBundle({
+      root,
+      result: fixtureDiff(),
+      outDir: out,
+      images: 'changed',
+      html: 'both',
+      version: '0.6.0',
+      generatedAt: '2026-08-11T09:00:00.000Z',
+    });
+    expect(report.files).toContain('report.html');
+    expect(report.files).toContain('report.inline.html');
+    expect(await readFile(join(out, 'report.html'), 'utf8')).toContain(
+      'src="images/pay-form/1280x800/base.png"',
+    );
+    expect(await readFile(join(out, 'report.inline.html'), 'utf8')).toContain(
+      'data:image/png;base64,',
+    );
+    const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')) as BundleSummary;
+    expect(summary.html).toBe('both');
+    expect(summary.files).toContain('report.inline.html');
+  });
 });

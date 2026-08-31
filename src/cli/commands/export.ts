@@ -48,6 +48,7 @@ export async function exportCommand(
     result,
     outDir,
     images: invocation.images,
+    html: invocation.html,
     version: ctx.version,
     generatedAt: new Date().toISOString(),
     notices,
@@ -61,11 +62,16 @@ export async function exportCommand(
 
   const human: string[] = [
     `${pair.flow}  ${pair.base}..${pair.head}  →  ${report.outDir}`,
-    `${report.files.length} file(s), ${report.images} image(s), images=${invocation.images}`,
+    `${report.files.length} file(s), ${report.images} image(s), images=${invocation.images}, html=${invocation.html}`,
   ];
   for (const file of report.files) human.push(`  ${file}`);
   human.push('');
   human.push(`open ${path.join(report.outDir, 'report.html')} to review it offline`);
+  if (invocation.html === 'inline') {
+    human.push('report.html is self-contained: its images are embedded, the one file is the report');
+  } else if (invocation.html === 'both') {
+    human.push('report.inline.html is the same page with its images embedded — shareable as one file');
+  }
 
   const warnings: string[] = [...composed.warnings];
   if (report.missing.length > 0) {
@@ -85,6 +91,7 @@ export async function exportCommand(
     outDir: report.outDir,
     files: report.files,
     images: report.images,
+    html: invocation.html,
     missing: report.missing,
     gate,
     labels: pairLabels(result.scenarios),

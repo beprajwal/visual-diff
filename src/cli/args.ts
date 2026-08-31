@@ -23,13 +23,17 @@ import {
   type ViewportId,
 } from '../types.js';
 import {
+  DEFAULT_HTML_MODE,
   DEFAULT_IMAGE_SELECTION,
   GATE_LEVELS,
   GATE_NONE,
+  HTML_MODES,
   IMAGE_SELECTIONS,
   isGateLevel,
+  isHtmlMode,
   isImageSelection,
   type GateLevel,
+  type HtmlMode,
   type ImageSelection,
 } from './ci.js';
 import { E2E_SOURCE_FORMATS, isE2eSourceFormat, type E2eSourceFormat } from './e2e.js';
@@ -159,6 +163,8 @@ export type Invocation =
       /** Bundle directory. Defaults to `.visual-diff/exports/<flow>/<base>..<head>`. */
       out?: string;
       images: ImageSelection;
+      /** How `report.html` addresses its images: linked paths, embedded data URIs, or both pages. */
+      html: HtmlMode;
       /** Recorded in the bundle's own `summary.json` and rendered into its `comment.md`. */
       failOn: GateLevel;
       artifactUrl?: string;
@@ -326,11 +332,13 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 3,
   },
   export: {
-    usage: 'vdiff export <flow> [base] [head] [--out <dir>] [--images changed|all|none]',
+    usage:
+      'vdiff export <flow> [base] [head] [--out <dir>] [--images changed|all|none] [--html linked|inline|both]',
     summary: 'write a portable evidence bundle: images, JSON, static HTML',
     flags: flags({
       out: { type: 'string' },
       images: { type: 'string' },
+      html: { type: 'string' },
       'artifact-url': { type: 'string' },
       'artifact-name': { type: 'string' },
       'fail-on': { type: 'string' },
@@ -1118,6 +1126,15 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
           `expected one of: ${IMAGE_SELECTIONS.join(', ')}`,
         );
       }
+      const html = values['html'];
+      if (typeof html === 'string' && !isHtmlMode(html)) {
+        return fail(
+          'export',
+          'invalid-html',
+          `unknown --html mode '${html}'`,
+          `expected one of: ${HTML_MODES.join(', ')}`,
+        );
+      }
       const level = values['fail-on'];
       if (typeof level === 'string' && !isGateLevel(level)) {
         return fail(
@@ -1132,6 +1149,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         flow: positionals[0] as string,
         e2e: wantsE2e,
         images: typeof images === 'string' ? images : DEFAULT_IMAGE_SELECTION,
+        html: typeof html === 'string' ? html : DEFAULT_HTML_MODE,
         failOn: typeof level === 'string' ? level : GATE_NONE,
         json,
       };

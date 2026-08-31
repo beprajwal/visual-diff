@@ -169,6 +169,7 @@ describe('vdiff export', () => {
     e2e: false,
     failOn: 'none' as const,
     images: 'changed' as const,
+    html: 'linked' as const,
     json: false,
   };
 
