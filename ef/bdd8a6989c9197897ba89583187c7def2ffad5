@@ -1,0 +1,42 @@
+src/cli/shapes.ts
+  s_03a613a5d6b57f::t_7ff1a21e9387c1 154
+src/ci/comment.ts
+  s_03a613a5d6b57f::t_68d5233657acfd 78
+  s_03a613a5d6b57f::t_9ff3ff187ab566 132-134
+  s_03a613a5d6b57f::t_01a1d0facfcdac 201-213
+  s_03a613a5d6b57f::t_b3e921e0e18abd 284
+  s_03a613a5d6b57f::t_7b1eab9ba1e463 364-366
+  s_03a613a5d6b57f::t_e79c54267ce7b0 242
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_03a613a5d6b57f::t_f1bc28b3c425c5 203
+  s_03a613a5d6b57f::t_ca7f840b664906 136-144
+  s_03a613a5d6b57f::t_952e70c14a3166 191-196
+tests/integration/ci-mode.test.ts
+  s_03a613a5d6b57f::t_41fd1f5ed32e65 122-124
+src/cli/commands/comment.test.ts
+  s_03a613a5d6b57f::t_f2a4b6efabf8ba 158,164
+  s_03a613a5d6b57f::t_4b3d32028b2c60 159-163
+  s_03a613a5d6b57f::t_c22ef2bc5b0103 221
+src/ci/comment.test.ts
+  s_03a613a5d6b57f::t_1f5d2ae1b72366 106,108-109
+  s_03a613a5d6b57f::t_45c2f2b00f6fbe 171
+  s_03a613a5d6b57f::t_7dcf9564e7ac4e 115,119,122-125
+  s_03a613a5d6b57f::t_1a300b9d5bf72a 128-129,134-150
+  s_03a613a5d6b57f::t_5839d6c3bcc45b 185,187-189,192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "efbdd8a6989c9197897ba89583187c7def2ffad5",
+  "prompts": {},
+  "sessions": {
+    "s_03a613a5d6b57f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea57df4-484e-4ffe-bd62-c8792ac581f0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
