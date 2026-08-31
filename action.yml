@@ -52,6 +52,15 @@ inputs:
     description: 'changed | all | none — which shots the evidence bundle carries.'
     required: false
     default: changed
+  html:
+    description: >-
+      linked | inline | both — how the bundle's report.html addresses its images. `linked` (the
+      default) uses relative paths into images/. `inline` embeds them as data: URIs, so the one file
+      is the whole report — the shape to pick when something serves or shares it as a single object.
+      `both` writes the linked page plus a self-contained report.inline.html beside it. Anything but
+      `linked` needs a CLI newer than 0.5.2 — mind that when pinning `cli:` yourself.
+    required: false
+    default: linked
   comment:
     description: 'Post (or update) the pull-request comment.'
     required: false
@@ -346,6 +355,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         IMAGES: ${{ inputs.images }}
+        HTML: ${{ inputs.html }}
         CLI: ${{ inputs.cli }}
       run: |
         set -euo pipefail
@@ -354,7 +364,13 @@ runs:
           # `diff` first so its human output lands in the log: a reader scanning the job should see
           # the finding table without downloading anything.
           $cli diff "$flow"
-          $cli export "$flow" --images "$IMAGES" --out "$BUNDLE_ROOT/$flow"
+          # `--html` is only passed when it deviates from the default, so a user-pinned `cli:` older
+          # than the flag keeps working until they opt in.
+          if [ "${HTML:-linked}" = "linked" ]; then
+            $cli export "$flow" --images "$IMAGES" --out "$BUNDLE_ROOT/$flow"
+          else
+            $cli export "$flow" --images "$IMAGES" --html "$HTML" --out "$BUNDLE_ROOT/$flow"
+          fi
         done
 
     # ---------------------------------------------------------------- publish images (D31)
@@ -399,6 +415,7 @@ runs:
             cp -R "$BUNDLE_ROOT/$flow/images" "$target/"
           fi
           cp "$BUNDLE_ROOT/$flow/report.html" "$target/" 2>/dev/null || true
+          cp "$BUNDLE_ROOT/$flow/report.inline.html" "$target/" 2>/dev/null || true
         done
 
         cd "$work"

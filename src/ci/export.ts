@@ -12,7 +12,7 @@
  * has no screenshots, and inventing one would be worse than a bundle that says so.
  */
 
-import { mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type { DiffResult, IsoDate, RunMeta } from '../types.js';
@@ -24,6 +24,7 @@ import {
   cropPath,
   selectCells,
   shotCells,
+  type HtmlMode,
   type ImageSelection,
   type ShotCell,
 } from './layout.js';
@@ -41,6 +42,7 @@ export interface BundleSummary {
   version: string;
   generatedAt: IsoDate;
   images: ImageSelection;
+  html: HtmlMode;
   /** Both sides' provenance: revision, capture environment, status. */
   runs: {
     base: BundleRunInfo;
@@ -68,6 +70,13 @@ export interface ExportRequest {
   /** Directory to write. Created if absent; existing files of the same name are overwritten. */
   outDir: string;
   images: ImageSelection;
+  /**
+   * How the page addresses its images: `linked` (the default) writes today's relative-path
+   * `report.html`; `inline` embeds the shots as `data:` URIs so `report.html` alone is the report;
+   * `both` writes the linked page plus a self-contained `report.inline.html`. The rest of the
+   * bundle — `images/`, `comment.md`, the JSON — is the same in every mode.
+   */
+  html?: HtmlMode;
   version: string;
   generatedAt: IsoDate;
   notices?: readonly string[];
@@ -142,6 +151,11 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
 
   const everyCell = shotCells(result);
   const selected = selectCells(everyCell, request.images);
+  const html = request.html ?? 'linked';
+
+  // Shot sources by bundle-relative path, kept only for what actually copied — an inline page must
+  // embed exactly the images the linked page would show, no more (the ImageSelection contract).
+  const shotSources = new Map<string, string>();
 
   for (const cell of selected) {
     const wanted: Array<[from: string, to: string]> = [];
@@ -159,6 +173,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
       if (await copyIfPresent(from, path.join(outDir, to))) {
         files.push(to);
         images += 1;
+        shotSources.set(to, from);
       } else {
         missing.push(to);
       }
@@ -203,16 +218,44 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
   await writeFile(path.join(outDir, BUNDLE_FILES.comment), comment.markdown, 'utf8');
   files.push(BUNDLE_FILES.comment);
 
-  const page = renderReportPage({
+  const pageInput = {
     result,
     images: request.images,
     version: request.version,
     generatedAt: request.generatedAt,
     ...(request.notices === undefined ? {} : { notices: request.notices }),
     ...(request.gate === undefined ? {} : { gate: request.gate }),
-  });
-  await writeFile(path.join(outDir, BUNDLE_FILES.report), page, 'utf8');
-  files.push(BUNDLE_FILES.report);
+  };
+
+  // The self-contained page reads the images back rather than reusing bytes from the copy above,
+  // because the copy is a streamed `copyFile`. A source that vanished between the two reads lands in
+  // `missing` semantics implicitly: the map entry is dropped and the page says "not in this bundle".
+  const embed = async (): Promise<ReadonlyMap<string, string>> => {
+    const embedded = new Map<string, string>();
+    for (const [rel, from] of shotSources) {
+      try {
+        embedded.set(rel, `data:image/png;base64,${(await readFile(from)).toString('base64')}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
+    }
+    return embedded;
+  };
+
+  if (html === 'inline') {
+    const page = renderReportPage({ ...pageInput, embeddedImages: await embed() });
+    await writeFile(path.join(outDir, BUNDLE_FILES.report), page, 'utf8');
+    files.push(BUNDLE_FILES.report);
+  } else {
+    const page = renderReportPage(pageInput);
+    await writeFile(path.join(outDir, BUNDLE_FILES.report), page, 'utf8');
+    files.push(BUNDLE_FILES.report);
+    if (html === 'both') {
+      const inline = renderReportPage({ ...pageInput, embeddedImages: await embed() });
+      await writeFile(path.join(outDir, BUNDLE_FILES.reportInline), inline, 'utf8');
+      files.push(BUNDLE_FILES.reportInline);
+    }
+  }
 
   const summary: BundleSummary = {
     flow,
@@ -224,6 +267,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
     version: request.version,
     generatedAt: request.generatedAt,
     images: request.images,
+    html,
     runs: { base: runInfo(result.baseMeta), head: runInfo(result.headMeta) },
     files: [...files, BUNDLE_FILES.summary],
     missing,

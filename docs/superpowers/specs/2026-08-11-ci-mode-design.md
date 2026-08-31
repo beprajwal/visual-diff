@@ -123,6 +123,16 @@ When `fail-on` is set and tripped, the action still uploads the artifact and pos
 fails at the end. A gate that fails first produces the worst possible artifact of this feature: a red
 check with no explanation of what changed.
 
+**D36 — `--html linked|inline|both` controls how the page addresses its images.**
+`linked` (the default) is the original shape: `report.html` points at `images/` with relative paths,
+smallest bundle, opens anywhere the directory travels whole. `inline` embeds every shown image as a
+`data:` URI, so the one file is the whole report — the shape for hosts that take single objects (a
+worker with an object store, a gist, an email) and for the workflow-artifact zip, where GitHub serves
+nothing as HTML anyway. `both` writes the linked page plus `report.inline.html` beside it. Only the
+page changes: `images/`, `comment.md` and the JSON are identical in every mode, and the inline page
+embeds exactly the shots `--images` selected — no more. Rejected: making `inline` the default, which
+would grow every bundle by a third (base64) to serve a case most workflows do not have.
+
 ## 4. What CI adds, and what it does not
 
 A pull-request job produces exactly what a local `vdiff run`/`vdiff diff` pair produces, so
@@ -149,7 +159,8 @@ can be zipped, attached, served by any static host, or opened from a filesystem:
   summary.json           envelope: flow, pair, summary, labels, both runs' revision + env, generatedAt
   findings.json          the stored DiffResult, verbatim
   comment.md             the rendered markdown, with the image base it was rendered for
-  report.html            self-contained static page; relative image paths, no JS framework, no CDN
+  report.html            static page; relative image paths (or data: URIs, D36), no JS framework, no CDN
+  report.inline.html     under --html both: the same page with its images embedded (D36)
   images/
     <step>/<viewport>/base.png, head.png, pixel.png
     crops/<findingId>.png
@@ -209,6 +220,7 @@ Exit codes: `0` success, `1` run or replay failure, `2` config or spec error, `3
 | `artifact` | `true` | upload the evidence bundle |
 | `artifact-name` | `visual-diff` | artifact name |
 | `publish-branch` | *(empty)* | branch to push diff images to, enabling inline images (D31) |
+| `html` | `linked` | `linked` \| `inline` \| `both` — how the bundle's page addresses its images (D36) |
 | `node-version` | `20` | Node used to run `vdiff` |
 | `version` | *(the action's own version)* | `@beprajwal/visual-diff` version installed |
 | `working-directory` | `.` | directory holding `.visual-diff/` |

@@ -13,8 +13,11 @@
 export { GATE_LEVELS, GATE_NONE, evaluateGate, isGateLevel } from '../ci/gate.js';
 export type { GateLevel, GateVerdict } from '../ci/gate.js';
 
-export { IMAGE_SELECTIONS, isImageSelection } from '../ci/layout.js';
-export type { ImageSelection } from '../ci/layout.js';
+export { HTML_MODES, IMAGE_SELECTIONS, isHtmlMode, isImageSelection } from '../ci/layout.js';
+export type { HtmlMode, ImageSelection } from '../ci/layout.js';
 
 /** What `--images` defaults to: the shots that moved (CI spec §5). */
 export const DEFAULT_IMAGE_SELECTION = 'changed';
+
+/** What `--html` defaults to: the relative-path page, which keeps the bundle at today's size. */
+export const DEFAULT_HTML_MODE = 'linked';

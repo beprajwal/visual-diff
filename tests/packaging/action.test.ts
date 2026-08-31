@@ -100,6 +100,7 @@ describe('action.yml', () => {
         'fail-on',
         'flows',
         'github-token',
+        'html',
         'images',
         'install',
         'mode',
