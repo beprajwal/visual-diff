@@ -151,7 +151,7 @@ export interface CommentData {
   /** Image groups rendered. Zero whenever no `--image-base` was given — GitHub cannot serve one (D31). */
   images: number;
   /** What did not fit in the body, so a caller can log it rather than discover it (D33). */
-  truncated: { findings: number; images: number; steps: boolean };
+  truncated: { images: number; steps: boolean };
   /** Absolute path written by `--out`; null when the markdown went to stdout only. */
   path: string | null;
   /** The gate that was evaluated. `level: 'none'` — the default — never trips (D30). */

@@ -119,7 +119,9 @@ describe('vdiff comment against a real store', () => {
     expect(comment.pair).toEqual({ flow: 'checkout', base: '0000', head: '0001' });
     expect(comment.marker).toBe('<!-- vdiff:checkout:pr -->');
     expect(comment.markdown.split('\n')[0]).toBe(comment.marker);
-    expect(comment.markdown).toContain('#### Findings');
+    // No findings table (D37): the counts live in the verdict line and the steps table.
+    expect(comment.markdown).toContain('**1 finding**');
+    expect(comment.markdown).not.toContain('#### Findings');
     // No image base was given, so no screenshots are embedded — and the command says why (D31).
     expect(comment.images).toBe(0);
     expect(comment.gate).toEqual({

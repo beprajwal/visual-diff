@@ -133,6 +133,15 @@ page changes: `images/`, `comment.md` and the JSON are identical in every mode, 
 embeds exactly the shots `--images` selected — no more. Rejected: making `inline` the default, which
 would grow every bundle by a third (base64) to serve a case most workflows do not have.
 
+**D37 — the comment shows the change, not the findings list.**
+The finding rows duplicated what the images already say, in the least readable form the comment had,
+and they crowded the images out of the byte budget. Dropped: the findings table and `--max-findings`.
+Kept: every number — the verdict line's severity counts, a findings-by-severity phrase in each image
+group's heading, and the per-step counts in the collapsed steps table. The full rows still ship in
+`findings.json` and render in the report page, which is where triage that needs ids and selectors
+happens anyway. Shrink order flips accordingly: the steps table is dropped before an image, because
+the images are now the comment's answer.
+
 ## 4. What CI adds, and what it does not
 
 A pull-request job produces exactly what a local `vdiff run`/`vdiff diff` pair produces, so
@@ -179,17 +188,19 @@ One markdown document, in this order, so a reader who stops after two lines has 
 2. **Any pair label** — `cross-scenario`, `mock-vs-recorded`, `e2e-vs-replay`, variant pairings, and
    the degraded-detail sentences for an ingested side. These are the same sentences `vdiff diff`
    prints; a CI reader needs them more than a local one, not less.
-3. **Step table** — step, status, viewport, pixel change, findings.
-4. **Findings table** — id, severity, kind, where, element, change; capped with a stated remainder.
-5. **Images** — base / head / diff per changed step and viewport, only when an image base was given.
-6. **Footer** — artifact link, the exact `vdiff` commands to reproduce the pair locally, the version
+3. **What changed** — base / head / diff images per changed step and viewport, only when an image
+   base was given. This is the comment's answer (D37): each group's heading carries the pixel ratio
+   and a findings-by-severity phrase. There is no findings table — a reviewer triages from the
+   pictures and the counts, and the full rows live in `findings.json` and the report page.
+4. **Step table** — step, status, viewport, pixel change, findings; collapsed.
+5. **Footer** — artifact link, the exact `vdiff` commands to reproduce the pair locally, the version
    that produced it, and the marker comment.
 
 ## 7. CLI
 
 ```sh
 vdiff comment <flow> [base] [head] [--image-base <url>] [--artifact-url <url>]
-                                   [--max-findings <n>] [--max-images <n>]
+                                   [--max-images <n>] [--report-url <url>]
                                    [--fail-on none|high|any] [--out <file>] [--json]
 vdiff export  <flow> [base] [head] [--out <dir>] [--images changed|all|none] [--json]
 vdiff install github-actions [--dir <path>] [--force] [--dry-run]

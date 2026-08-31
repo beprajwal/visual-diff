@@ -20,7 +20,6 @@
 import type { DiffResult, Finding } from '../types.js';
 import { evaluateGate, GATE_NONE, type GateLevel, type GateVerdict } from './gate.js';
 import {
-  allFindings,
   BUNDLE_FILES,
   selectCells,
   shotCells,
@@ -29,7 +28,6 @@ import {
 
 /** GitHub's hard limit is 65536 characters; the margin absorbs whatever a transport prepends. */
 export const MAX_COMMENT_BYTES = 65000;
-export const DEFAULT_MAX_FINDINGS = 25;
 export const DEFAULT_MAX_IMAGES = 4;
 
 export interface CommentInput {
@@ -63,7 +61,6 @@ export interface CommentInput {
   version: string;
   /** Overrides the marker that makes this comment updatable in place (D33). */
   marker?: string;
-  maxFindings?: number;
   maxImages?: number;
   maxBytes?: number;
   /** Commands that reproduce this exact pair locally. Rendered verbatim in the footer. */
@@ -78,7 +75,7 @@ export interface CommentDocument {
   /** Image groups actually rendered. Zero whenever no `imageBase` was given. */
   images: number;
   /** What did not fit, so the caller can log it and the reader can be told (D33). */
-  truncated: { findings: number; images: number; steps: boolean };
+  truncated: { images: number; steps: boolean };
 }
 
 /**
@@ -132,9 +129,9 @@ function table(headers: readonly string[], rows: readonly string[][]): string[] 
 }
 
 const SEVERITY_MARK: Record<Finding['severity'], string> = {
-  high: '🔴 high',
-  med: '🟠 med',
-  low: '⚪ low',
+  high: '🔴',
+  med: '🟠',
+  low: '⚪',
 };
 
 function joinUrl(base: string, relative: string): string {
@@ -201,40 +198,19 @@ function verdictLines(input: CommentInput): string[] {
   return lines;
 }
 
-function findingRow(finding: Finding): string[] {
-  const where = `${finding.step}${finding.viewport === undefined ? '' : ` @${finding.viewport}`}`;
-  const change =
-    finding.changes.length === 0
-      ? cell(finding.label)
-      : `${cell(finding.label)}: ${finding.changes
-          .slice(0, 3)
-          .map((c) => `${cell(c.prop)} ${code(String(c.from ?? '—'))} → ${code(String(c.to ?? '—'))}`)
-          .join('; ')}`;
-  return [
-    code(finding.id),
-    SEVERITY_MARK[finding.severity],
-    cell(finding.kind),
-    code(where),
-    code(finding.element?.selector ?? '—'),
-    change,
-  ];
-}
-
-function findingsSection(
-  findings: readonly Finding[],
-  shown: number,
-  artifactHint: string,
-): string[] {
-  if (findings.length === 0) return [];
-  const visible = findings.slice(0, Math.max(0, shown));
-  const lines = ['', '#### Findings', ''];
-  lines.push(...table(['ID', 'SEV', 'KIND', 'WHERE', 'ELEMENT', 'CHANGE'], visible.map(findingRow)));
-  const dropped = findings.length - visible.length;
-  if (dropped > 0) {
-    lines.push('');
-    lines.push(`… ${dropped} more finding${dropped === 1 ? '' : 's'} — ${artifactHint}`);
-  }
-  return lines;
+/**
+ * "2 findings (1 high ●, 1 low ○)" — the group's finding load compressed to a phrase. The comment
+ * carries no findings table (the full rows live in `findings.json` and the report page), so this
+ * phrase and the steps table are where the numbers surface.
+ */
+function findingPhrase(findings: readonly Finding[]): string {
+  if (findings.length === 0) return 'no findings';
+  const counts = { high: 0, med: 0, low: 0 };
+  for (const finding of findings) counts[finding.severity] += 1;
+  const parts = (['high', 'med', 'low'] as const)
+    .filter((severity) => counts[severity] > 0)
+    .map((severity) => `${counts[severity]} ${severity} ${SEVERITY_MARK[severity]}`);
+  return `${findings.length} finding${findings.length === 1 ? '' : 's'} (${parts.join(', ')})`;
 }
 
 function stepsSection(result: DiffResult, cells: readonly ShotCell[]): string[] {
@@ -263,7 +239,7 @@ function imageGroup(cellData: ShotCell, imageBase: string): string[] {
   const heading =
     `<code>${cellData.step}</code> @ ${cellData.viewport} — ` +
     (cellData.missing === undefined
-      ? `${percent(cellData.pixelChangedRatio)} pixels, ${cellData.findings.length} finding(s)`
+      ? `<strong>${percent(cellData.pixelChangedRatio)} of pixels changed</strong> · ${findingPhrase(cellData.findings)}`
       : `capture missing on the ${cellData.missing} side`);
 
   // The base/head pair is shown even when the pixel diff is absent (an added step has no base to
@@ -305,7 +281,7 @@ function imagesSection(
     return { lines: [], rendered: 0, dropped: 0 };
   }
   const visible = cells.slice(0, Math.max(0, shown));
-  const lines = ['', '#### Screenshots', ''];
+  const lines = ['', '#### What changed', ''];
   for (const cellData of visible) lines.push(...imageGroup(cellData, imageBase));
   const dropped = cells.length - visible.length;
   if (dropped > 0) {
@@ -365,11 +341,9 @@ export function renderComment(input: CommentInput): CommentDocument {
 
   const head = [marker, ...verdictLines(input)];
   const foot = footerLines(input);
-  const findings = allFindings(input.result);
   const everyCell = shotCells(input.result);
   const cells = selectCells(everyCell, 'changed');
 
-  let findingBudget = Math.min(findings.length, input.maxFindings ?? DEFAULT_MAX_FINDINGS);
   let imageBudget = Math.min(cells.length, input.maxImages ?? DEFAULT_MAX_IMAGES);
   let withSteps = true;
 
@@ -377,7 +351,6 @@ export function renderComment(input: CommentInput): CommentDocument {
     const images = imagesSection(cells, imageBudget, input.imageBase, hint);
     const lines = [
       ...head,
-      ...findingsSection(findings, findingBudget, hint),
       ...images.lines,
       ...(withSteps ? stepsSection(input.result, everyCell) : []),
       ...foot,
@@ -388,18 +361,15 @@ export function renderComment(input: CommentInput): CommentDocument {
   let built = assemble();
   const size = (): number => Buffer.byteLength(`${built.lines.join('\n')}\n`, 'utf8');
 
-  // Shrink in the order above. Each loop re-measures rather than estimating, because a single
-  // finding row carrying a long selector is worth more than a screenshot group.
+  // Shrink in the order above, re-measuring each time. The steps table goes before the images
+  // because the images are the comment's answer — the table's numbers survive in the verdict line
+  // and the group headings.
   if (size() > maxBytes && withSteps) {
     withSteps = false;
     built = assemble();
   }
   while (size() > maxBytes && imageBudget > 0) {
     imageBudget -= 1;
-    built = assemble();
-  }
-  while (size() > maxBytes && findingBudget > 1) {
-    findingBudget = Math.max(1, Math.floor(findingBudget / 2));
     built = assemble();
   }
 
@@ -410,7 +380,6 @@ export function renderComment(input: CommentInput): CommentDocument {
     bytes: Buffer.byteLength(markdown, 'utf8'),
     images: built.images,
     truncated: {
-      findings: Math.max(0, findings.length - findingBudget),
       images: Math.max(0, cells.length - imageBudget),
       steps: !withSteps,
     },

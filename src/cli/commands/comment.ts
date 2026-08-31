@@ -55,7 +55,6 @@ export async function comment(
   if (invocation.artifactName !== undefined) input.artifactName = invocation.artifactName;
   if (invocation.reportUrl !== undefined) input.reportUrl = invocation.reportUrl;
   if (invocation.marker !== undefined) input.marker = invocation.marker;
-  if (invocation.maxFindings !== undefined) input.maxFindings = invocation.maxFindings;
   if (invocation.maxImages !== undefined) input.maxImages = invocation.maxImages;
 
   const document = await ctx.ports.renderComment(input);
@@ -74,12 +73,6 @@ export async function comment(
   const human = written === null ? document.markdown.split('\n') : [written];
 
   const warnings: string[] = [...composed.warnings];
-  if (document.truncated.findings > 0) {
-    warnings.push(
-      `comment truncated: ${document.truncated.findings} of ${result.summary.totalFindings} ` +
-        'findings are not in the body; the full set is in findings.json',
-    );
-  }
   if (document.truncated.images > 0) {
     warnings.push(`comment truncated: ${document.truncated.images} changed shot(s) not shown`);
   }

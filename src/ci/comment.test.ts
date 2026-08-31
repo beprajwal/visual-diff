@@ -103,40 +103,51 @@ describe('renderComment', () => {
     });
     const lines = doc.markdown.split('\n');
     const link = lines.findIndex((l) => l.includes('[Open the full report](https://claude.ai/artifacts/abc123)'));
-    const findings = lines.findIndex((l) => l.startsWith('#### Findings'));
+    const footer = lines.findIndex((l) => l.startsWith('---'));
     expect(link).toBeGreaterThan(-1);
-    // With the verdict, before the finding table — a footer credit is not a call to action.
-    expect(link).toBeLessThan(findings);
+    // With the verdict, well before the footer — a footer credit is not a call to action.
+    expect(link).toBeLessThan(footer);
 
     const without = renderComment({ result: diffWithFindings(2), version: '0.6.0' });
     expect(without.markdown).not.toContain('Open the full report');
   });
 
-  it('states the number of findings it dropped, and where the rest live', () => {
+  it('renders no findings table — the counts live in the verdict and the group headings (D37)', () => {
     const doc = renderComment({
       result: diffWithFindings(30),
       version: '0.6.0',
-      maxFindings: 5,
+      imageBase: 'https://example.test/base',
       artifactUrl: 'https://github.com/o/r/actions/runs/1#artifacts',
     });
-    expect(doc.truncated.findings).toBe(25);
-    expect(doc.markdown).toContain('… 25 more findings — see [`findings.json`]');
+    expect(doc.markdown).not.toContain('#### Findings');
+    expect(doc.markdown).toContain('**30 findings**');
+    // Each rendered image group states its own load: pixel ratio plus findings by severity.
+    expect(doc.markdown).toMatch(/of pixels changed<\/strong> · \d+ findings? \(/);
   });
 
-  it('shrinks to fit a byte budget without dropping the verdict or the footer', () => {
-    const doc = renderComment({
+  it('shrinks to fit a byte budget: steps table first, then images, never the verdict or footer', () => {
+    const input = {
       result: diffWithFindings(40),
       version: '0.6.0',
       imageBase: 'https://example.test/base',
-      maxFindings: 40,
       maxImages: 10,
-      maxBytes: 2200,
-    });
-    expect(doc.bytes).toBeLessThanOrEqual(2200);
-    expect(doc.markdown).toContain('**40 findings**');
-    expect(doc.markdown).toContain('vdiff 0.6.0');
-    expect(doc.truncated.findings).toBeGreaterThan(0);
-    expect(doc.truncated.steps).toBe(true);
+    };
+    const full = renderComment(input);
+
+    // One byte short of the full document: the steps table goes, the images stay (D37).
+    const squeezed = renderComment({ ...input, maxBytes: full.bytes - 1 });
+    expect(squeezed.bytes).toBeLessThanOrEqual(full.bytes - 1);
+    expect(squeezed.truncated.steps).toBe(true);
+    expect(squeezed.truncated.images).toBe(0);
+    expect(squeezed.markdown).toContain('**40 findings**');
+    expect(squeezed.markdown).toContain('vdiff 0.6.0');
+
+    // Tighter still: image groups shrink, the verdict and the footer survive.
+    const tiny = renderComment({ ...input, maxBytes: squeezed.bytes - 1 });
+    expect(tiny.bytes).toBeLessThanOrEqual(squeezed.bytes - 1);
+    expect(tiny.truncated.images).toBeGreaterThan(0);
+    expect(tiny.markdown).toContain('**40 findings**');
+    expect(tiny.markdown).toContain('vdiff 0.6.0');
   });
 
   it('stays under GitHub\'s limit by default on a pathological diff', () => {
@@ -144,7 +155,6 @@ describe('renderComment', () => {
       result: diffWithFindings(400),
       version: '0.6.0',
       imageBase: 'https://example.test/base',
-      maxFindings: 400,
       maxImages: 50,
     });
     expect(doc.bytes).toBeLessThanOrEqual(MAX_COMMENT_BYTES);
@@ -158,7 +168,7 @@ describe('renderComment', () => {
     });
     const marker = doc.markdown.indexOf('> ⚠️ mock-vs-recorded');
     expect(marker).toBeGreaterThan(0);
-    expect(marker).toBeLessThan(doc.markdown.indexOf('#### Findings'));
+    expect(marker).toBeLessThan(doc.markdown.indexOf('<details><summary>All steps'));
   });
 
   it('flags an incomplete pair rather than letting it read as clean', () => {
@@ -172,21 +182,17 @@ describe('renderComment', () => {
     expect(doc.markdown).toContain('2 step(s) failed');
   });
 
-  it('escapes a pipe and a backtick so no cell can invent a column', () => {
+  it('escapes a pipe in a step detail so no cell can invent a column', () => {
     const result = diffWithFindings(1);
-    const finding = result.steps[0]?.viewports['1280x800']?.findings[0];
-    if (finding === undefined) throw new Error('fixture lost its finding');
-    finding.element = { selector: 'a[href="x|y"]' };
-    finding.changes = [{ prop: 'text', from: 'a`b', to: 'c|d' }];
+    const step = result.steps[0];
+    if (step === undefined) throw new Error('fixture lost its step');
+    step.detail = 'copy changed: "x|y"';
 
     const doc = renderComment({ result, version: '0.6.0' });
-    const row = doc.markdown
-      .split('\n')
-      .find((line) => line.includes('a[href='));
+    const row = doc.markdown.split('\n').find((line) => line.includes('copy changed'));
     expect(row).toBeDefined();
     expect(row?.split(' | ')).toHaveLength(6);
     expect(doc.markdown).toContain('x\\|y');
-    expect(doc.markdown).toContain('``a`b``');
   });
 
   it('renders the gate only when one is configured', () => {
