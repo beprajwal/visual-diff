@@ -125,7 +125,7 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.5.2
+- uses: beprajwal/visual-diff@v0.7.0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
