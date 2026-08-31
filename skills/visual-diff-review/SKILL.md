@@ -1,3 +1,8 @@
+---
+name: visual-diff-review
+description: "Interpret visual-diff findings and pull back human comments left on the report. Use when a diff exists and needs explaining, or when the user has annotated the report page."
+---
+
 # Reviewing a Visual Diff
 
 Load this skill when a diff exists and needs interpreting, or when the user has left comments on the

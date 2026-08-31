@@ -1,10 +1,11 @@
 /**
  * YAML frontmatter composition, shared by every harness adapter.
  *
- * The `SKILL.md` bodies under `skills/` carry no frontmatter at all: which keys a harness wants —
- * `name`, `description`, `argument-hint`, `allowed-tools` — is the one thing that genuinely differs
- * between Claude Code, Codex, opencode and pi. Composing it here, from the neutral manifest, is what
- * lets the same markdown ship to all of them.
+ * The `SKILL.md` sources under `skills/` carry only the minimal `name`/`description` block the open
+ * skills installers read straight off the repo — it is stripped at load (`source.ts`). Which keys a
+ * harness actually wants — `name`, `description`, `argument-hint`, `allowed-tools` — is the one
+ * thing that genuinely differs between Claude Code, Codex, opencode and pi. Composing it here, from
+ * the neutral manifest, is what lets the same markdown ship to all of them.
  *
  * Nothing here reads or writes a file.
  */

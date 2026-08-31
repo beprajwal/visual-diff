@@ -1,3 +1,8 @@
+---
+name: visual-diff-flows
+description: "Author or edit a visual-diff flow spec: the closed step vocabulary, stable step ids, masking volatile content, viewport and network modes. Use when no flow covers the feature under work, or when a flow needs changing."
+---
+
 # Authoring Visual Diff Flows
 
 A flow is a declarative spec of one user-facing workflow. `vdiff` replays it to capture evidence, and

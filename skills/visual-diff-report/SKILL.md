@@ -1,12 +1,18 @@
+---
+name: visual-diff-report
+description: "Publish a flow's report as a hosted page (a Claude artifact, or a handoff to ChatGPT Sites or any static host) and optionally link it from a pull-request comment. Use when the user wants to share a report by link without infrastructure, or asks to publish the diff report."
+---
+
 # Publishing a Visual Diff Report
 
-Publish a flow's report as a hosted page — today, a Claude artifact — so it can be shared by link
-with no static host, no publish branch, no infrastructure. Load this skill when the user wants to
-share a report outside the repo, link one from a pull-request comment, or asks to "publish the
-report" / "make an artifact of the diff".
+Publish a flow's report as a hosted page — a Claude artifact, a ChatGPT Site, or any static host —
+so it can be shared by link with no publish branch and no infrastructure of the user's own. Load
+this skill when the user wants to share a report outside the repo, link one from a pull-request
+comment, or asks to "publish the report" / "make an artifact of the diff".
 
-This skill needs a harness that can publish web pages (an `Artifact` tool or equivalent). Without
-one, stop and say so: there is no API for publishing artifacts, so the CLI cannot do this alone.
+The preferred path needs a harness that can publish web pages (an `Artifact` tool or equivalent).
+Without one, fall through to the handoff in step 3b — never claim publishing happened when it
+did not.
 
 ## The shape
 
@@ -46,16 +52,34 @@ strip the wrapper and keep the substance, writing the result to the scratchpad (
 3. Keep everything between `<body>` and `</body>`.
 4. Drop `<!doctype>`, `<html>`, `<head>`, `<body>` and the meta tags.
 
-## Step 3 — publish
+## Step 3 — publish as an artifact
 
-Publish with the Artifact tool. Conventions that make the link durable:
+Publish with the Artifact tool. Conventions that make the link durable and findable:
 
-- **One file path per flow**, stable across runs (e.g. `<scratchpad>/vdiff-<flow>.html`), so a
+- **One file path per project + flow**, stable across runs (e.g.
+  `<scratchpad>/vdiff-<project>-<flow>.html`, where `<project>` is the repo or package name), so a
   re-publish updates the same URL instead of minting a new one. If this session did not create the
   artifact, find its URL first (the artifact list, or ask) and pass it as `url` — publishing
   without it forks a second page.
-- Title: the flow name (e.g. "Checkout Visual Diff"). Favicon on first publish only: 📸.
+- **Title must be unique and identifiable in a gallery of many**: project plus flow, never the flow
+  alone — three repos each with a `checkout` flow must not produce three artifacts named
+  "Checkout". Shape: `<Project> <Flow> Diff` (e.g. "Acme-Web Checkout Diff"). Put the pair being
+  compared in the `description`, not the title — the title stays stable across runs.
+- Favicon on first publish only: 📸.
 - Artifacts start private. Tell the user the link is theirs to share; nothing was made public.
+
+## Step 3b — no artifact tool: hand off the file
+
+Some harnesses cannot publish pages (there is no API for Claude artifacts, and ChatGPT Sites
+deploys only from the ChatGPT app — its CLI cannot save or deploy a Site). The single file is still
+the deliverable:
+
+1. Write the unwrapped page where the user will find it, named identifiably:
+   `vdiff-<project>-<flow>.html` (as `index.html` inside a directory of that name if a host wants a
+   site root).
+2. Tell the user where it is and how to publish it: in the ChatGPT app, "Deploy this project with
+   Sites" from the file's directory; or any static host / gist / email attachment — the file has no
+   external references, so anywhere that serves one object works.
 
 ## Step 4 — reference it from the PR comment (optional)
 
