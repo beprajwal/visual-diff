@@ -145,7 +145,6 @@ export type Invocation =
       reportUrl?: string;
       /** Opt-in threshold. `none` — the default — never gates (D30). */
       failOn: GateLevel;
-      maxFindings?: number;
       maxImages?: number;
       /** File to write instead of stdout. */
       out?: string;
@@ -323,7 +322,6 @@ export const COMMANDS: Record<string, CommandSpec> = {
       'artifact-name': { type: 'string' },
       'report-url': { type: 'string' },
       'fail-on': { type: 'string' },
-      'max-findings': { type: 'number' },
       'max-images': { type: 'number' },
       marker: { type: 'string' },
       out: { type: 'string' },
@@ -1101,7 +1099,6 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         if (typeof value === 'string') invocation[field] = value;
       }
       for (const [flag, field] of [
-        ['max-findings', 'maxFindings'],
         ['max-images', 'maxImages'],
       ] as const) {
         const value = values[flag];

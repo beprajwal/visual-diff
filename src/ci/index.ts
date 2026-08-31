@@ -12,7 +12,6 @@
  */
 
 export {
-  DEFAULT_MAX_FINDINGS,
   DEFAULT_MAX_IMAGES,
   MAX_COMMENT_BYTES,
   markerFor,

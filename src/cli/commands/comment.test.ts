@@ -155,9 +155,13 @@ describe('vdiff comment', () => {
     expect(result.warnings?.join(' ')).toContain('no --image-base given');
   });
 
-  it('carries the caps through to the renderer and reports what was dropped', async () => {
-    const result = await comment(context(diffWith(2)), { ...invocation, maxFindings: 0 });
-    expect(result.data.truncated.findings).toBe(0);
+  it('carries the renderer verdicts through to the JSON payload', async () => {
+    const result = await comment(context(diffWith(2)), {
+      ...invocation,
+      imageBase: 'https://example.test/base',
+      maxImages: 0,
+    });
+    expect(result.data.truncated).toEqual({ images: 0, steps: false });
     expect(result.data.bytes).toBeGreaterThan(0);
   });
 });
@@ -214,7 +218,7 @@ describe('vdiff export', () => {
               marker: '<!-- vdiff:checkout:pr -->',
               bytes: 0,
               images: 0,
-              truncated: { findings: 0, images: 0, steps: false },
+              truncated: { images: 0, steps: false },
             },
           };
         },
