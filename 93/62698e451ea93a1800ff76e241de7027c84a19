@@ -1,0 +1,23 @@
+action.yml
+  s_03a613a5d6b57f::t_ec08ba796a8c9b 96
+package.json
+  s_03a613a5d6b57f::t_d4cf75fe253b7c 3
+src/version.ts
+  s_03a613a5d6b57f::t_9468b81354352c 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9362698e451ea93a1800ff76e241de7027c84a19",
+  "prompts": {},
+  "sessions": {
+    "s_03a613a5d6b57f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea57df4-484e-4ffe-bd62-c8792ac581f0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
