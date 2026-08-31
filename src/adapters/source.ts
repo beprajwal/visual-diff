@@ -16,6 +16,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { splitFrontmatter } from './frontmatter.js';
+
 /** One skill as the manifest declares it; `entry` is a filename inside `skills/<id>/`. */
 export interface SkillManifestEntry {
   id: string;
@@ -41,7 +43,13 @@ export interface SkillsManifest {
 /** A manifest entry paired with the markdown body read off disk. */
 export interface SkillSource {
   entry: SkillManifestEntry;
-  /** The SKILL.md contents, verbatim apart from line-ending normalisation. */
+  /**
+   * The SKILL.md contents with line endings normalised and the source frontmatter removed. The
+   * shipped files carry a minimal `name`/`description` block so the raw repo works with skill
+   * installers that read `skills/<id>/SKILL.md` directly (`npx skills add …`); for our own install
+   * it is stripped here, because the manifest is the source of truth and every harness gets its
+   * frontmatter composed, not copied.
+   */
   body: string;
 }
 
@@ -230,7 +238,9 @@ export async function loadSkillBundle(
         { cause },
       );
     }
-    skills.push({ entry, body: body.replace(/\r\n/g, '\n') });
+    const normalized = body.replace(/\r\n/g, '\n');
+    const split = splitFrontmatter(normalized);
+    skills.push({ entry, body: split === null ? normalized : split.body });
   }
 
   return { dir, manifest, skills };

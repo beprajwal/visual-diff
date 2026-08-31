@@ -1,3 +1,8 @@
+---
+name: visual-diff
+description: "Verify UI you just built by replaying it: capture the workflow, diff it against a previous iteration, summarize what changed, and hand over a live report. Use after changing any user-visible component, layout, style, route, or copy, and before claiming a UI change works."
+---
+
 # Visual Diff
 
 Verify UI you just built by replaying it, not by reading it. `vdiff` replays a recorded workflow
@@ -8,6 +13,14 @@ piece of copy. Use it before claiming a UI change works.
 
 Every command accepts `--json`. Pass it whenever you intend to read the result — parse the envelope,
 never scrape the human table.
+
+## If `vdiff` is not installed
+
+This skill may have arrived ahead of the CLI (a skill installer, a cloned repo). Check with
+`vdiff --version`; when it is missing, run every command as `npx @beprajwal/visual-diff <command>`,
+or install it once — `npm install -g @beprajwal/visual-diff` (or `--save-dev` to pin it per
+project). First-time setup in a repo with no `.visual-diff/` yet: `vdiff init`, then
+`vdiff install-browser` (the one-time Chromium download). Ask before installing anything global.
 
 ## The loop
 

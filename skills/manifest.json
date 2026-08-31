@@ -23,7 +23,7 @@
     {
       "id": "visual-diff-report",
       "name": "visual-diff-report",
-      "description": "Publish a flow's report as a hosted page (a Claude artifact) and optionally link it from a pull-request comment. Use when the user wants to share a report by link without a static host, or asks to publish the diff report.",
+      "description": "Publish a flow's report as a hosted page (a Claude artifact, or a handoff to ChatGPT Sites or any static host) and optionally link it from a pull-request comment. Use when the user wants to share a report by link without infrastructure, or asks to publish the diff report.",
       "entry": "SKILL.md"
     }
   ],

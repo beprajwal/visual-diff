@@ -79,6 +79,19 @@ npm install --save-dev @beprajwal/visual-diff
 npx vdiff install claude-code
 ```
 
+### Or start from the skills
+
+The agent skills also install straight off this repo with the open skills CLI, for any harness it
+supports:
+
+```sh
+npx skills add beprajwal/visual-diff
+```
+
+That path ships the skills alone; the `visual-diff` skill tells the agent to reach the CLI through
+`npx @beprajwal/visual-diff` until it is installed. `vdiff install <harness>` remains the fuller
+install — it composes per-harness frontmatter and the `/vdiff` slash commands.
+
 ## The four core commands
 
 ```sh

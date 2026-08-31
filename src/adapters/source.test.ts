@@ -6,7 +6,7 @@
  * this test file happens to have.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -233,6 +233,24 @@ describe('the manifest this package actually ships', () => {
       'visual-diff-report',
     ]);
     expect(bundle.manifest.commands.map((c) => c.id)).toEqual(['vdiff', 'vdiff-review']);
+  });
+
+  it('ships each SKILL.md with the frontmatter open skill installers read, in sync with the manifest', async () => {
+    const bundle = await loadSkillBundle();
+    const { splitFrontmatter } = await import('./frontmatter.js');
+    for (const skill of bundle.manifest.skills) {
+      const raw = await readFile(join(bundle.dir, skill.id, skill.entry), 'utf8');
+      const split = splitFrontmatter(raw);
+      expect(split, `${skill.id} must open with name/description frontmatter`).not.toBeNull();
+      expect(split?.fields['name'], skill.id).toBe(skill.name);
+      // The description is a double-quoted YAML scalar; JSON parsing is the same unescaping.
+      expect(JSON.parse(split?.fields['description'] ?? '""'), skill.id).toBe(skill.description);
+    }
+    // …and the loaded bundle carries it stripped: the manifest stays the source of truth, and every
+    // harness gets composed frontmatter, never a copy of the shipped block.
+    for (const source of bundle.skills) {
+      expect(source.body.startsWith('---'), source.entry.id).toBe(false);
+    }
   });
 
   it('gives every skill a non-trivial body', async () => {
