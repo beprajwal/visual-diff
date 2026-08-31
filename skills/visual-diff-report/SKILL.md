@@ -42,15 +42,16 @@ and tell the user which flow is too heavy rather than publishing a page that wil
 
 ## Step 2 — unwrap the document
 
-`report.html` is a full HTML document. The artifact host wraps content in its own skeleton, so
-strip the wrapper and keep the substance, writing the result to the scratchpad (never into
-`.visual-diff/`):
+`report.html` is a full HTML document: a `<div id="vdiff-root">`, an embedded JSON snapshot, and
+the report app as one inline `<script>` (no external request — inline scripts are fine in an
+artifact). The artifact host wraps content in its own skeleton, so strip the wrapper and keep the
+substance, writing the result to the scratchpad (never into `.visual-diff/`):
 
 1. Keep the `<title>` tag, hoisted to the top of the file.
-2. Keep the `<style>` block verbatim — the page's CSS already handles dark mode via
-   `prefers-color-scheme`.
-3. Keep everything between `<body>` and `</body>`.
-4. Drop `<!doctype>`, `<html>`, `<head>`, `<body>` and the meta tags.
+2. Keep everything between `<body>` and `</body>` **verbatim and in order** — the root div, the
+   `<script type="application/json" id="vdiff-snapshot">` block, and the app `<script>`. Do not
+   reformat or re-indent the JSON or the script bodies.
+3. Drop `<!doctype>`, `<html>`, `<head>`, `<body>`, `<noscript>` and the meta tags.
 
 ## Step 3 — publish as an artifact
 

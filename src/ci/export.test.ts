@@ -11,6 +11,7 @@ import {
   makeSummary,
   makeViewportDiff,
 } from '../report/ui/test-fixtures.js';
+import type { ReportSnapshot } from '../report/ui/snapshot.js';
 import { TINY_PNG } from '../store/fixtures.js';
 import { exportBundle } from './export.js';
 import { evaluateGate } from './gate.js';
@@ -18,6 +19,15 @@ import type { BundleSummary } from './export.js';
 
 const PIXEL_PATH = 'diffs/checkout/0003..0007/steps/pay-form/1280x800/pixel.png';
 const CROP_PATH = 'diffs/checkout/0003..0007/crops/f1.png';
+
+/** The snapshot the page embeds (D38), parsed back out of the rendered HTML. */
+function snapshotOf(html: string): ReportSnapshot {
+  const match = /<script type="application\/json" id="vdiff-snapshot">([\s\S]*?)<\/script>/.exec(
+    html,
+  );
+  if (match === null) throw new Error('page carries no snapshot');
+  return JSON.parse(match[1] as string) as ReportSnapshot;
+}
 
 function fixtureDiff(): DiffResult {
   return makeDiff({
@@ -209,22 +219,46 @@ describe('exportBundle', () => {
     expect(comment).not.toContain('http');
   });
 
-  it('renders a static page that requests nothing off its own directory', async () => {
+  it('renders the interactive page over an embedded snapshot, requesting nothing external (D38)', async () => {
     await exportBundle({
       root,
       result: fixtureDiff(),
       outDir: out,
       images: 'changed',
+      appScript: 'APP_STUB()',
       version: '0.6.0',
       generatedAt: '2026-08-11T09:00:00.000Z',
     });
     const html = await readFile(join(out, 'report.html'), 'utf8');
-    expect(html).not.toMatch(/<script/i);
     expect(html).not.toMatch(/https?:\/\//);
-    expect(html).toContain('src="images/pay-form/1280x800/base.png"');
-    // A cell whose files were not copied says so rather than showing a broken image.
-    expect(html).toContain('not in this bundle');
-    expect(html).toContain('findings.json');
+    expect(html).toContain('<script>APP_STUB()</script>');
+
+    const snapshot = snapshotOf(html);
+    expect(snapshot.flow).toBe('checkout');
+    expect(snapshot.diff.pair).toEqual({ base: '0003', head: '0007' });
+    expect(snapshot.runs.map((r) => r.runId)).toEqual(['0003', '0007']);
+    // Linked mode: every image the map offers is a bundle-relative path to a file that copied —
+    // a source that was absent is simply not in the map, never a broken reference.
+    const values = Object.values(snapshot.images);
+    expect(values.length).toBeGreaterThan(0);
+    for (const value of values) expect(value.startsWith('images/')).toBe(true);
+    expect(values).toContain('images/pay-form/1280x800/base.png');
+  });
+
+  it('writes a page with the data and a note when the app script is not available', async () => {
+    await exportBundle({
+      root,
+      result: fixtureDiff(),
+      outDir: out,
+      images: 'changed',
+      appScript: null,
+      version: '0.6.0',
+      generatedAt: '2026-08-11T09:00:00.000Z',
+    });
+    const html = await readFile(join(out, 'report.html'), 'utf8');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('exported without the report UI');
+    expect(snapshotOf(html).flow).toBe('checkout');
   });
 
   it('embeds the shots under html=inline, so report.html alone is the report', async () => {
@@ -234,14 +268,14 @@ describe('exportBundle', () => {
       outDir: out,
       images: 'changed',
       html: 'inline',
+      appScript: 'APP_STUB()',
       version: '0.6.0',
       generatedAt: '2026-08-11T09:00:00.000Z',
     });
-    const html = await readFile(join(out, 'report.html'), 'utf8');
-    expect(html).toContain('data:image/png;base64,');
-    expect(html).not.toContain('src="images/');
-    // Self-contained means no reference off the file, the footer's findings.json link included.
-    expect(html).not.toContain('findings.json');
+    const snapshot = snapshotOf(await readFile(join(out, 'report.html'), 'utf8'));
+    const values = Object.values(snapshot.images);
+    expect(values.length).toBeGreaterThan(0);
+    for (const value of values) expect(value.startsWith('data:image/png;base64,')).toBe(true);
     // The rest of the bundle is untouched: images/ still ships, and no second page appears.
     expect(report.files).toContain('images/pay-form/1280x800/base.png');
     expect(report.files).not.toContain('report.inline.html');
@@ -254,17 +288,18 @@ describe('exportBundle', () => {
       outDir: out,
       images: 'changed',
       html: 'both',
+      appScript: 'APP_STUB()',
       version: '0.6.0',
       generatedAt: '2026-08-11T09:00:00.000Z',
     });
     expect(report.files).toContain('report.html');
     expect(report.files).toContain('report.inline.html');
-    expect(await readFile(join(out, 'report.html'), 'utf8')).toContain(
-      'src="images/pay-form/1280x800/base.png"',
-    );
-    expect(await readFile(join(out, 'report.inline.html'), 'utf8')).toContain(
-      'data:image/png;base64,',
-    );
+    const linked = snapshotOf(await readFile(join(out, 'report.html'), 'utf8'));
+    expect(Object.values(linked.images)).toContain('images/pay-form/1280x800/base.png');
+    const inline = snapshotOf(await readFile(join(out, 'report.inline.html'), 'utf8'));
+    for (const value of Object.values(inline.images)) {
+      expect(value.startsWith('data:image/png;base64,')).toBe(true);
+    }
     const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')) as BundleSummary;
     expect(summary.html).toBe('both');
     expect(summary.files).toContain('report.inline.html');

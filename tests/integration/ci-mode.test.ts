@@ -199,10 +199,15 @@ describe('vdiff export against a real store', () => {
     expect(data.files).toContain('findings.json');
     expect(data.images).toBeGreaterThan(0);
 
-    // Every path the page addresses resolves to a file that is actually there — the failure this
-    // feature cannot have is a bundle of broken images.
+    // Every path the page's embedded snapshot addresses resolves to a file that is actually there —
+    // the failure this feature cannot have is a bundle of broken images (D38).
     const page = await readFile(join(data.outDir, 'report.html'), 'utf8');
-    const sources = [...page.matchAll(/<img src="([^"]+)"/g)].map((match) => match[1] as string);
+    const embedded = /<script type="application\/json" id="vdiff-snapshot">([\s\S]*?)<\/script>/.exec(
+      page,
+    );
+    expect(embedded, 'report.html must embed its snapshot').not.toBeNull();
+    const snapshot = JSON.parse(embedded?.[1] ?? '{}') as { images: Record<string, string> };
+    const sources = Object.values(snapshot.images);
     expect(sources.length).toBeGreaterThan(0);
     for (const source of sources) {
       expect(source.startsWith('http'), source).toBe(false);

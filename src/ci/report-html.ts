@@ -1,285 +1,83 @@
 /**
- * ci/report-html — the bundle's static page (CI spec §5).
+ * ci/report-html — the bundle's page: the interactive report over embedded data (CI spec D38).
  *
- * This is **not** the live report. `vdiff serve` is a server with an API, an SSE channel and a
- * feedback POST; none of that survives being zipped into an artifact, and a page that fetched
- * `/api/diff/...` from a downloaded folder would show a reviewer an error and nothing else.
+ * This used to be a hand-rendered no-JS page — the honest subset of `vdiff serve` that survived
+ * being zipped. D38 replaces the rendering, not the honesty: the page is now the same Preact app
+ * the live report mounts (filmstrip, side-by-side, overlay, swipe, keyboard), inlined into one
+ * file with its data embedded as a JSON snapshot. Still no server, no framework CDN, no external
+ * request of any kind: the app script ships inside the `<script>` tag and the images are relative
+ * paths into `images/` (`--html linked`) or `data:` URIs (`--html inline`).
  *
- * So this is the honest subset: one HTML file, no JavaScript, no framework, no external request of
- * any kind, addressing its images by paths relative to itself. The same bytes therefore work from a
- * downloaded zip (`file://`), from a raw branch URL and from a Pages deployment — which is exactly
- * the property D31 needs, since those are the three places a bundle can end up.
- *
- * Collapsing is `<details>`, not a script. Sorting is done here, at render time, not by a click.
+ * What a file cannot honour stays absent by construction: the snapshot client refuses feedback
+ * with a sentence, the live badge is hidden, and only the exported pair is answerable. Composition
+ * here is deliberately dumb — shell, `<noscript>` summary, JSON, script — so everything with
+ * behaviour lives in `report/ui/` where it is tested against the same components the server uses.
  */
 
-import type { DiffResult, Finding } from '../types.js';
-import type { GateVerdict } from './gate.js';
-import { GATE_NONE } from './gate.js';
-import { allFindings, selectCells, shotCells, type ImageSelection, type ShotCell } from './layout.js';
+import type { ReportSnapshot } from '../report/ui/snapshot.js';
 
 export interface ReportPageInput {
-  result: DiffResult;
-  /** Which shots the bundle actually copied — a page must not link an image nobody wrote. */
-  images: ImageSelection;
-  notices?: readonly string[];
-  gate?: GateVerdict;
-  version: string;
-  /** When the bundle was produced. Passed in, never read from the clock, so output stays testable. */
-  generatedAt: string;
+  snapshot: ReportSnapshot;
   /**
-   * `data:` URIs keyed by bundle-relative image path. When present the page embeds them instead of
-   * linking `images/`, drops its `findings.json` link, and is complete as a single file — the shape
-   * `HtmlMode` `inline` and `both` ask for. A path absent from the map renders the same "not in this
-   * bundle" caption a missing copy does, for the same reason: never a broken image icon.
+   * The prebuilt IIFE from `dist/ui/report-static.js`, or null when the caller could not find it
+   * (a source checkout that has not run `pnpm build:ui`). Null still writes a valid page — the
+   * snapshot and the pointer to `findings.json` are there — with a visible note instead of an app.
    */
-  embeddedImages?: ReadonlyMap<string, string>;
+  appScript: string | null;
 }
 
-const percent = (ratio: number): string => `${(ratio * 100).toFixed(1)}%`;
+/** `</script>` and JSON line separators must not terminate the carrying tags early. */
+function embedJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
 
-/** Escape for HTML text and attribute values alike — the same five characters cover both. */
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/"/g, '&quot;');
 }
 
-const STYLES = `
-:root {
-  --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d1d9e0;
-  --high: #cf222e; --med: #bc4c00; --low: #6e7781; --ok: #1a7f37; --panel: #f6f8fa;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
-    --high: #ff7b72; --med: #ffa657; --low: #8b949e; --ok: #3fb950; --panel: #161b22;
-  }
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-}
-main { max-width: 68rem; margin: 0 auto; }
-h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.05rem; margin: 2rem 0 .75rem; }
-code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
-.sub { color: var(--muted); }
-.headline { font-size: 1.05rem; margin: .75rem 0; }
-.notice { border-left: 3px solid var(--med); background: var(--panel); padding: .6rem .8rem; margin: .5rem 0; }
-.gate-fail { border-left: 3px solid var(--high); background: var(--panel); padding: .6rem .8rem; }
-.gate-pass { border-left: 3px solid var(--ok); background: var(--panel); padding: .6rem .8rem; }
-table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; }
-th, td { text-align: left; padding: .4rem .55rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
-.sev-high { color: var(--high); font-weight: 600; }
-.sev-med { color: var(--med); font-weight: 600; }
-.sev-low { color: var(--low); }
-details { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .75rem; margin: .6rem 0; background: var(--panel); }
-summary { cursor: pointer; font-weight: 600; }
-.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .75rem; margin-top: .75rem; }
-.shot figcaption { color: var(--muted); font-size: .8rem; margin-bottom: .25rem; }
-.shot img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
-.shot p { color: var(--muted); font-style: italic; }
-figure { margin: 0; }
-footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; }
-`;
-
-function findingRows(findings: readonly Finding[]): string[] {
-  return findings.map((finding) => {
-    const where = `${finding.step}${finding.viewport === undefined ? '' : ` @${finding.viewport}`}`;
-    const changes =
-      finding.changes.length === 0
-        ? ''
-        : finding.changes
-            .map(
-              (change) =>
-                `${escapeHtml(change.prop)}: <code>${escapeHtml(String(change.from ?? '—'))}</code> → ` +
-                `<code>${escapeHtml(String(change.to ?? '—'))}</code>`,
-            )
-            .join('<br>');
-    return [
-      '<tr>',
-      `<td class="mono">${escapeHtml(finding.id)}</td>`,
-      `<td class="sev-${finding.severity}">${finding.severity}</td>`,
-      `<td>${escapeHtml(finding.kind)}</td>`,
-      `<td class="mono">${escapeHtml(where)}</td>`,
-      `<td class="mono">${escapeHtml(finding.element?.selector ?? '—')}</td>`,
-      `<td>${escapeHtml(finding.label)}${changes === '' ? '' : `<br>${changes}`}</td>`,
-      '</tr>',
-    ].join('');
-  });
-}
-
-function shotFigure(label: string, src: string | null, alt: string): string {
-  const body =
-    src === null
-      ? `<p>not in this bundle</p>`
-      : `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy">`;
-  return `<figure class="shot"><figcaption>${escapeHtml(label)}</figcaption>${body}</figure>`;
-}
-
-/**
- * The `src` a figure should carry: the bundle-relative path as-is when the page links its images,
- * the data URI when it embeds them, and `null` — "not in this bundle" — when embedding was asked
- * for but this image never made it into the map.
- */
-function imageSrc(path: string, embedded: ReadonlyMap<string, string> | undefined): string | null {
-  if (embedded === undefined) return path;
-  return embedded.get(path) ?? null;
-}
-
-function cellSection(
-  cell: ShotCell,
-  copied: boolean,
-  embedded: ReadonlyMap<string, string> | undefined,
-): string {
-  const title =
-    `<code>${escapeHtml(cell.step)}</code> @ ${escapeHtml(cell.viewport)} — ` +
-    (cell.missing === undefined
-      ? `${percent(cell.pixelChangedRatio)} pixels, ${cell.findings.length} finding(s)`
-      : `capture missing on the ${cell.missing} side`);
-
-  const hasBase = copied && cell.missing !== 'base' && cell.missing !== 'both';
-  const hasHead = copied && cell.missing !== 'head' && cell.missing !== 'both';
-  const hasPixel = copied && cell.pixelStorePath !== undefined;
-
-  const figures = [
-    shotFigure('base', hasBase ? imageSrc(cell.paths.base, embedded) : null, `${cell.step} base`),
-    shotFigure('head', hasHead ? imageSrc(cell.paths.head, embedded) : null, `${cell.step} head`),
-    shotFigure('diff', hasPixel ? imageSrc(cell.paths.pixel, embedded) : null, `${cell.step} pixel diff`),
-  ].join('');
-
-  const findings =
-    cell.findings.length === 0
-      ? ''
-      : [
-          '<table><thead><tr><th>ID</th><th>Sev</th><th>Kind</th><th>Where</th><th>Element</th><th>Change</th></tr></thead><tbody>',
-          ...findingRows(cell.findings),
-          '</tbody></table>',
-        ].join('');
-
-  return [
-    `<details${cell.changed ? ' open' : ''}>`,
-    `<summary>${title}</summary>`,
-    `<div class="shots">${figures}</div>`,
-    findings,
-    '</details>',
-  ].join('\n');
-}
-
-/**
- * Render the page.
- *
- * `images` is passed rather than inferred so the page and the bundle cannot disagree: a cell whose
- * files were not copied renders the caption and says "not in this bundle" instead of a broken image
- * icon, which is the difference between a bundle that is smaller on purpose and one that looks
- * corrupt.
- */
 export function renderReportPage(input: ReportPageInput): string {
-  const { result } = input;
-  const summary = result.summary;
-  const everyCell = shotCells(result);
-  const copied = new Set(selectCells(everyCell, input.images).map((cell) => `${cell.step} ${cell.viewport}`));
-  const findings = allFindings(result);
-
-  const notices = (input.notices ?? []).map(
-    (notice) => `<p class="notice">${escapeHtml(notice)}</p>`,
-  );
-  const warnings = result.warnings.map((warning) => `<p class="notice">${escapeHtml(warning)}</p>`);
-
-  const gate =
-    input.gate === undefined || input.gate.level === GATE_NONE
-      ? ''
-      : `<p class="${input.gate.tripped ? 'gate-fail' : 'gate-pass'}">${
-          input.gate.tripped ? 'Gate failed' : 'Gate passed'
-        } — ${escapeHtml(input.gate.reason)}</p>`;
-
-  const incomplete =
-    summary.stepsFailed > 0 || summary.stepsBlocked > 0
-      ? `<p class="notice">This pair is incomplete: ${summary.stepsFailed} step(s) failed and ` +
-        `${summary.stepsBlocked} were blocked, so parts of the flow were never compared.</p>`
-      : '';
-
+  const { snapshot, appScript } = input;
+  const summary = snapshot.diff.summary;
+  const title = `${snapshot.flow} ${snapshot.base}..${snapshot.head} — visual diff`;
   const headline =
     summary.totalFindings === 0
       ? 'No findings.'
-      : `${summary.totalFindings} findings — ${summary.bySeverity.high} high, ` +
-        `${summary.bySeverity.med} med, ${summary.bySeverity.low} low`;
+      : `${summary.totalFindings} finding(s) — ${summary.bySeverity.high} high, ` +
+        `${summary.bySeverity.med} med, ${summary.bySeverity.low} low.`;
 
-  const stepRows = everyCell.map((cell) =>
-    [
-      '<tr>',
-      `<td class="mono">${escapeHtml(cell.step)}</td>`,
-      `<td>${escapeHtml(cell.status)}</td>`,
-      `<td class="mono">${escapeHtml(cell.viewport)}</td>`,
-      `<td>${cell.missing === undefined ? percent(cell.pixelChangedRatio) : `missing ${cell.missing}`}</td>`,
-      `<td>${cell.findings.length}</td>`,
-      '</tr>',
-    ].join(''),
-  );
+  const body =
+    appScript === null
+      ? `<p style="font-family: system-ui; margin: 2rem;">This bundle was exported without the ` +
+        `report UI (dist/ui/report-static.js was not built). The data is all here — see ` +
+        `<code>findings.json</code> beside this file — but the interactive page needs an export ` +
+        `from a built package.</p>`
+      : `<script>${appScript}</script>`;
 
-  const base = result.baseMeta;
-  const head = result.headMeta;
-  const provenance = [
-    `base <code>${escapeHtml(result.pair.base)}</code> @ <code>${escapeHtml(base.revision.sha.slice(0, 12))}</code>` +
-      `${base.revision.dirty ? ' (dirty)' : ''} · ${escapeHtml(base.env.os)} · chromium ${escapeHtml(base.env.chromium)}`,
-    `head <code>${escapeHtml(result.pair.head)}</code> @ <code>${escapeHtml(head.revision.sha.slice(0, 12))}</code>` +
-      `${head.revision.dirty ? ' (dirty)' : ''} · ${escapeHtml(head.env.os)} · chromium ${escapeHtml(head.env.chromium)}`,
-    `diff engine ${escapeHtml(result.engineVersion)} · vdiff ${escapeHtml(input.version)} · generated ${escapeHtml(input.generatedAt)}`,
-  ];
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>visual-diff — ${escapeHtml(result.flow)} ${escapeHtml(result.pair.base)}..${escapeHtml(result.pair.head)}</title>
-<style>${STYLES}</style>
-</head>
-<body>
-<main>
-<h1>visual-diff — <code>${escapeHtml(result.flow)}</code> <code>${escapeHtml(result.pair.base)}..${escapeHtml(result.pair.head)}</code></h1>
-<p class="sub">${summary.stepsChanged}/${summary.stepsCompared} steps changed · max pixel change ${percent(summary.maxPixelChangedRatio)}</p>
-<p class="headline">${escapeHtml(headline)}</p>
-${incomplete}
-${gate}
-${notices.join('\n')}
-${warnings.join('\n')}
-
-<h2>Steps</h2>
-<table><thead><tr><th>Step</th><th>Status</th><th>Viewport</th><th>Pixels</th><th>Findings</th></tr></thead>
-<tbody>
-${stepRows.join('\n')}
-</tbody></table>
-
-<h2>Shots</h2>
-${everyCell.map((cell) => cellSection(cell, copied.has(`${cell.step} ${cell.viewport}`), input.embeddedImages)).join('\n')}
-
-<h2>Findings (${findings.length})</h2>
-${
-  findings.length === 0
-    ? '<p class="sub">None.</p>'
-    : `<table><thead><tr><th>ID</th><th>Sev</th><th>Kind</th><th>Where</th><th>Element</th><th>Change</th></tr></thead>
-<tbody>
-${findingRows(findings).join('\n')}
-</tbody></table>`
-}
-
-<footer>
-${provenance.map((line) => `<p>${line}</p>`).join('\n')}
-${
-  input.embeddedImages === undefined
-    ? '<p>Findings in machine-readable form: <a href="findings.json"><code>findings.json</code></a>. This page is static: it runs no script and makes no request off its own directory.</p>'
-    : '<p>This page is self-contained: its images are embedded, it runs no script, and it makes no request at all — the one file is the whole report.</p>'
-}
-</footer>
-</main>
-</body>
-</html>
-`;
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '<meta charset="utf-8" />',
+    '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+    '<meta name="referrer" content="no-referrer" />',
+    `<title>${escapeHtml(title)}</title>`,
+    '</head>',
+    '<body>',
+    `<noscript><p>${escapeHtml(headline)} This page is the interactive visual-diff report and ` +
+      'needs JavaScript (all of it inline — nothing is fetched). The raw data is in ' +
+      '<code>findings.json</code> beside this file.</p></noscript>',
+    '<div id="vdiff-root"></div>',
+    `<script type="application/json" id="vdiff-snapshot">${embedJson(snapshot)}</script>`,
+    body,
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n');
 }

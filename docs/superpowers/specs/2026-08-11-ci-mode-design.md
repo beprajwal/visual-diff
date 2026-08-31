@@ -133,6 +133,19 @@ page changes: `images/`, `comment.md` and the JSON are identical in every mode, 
 embeds exactly the shots `--images` selected — no more. Rejected: making `inline` the default, which
 would grow every bundle by a third (base64) to serve a case most workflows do not have.
 
+**D38 — `report.html` is the live report's UI over an embedded snapshot.**
+The bundle's page used to be a hand-rendered no-JS subset; reviewers got a different (and poorer)
+tool depending on where they opened the diff. Now `vdiff export` inlines the same Preact app
+`vdiff serve` mounts — filmstrip, side-by-side, overlay, swipe, keyboard — plus a JSON snapshot of
+the one exported pair, into a single file with no external request of any kind. An `ApiClient`
+implemented over the snapshot replaces fetch + SSE; feedback refuses with a sentence pointing at
+`vdiff serve`, and only the exported pair is answerable. `--html linked|inline` keeps its meaning —
+it decides whether the snapshot's image map holds relative paths into `images/` or `data:` URIs.
+Attribution annotations are not embedded (they live outside the DiffResult); the page renders
+without them exactly as the live report does when that fetch fails. A `<noscript>` block and
+`findings.json` remain the no-JS story. Rejected: keeping both renderers — two pages drift, and the
+static one always loses.
+
 **D37 — the comment shows the change, not the findings list.**
 The finding rows duplicated what the images already say, in the least readable form the comment had,
 and they crowded the images out of the byte budget. Dropped: the findings table and `--max-findings`.
@@ -168,7 +181,7 @@ can be zipped, attached, served by any static host, or opened from a filesystem:
   summary.json           envelope: flow, pair, summary, labels, both runs' revision + env, generatedAt
   findings.json          the stored DiffResult, verbatim
   comment.md             the rendered markdown, with the image base it was rendered for
-  report.html            static page; relative image paths (or data: URIs, D36), no JS framework, no CDN
+  report.html            the interactive report over an embedded snapshot (D38); inline JS, no CDN
   report.inline.html     under --html both: the same page with its images embedded (D36)
   images/
     <step>/<viewport>/base.png, head.png, pixel.png

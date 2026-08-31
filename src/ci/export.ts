@@ -15,8 +15,10 @@
 import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { DiffResult, IsoDate, RunMeta } from '../types.js';
+import type { DiffResult, IsoDate, RunMeta, RunSummary } from '../types.js';
 import * as paths from '../store/paths.js';
+import { screenshotPath } from '../report/ui/paths.js';
+import type { ReportSnapshot } from '../report/ui/snapshot.js';
 import { renderComment, type CommentDocument, type CommentInput } from './comment.js';
 import type { GateVerdict } from './gate.js';
 import {
@@ -77,6 +79,12 @@ export interface ExportRequest {
    * bundle — `images/`, `comment.md`, the JSON — is the same in every mode.
    */
   html?: HtmlMode;
+  /**
+   * The prebuilt report app (`dist/ui/report-static.js`), inlined into the page (D38). The command
+   * layer resolves it (`app-script.ts`); null or absent writes a page that carries the data and a
+   * note instead of the app, so a missing dev build never turns an evidence export into a failure.
+   */
+  appScript?: string | null;
   version: string;
   generatedAt: IsoDate;
   notices?: readonly string[];
@@ -105,6 +113,30 @@ function runInfo(meta: RunMeta): BundleRunInfo {
     scenario: meta.scenario,
     startedAt: meta.startedAt,
     env: meta.env,
+  };
+}
+
+/**
+ * A `RunSummary` for the snapshot's run pickers, from the meta the diff already carries. The three
+ * fields the meta cannot know (`pinned`, `pruned`, `findingsCount`) get the values that claim
+ * nothing: a bundle is not a store, and the page must not invent timeline state.
+ */
+function runSummary(meta: RunMeta): RunSummary {
+  return {
+    runId: meta.runId,
+    flow: meta.flow,
+    scenario: meta.scenario,
+    revision: meta.revision,
+    mode: meta.mode,
+    status: meta.status,
+    startedAt: meta.startedAt,
+    finishedAt: meta.finishedAt,
+    viewports: meta.viewports,
+    failedSteps: meta.failedSteps,
+    unstable: meta.unstable,
+    pinned: false,
+    pruned: false,
+    findingsCount: null,
   };
 }
 
@@ -153,27 +185,40 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
   const selected = selectCells(everyCell, request.images);
   const html = request.html ?? 'linked';
 
-  // Shot sources by bundle-relative path, kept only for what actually copied — an inline page must
-  // embed exactly the images the linked page would show, no more (the ImageSelection contract).
-  const shotSources = new Map<string, string>();
+  // What actually copied, keyed by the *store-relative* path the report app will ask `blob()` for —
+  // the snapshot's image map must cover exactly the images the bundle carries, no more (the
+  // ImageSelection contract). `to` is the bundle-relative copy, `from` its absolute source.
+  const shotSources = new Map<string, { from: string; to: string }>();
 
   for (const cell of selected) {
-    const wanted: Array<[from: string, to: string]> = [];
+    const wanted: Array<[key: string, from: string, to: string]> = [];
     if (cell.missing !== 'base' && cell.missing !== 'both') {
-      wanted.push([screenshotSource(root, flow, result.pair.base, cell), cell.paths.base]);
+      wanted.push([
+        screenshotPath(flow, result.pair.base, cell.step, cell.viewport),
+        screenshotSource(root, flow, result.pair.base, cell),
+        cell.paths.base,
+      ]);
     }
     if (cell.missing !== 'head' && cell.missing !== 'both') {
-      wanted.push([screenshotSource(root, flow, result.pair.head, cell), cell.paths.head]);
+      wanted.push([
+        screenshotPath(flow, result.pair.head, cell.step, cell.viewport),
+        screenshotSource(root, flow, result.pair.head, cell),
+        cell.paths.head,
+      ]);
     }
     if (cell.pixelStorePath !== undefined) {
-      wanted.push([paths.resolveInsideVdiff(root, cell.pixelStorePath), cell.paths.pixel]);
+      wanted.push([
+        cell.pixelStorePath,
+        paths.resolveInsideVdiff(root, cell.pixelStorePath),
+        cell.paths.pixel,
+      ]);
     }
 
-    for (const [from, to] of wanted) {
+    for (const [key, from, to] of wanted) {
       if (await copyIfPresent(from, path.join(outDir, to))) {
         files.push(to);
         images += 1;
-        shotSources.set(to, from);
+        shotSources.set(key, { from, to });
       } else {
         missing.push(to);
       }
@@ -189,6 +234,10 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
           files.push(to);
           images += 1;
         }
+        shotSources.set(finding.crop, {
+          from: paths.resolveInsideVdiff(root, finding.crop),
+          to,
+        });
       } else if (!missing.includes(to)) {
         missing.push(to);
       }
@@ -218,41 +267,62 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
   await writeFile(path.join(outDir, BUNDLE_FILES.comment), comment.markdown, 'utf8');
   files.push(BUNDLE_FILES.comment);
 
-  const pageInput = {
-    result,
-    images: request.images,
+  // The snapshot the page carries: the diff verbatim, both runs summarised for the header's run
+  // pickers, and an image map in the shape this bundle's `--html` mode asked for. Attribution is
+  // not embedded (it lives outside the DiffResult); the app renders no annotations for it, exactly
+  // as a live report does when the fetch fails.
+  const snapshotWith = (imageMap: Record<string, string>): ReportSnapshot => ({
+    flow,
+    base: result.pair.base,
+    head: result.pair.head,
+    diff: result,
+    runs: [runSummary(result.baseMeta), runSummary(result.headMeta)],
+    images: imageMap,
+    ...(request.notices === undefined || request.notices.length === 0
+      ? {}
+      : { notices: [...request.notices] }),
+    ...(request.gate === undefined ? {} : { gate: request.gate }),
     version: request.version,
     generatedAt: request.generatedAt,
-    ...(request.notices === undefined ? {} : { notices: request.notices }),
-    ...(request.gate === undefined ? {} : { gate: request.gate }),
+  });
+
+  const linkedImages = (): Record<string, string> => {
+    const map: Record<string, string> = {};
+    for (const [key, { to }] of shotSources) map[key] = to;
+    return map;
   };
 
-  // The self-contained page reads the images back rather than reusing bytes from the copy above,
-  // because the copy is a streamed `copyFile`. A source that vanished between the two reads lands in
-  // `missing` semantics implicitly: the map entry is dropped and the page says "not in this bundle".
-  const embed = async (): Promise<ReadonlyMap<string, string>> => {
-    const embedded = new Map<string, string>();
-    for (const [rel, from] of shotSources) {
+  // The self-contained map reads the images back rather than reusing bytes from the copy above,
+  // because the copy is a streamed `copyFile`. A source that vanished between the two reads drops
+  // out of the map, and the app renders its missing-capture state — never a broken image icon.
+  const inlineImages = async (): Promise<Record<string, string>> => {
+    const map: Record<string, string> = {};
+    for (const [key, { from }] of shotSources) {
       try {
-        embedded.set(rel, `data:image/png;base64,${(await readFile(from)).toString('base64')}`);
+        map[key] = `data:image/png;base64,${(await readFile(from)).toString('base64')}`;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
     }
-    return embedded;
+    return map;
   };
 
+  const appScript = request.appScript ?? null;
+  const page = (imageMap: Record<string, string>): string =>
+    renderReportPage({ snapshot: snapshotWith(imageMap), appScript });
+
   if (html === 'inline') {
-    const page = renderReportPage({ ...pageInput, embeddedImages: await embed() });
-    await writeFile(path.join(outDir, BUNDLE_FILES.report), page, 'utf8');
+    await writeFile(path.join(outDir, BUNDLE_FILES.report), page(await inlineImages()), 'utf8');
     files.push(BUNDLE_FILES.report);
   } else {
-    const page = renderReportPage(pageInput);
-    await writeFile(path.join(outDir, BUNDLE_FILES.report), page, 'utf8');
+    await writeFile(path.join(outDir, BUNDLE_FILES.report), page(linkedImages()), 'utf8');
     files.push(BUNDLE_FILES.report);
     if (html === 'both') {
-      const inline = renderReportPage({ ...pageInput, embeddedImages: await embed() });
-      await writeFile(path.join(outDir, BUNDLE_FILES.reportInline), inline, 'utf8');
+      await writeFile(
+        path.join(outDir, BUNDLE_FILES.reportInline),
+        page(await inlineImages()),
+        'utf8',
+      );
       files.push(BUNDLE_FILES.reportInline);
     }
   }
