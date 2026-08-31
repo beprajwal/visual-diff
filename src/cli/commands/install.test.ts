@@ -725,6 +725,10 @@ describe('vdiff install — the --json payloads', () => {
             "status": "created",
           },
           {
+            "path": ".agents/skills/visual-diff-report/SKILL.md",
+            "status": "created",
+          },
+          {
             "path": "AGENTS.md",
             "status": "created",
           },
@@ -755,6 +759,7 @@ describe('vdiff install — the --json payloads', () => {
           ".agents/skills/visual-diff/SKILL.md",
           ".agents/skills/visual-diff-flows/SKILL.md",
           ".agents/skills/visual-diff-review/SKILL.md",
+          ".agents/skills/visual-diff-report/SKILL.md",
           "AGENTS.md",
         ],
       }
@@ -776,6 +781,7 @@ describe('vdiff install — the --json payloads', () => {
               ".agents/skills/visual-diff/SKILL.md",
               ".agents/skills/visual-diff-flows/SKILL.md",
               ".agents/skills/visual-diff-review/SKILL.md",
+              ".agents/skills/visual-diff-report/SKILL.md",
               "AGENTS.md",
             ],
             "root": "<cwd>",
@@ -793,6 +799,7 @@ describe('vdiff install — the --json payloads', () => {
               ".agents/skills/visual-diff/SKILL.md",
               ".agents/skills/visual-diff-flows/SKILL.md",
               ".agents/skills/visual-diff-review/SKILL.md",
+              ".agents/skills/visual-diff-report/SKILL.md",
             ],
             "root": "<home>",
             "scope": "global",
@@ -847,6 +854,11 @@ describe('vdiff install — the --json payloads', () => {
                   },
                   {
                     "installedVersion": "9.9.9",
+                    "path": ".claude/skills/visual-diff-report/SKILL.md",
+                    "status": "current",
+                  },
+                  {
+                    "installedVersion": "9.9.9",
                     "path": ".claude/commands/vdiff.md",
                     "status": "current",
                   },
@@ -877,6 +889,11 @@ describe('vdiff install — the --json payloads', () => {
                   {
                     "installedVersion": null,
                     "path": ".claude/skills/visual-diff-review/SKILL.md",
+                    "status": "missing",
+                  },
+                  {
+                    "installedVersion": null,
+                    "path": ".claude/skills/visual-diff-report/SKILL.md",
                     "status": "missing",
                   },
                   {

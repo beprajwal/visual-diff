@@ -19,6 +19,12 @@
       "name": "visual-diff-review",
       "description": "Interpret visual-diff findings and pull back human comments left on the report. Use when a diff exists and needs explaining, or when the user has annotated the report page.",
       "entry": "SKILL.md"
+    },
+    {
+      "id": "visual-diff-report",
+      "name": "visual-diff-report",
+      "description": "Publish a flow's report as a hosted page (a Claude artifact) and optionally link it from a pull-request comment. Use when the user wants to share a report by link without a static host, or asks to publish the diff report.",
+      "entry": "SKILL.md"
     }
   ],
   "commands": [

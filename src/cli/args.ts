@@ -141,6 +141,8 @@ export type Invocation =
       imageBase?: string;
       artifactUrl?: string;
       artifactName?: string;
+      /** Hosted rendering of the full report page; rendered with the verdict, not the footer. */
+      reportUrl?: string;
       /** Opt-in threshold. `none` — the default — never gates (D30). */
       failOn: GateLevel;
       maxFindings?: number;
@@ -319,6 +321,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       'image-base': { type: 'string' },
       'artifact-url': { type: 'string' },
       'artifact-name': { type: 'string' },
+      'report-url': { type: 'string' },
       'fail-on': { type: 'string' },
       'max-findings': { type: 'number' },
       'max-images': { type: 'number' },
@@ -1090,6 +1093,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         ['image-base', 'imageBase'],
         ['artifact-url', 'artifactUrl'],
         ['artifact-name', 'artifactName'],
+        ['report-url', 'reportUrl'],
         ['marker', 'marker'],
         ['out', 'out'],
       ] as const) {

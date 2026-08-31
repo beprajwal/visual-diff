@@ -26,6 +26,7 @@ const EXPECTED_PATHS = [
   '.claude/skills/visual-diff/SKILL.md',
   '.claude/skills/visual-diff-flows/SKILL.md',
   '.claude/skills/visual-diff-review/SKILL.md',
+  '.claude/skills/visual-diff-report/SKILL.md',
   '.claude/commands/vdiff.md',
   '.claude/commands/vdiff-review.md',
 ];
@@ -47,7 +48,7 @@ beforeEach(async () => {
 });
 
 describe('paths (spec §9)', () => {
-  it('writes three skills and two commands, all under .claude/', async () => {
+  it('writes four skills and two commands, all under .claude/', async () => {
     const files = await claudeCodeFiles(bundle);
     expect(files.map((file) => file.path)).toEqual(EXPECTED_PATHS);
     for (const file of files) expect(file.path.startsWith('.claude/')).toBe(true);

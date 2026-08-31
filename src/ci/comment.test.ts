@@ -95,6 +95,23 @@ describe('renderComment', () => {
     expect(withBase.markdown).not.toContain('images/cart/');
   });
 
+  it('renders --report-url as the call to action, next to the verdict', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2),
+      version: '0.6.0',
+      reportUrl: 'https://claude.ai/artifacts/abc123',
+    });
+    const lines = doc.markdown.split('\n');
+    const link = lines.findIndex((l) => l.includes('[Open the full report](https://claude.ai/artifacts/abc123)'));
+    const findings = lines.findIndex((l) => l.startsWith('#### Findings'));
+    expect(link).toBeGreaterThan(-1);
+    // With the verdict, before the finding table — a footer credit is not a call to action.
+    expect(link).toBeLessThan(findings);
+
+    const without = renderComment({ result: diffWithFindings(2), version: '0.6.0' });
+    expect(without.markdown).not.toContain('Open the full report');
+  });
+
   it('states the number of findings it dropped, and where the rest live', () => {
     const doc = renderComment({
       result: diffWithFindings(30),

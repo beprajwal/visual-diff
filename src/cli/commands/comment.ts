@@ -53,6 +53,7 @@ export async function comment(
   if (invocation.imageBase !== undefined) input.imageBase = invocation.imageBase;
   if (invocation.artifactUrl !== undefined) input.artifactUrl = invocation.artifactUrl;
   if (invocation.artifactName !== undefined) input.artifactName = invocation.artifactName;
+  if (invocation.reportUrl !== undefined) input.reportUrl = invocation.reportUrl;
   if (invocation.marker !== undefined) input.marker = invocation.marker;
   if (invocation.maxFindings !== undefined) input.maxFindings = invocation.maxFindings;
   if (invocation.maxImages !== undefined) input.maxImages = invocation.maxImages;
