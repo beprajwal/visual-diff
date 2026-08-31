@@ -1,0 +1,42 @@
+README.md
+  s_03a613a5d6b57f::t_9a223b45907a41 82-94
+src/adapters/source.ts
+  s_03a613a5d6b57f::t_5d2e045a15ee99 241-243
+  s_03a613a5d6b57f::t_958e1c1f3b597e 19-20
+  s_03a613a5d6b57f::t_4f9010d189f31e 46-52
+src/adapters/frontmatter.ts
+  s_03a613a5d6b57f::t_49680ee0afb310 4-8
+src/adapters/source.test.ts
+  s_03a613a5d6b57f::t_d7b6c77943d3c0 238-255
+  s_03a613a5d6b57f::t_b7b7dc1ad0b0bc 9
+skills/visual-diff/SKILL.md
+  s_03a613a5d6b57f::t_ce7e32848625cf 17-24
+  s_03a613a5d6b57f::t_cf9b11e3310de6 1-5
+skills/visual-diff-review/SKILL.md
+  s_03a613a5d6b57f::t_cf9b11e3310de6 1-5
+skills/manifest.json
+  s_03a613a5d6b57f::t_82e0ea6784b71b 26
+skills/visual-diff-flows/SKILL.md
+  s_03a613a5d6b57f::t_cf9b11e3310de6 1-5
+skills/visual-diff-report/SKILL.md
+  s_03a613a5d6b57f::t_dcda2670fe72fb 55,57,59-60,64-68,71-82
+  s_03a613a5d6b57f::t_cf9b11e3310de6 1-5
+  s_03a613a5d6b57f::t_bea3cbd3969285 8-11,13-15
+  s_03a613a5d6b57f::t_191e59374ffe6a 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9049fba576c9e2560cdfdc309cac08511f1a4115",
+  "prompts": {},
+  "sessions": {
+    "s_03a613a5d6b57f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea57df4-484e-4ffe-bd62-c8792ac581f0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
