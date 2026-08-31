@@ -1,0 +1,47 @@
+README.md
+  s_03a613a5d6b57f::t_bde688290b40f4 131-135
+action.yml
+  s_03a613a5d6b57f::t_4dcb27825af570 55-63,358,367-373,418
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_03a613a5d6b57f::t_191471f4b11375 126-135,162-163,223
+src/adapters/github-actions/templates.ts
+  s_03a613a5d6b57f::t_c2141c62fcf9de 88-92
+src/ci/export.test.ts
+  s_03a613a5d6b57f::t_00579163aa2cde 229-271
+src/ci/export.ts
+  s_03a613a5d6b57f::t_c930185198ad13 15,27,45,73-79,154-158,176,221,228-258,270
+src/ci/index.ts
+  s_03a613a5d6b57f::t_de1b98bddcc798 30,35,43
+src/ci/layout.ts
+  s_03a613a5d6b57f::t_23239e750cd725 23-24,49-66
+src/cli/args.test.ts
+  s_03a613a5d6b57f::t_29637bc46ade71 217-230
+src/cli/args.ts
+  s_03a613a5d6b57f::t_f8ff7e4bec4895 26,30,33,36,166-167,335-336,341,1129-1137,1152
+src/cli/ci.ts
+  s_03a613a5d6b57f::t_91bb952d71b738 16-17,21-23
+src/cli/commands/comment.test.ts
+  s_03a613a5d6b57f::t_a9e552e9d34074 172
+src/cli/commands/export.ts
+  s_03a613a5d6b57f::t_28afe9fe4c7905 51,65,70-74,94
+src/cli/shapes.ts
+  s_03a613a5d6b57f::t_e8cb5ddb9895ed 30,175-176
+tests/packaging/action.test.ts
+  s_03a613a5d6b57f::t_6775276204a770 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "7e2ac389d48d157be3ec3753c2d5546874ab1e1c",
+  "prompts": {},
+  "sessions": {
+    "s_03a613a5d6b57f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea57df4-484e-4ffe-bd62-c8792ac581f0",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
