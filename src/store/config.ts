@@ -75,6 +75,8 @@ const appSchema = z
     dev: z.string().min(1),
     readyOn: z.string().min(1),
     readyTimeout: z.string().min(1).optional(),
+    /** Per-action timeout inside a step; a cold `next dev` compiling a route needs more than 15s. */
+    stepTimeout: z.string().min(1).optional(),
   })
   .strict();
 
@@ -209,6 +211,7 @@ export function buildConfig(
   root: string,
   file: ConfigFile,
   readyTimeoutMs: number,
+  stepTimeoutMs?: number,
 ): NoiseAwareConfig {
   const config: NoiseAwareConfig = {
     root,
@@ -217,6 +220,7 @@ export function buildConfig(
       dev: file.app.dev,
       readyOn: file.app.readyOn,
       readyTimeoutMs,
+      ...(stepTimeoutMs === undefined ? {} : { stepTimeoutMs }),
     },
     diff: {
       minRegionArea: file.diff?.minRegionArea ?? DEFAULTS.diff.minRegionArea,
@@ -324,7 +328,30 @@ export function parseConfigSource(
     readyTimeoutMs = ms;
   }
 
-  return { ok: true, value: buildConfig(root, parsed.data, readyTimeoutMs), warnings: [] };
+  let stepTimeoutMs: number | undefined;
+  const stepTimeoutRaw = parsed.data.app.stepTimeout;
+  if (stepTimeoutRaw !== undefined) {
+    const ms = parseDuration(stepTimeoutRaw);
+    if (ms === null) {
+      return {
+        ok: false,
+        issues: [
+          {
+            code: 'invalid-duration',
+            message: `app.stepTimeout "${stepTimeoutRaw}" needs a unit: 60s, 2m, 1500ms`,
+            at: locate(doc, lineCounter, file, ['app', 'stepTimeout']),
+          },
+        ],
+      };
+    }
+    stepTimeoutMs = ms;
+  }
+
+  return {
+    ok: true,
+    value: buildConfig(root, parsed.data, readyTimeoutMs, stepTimeoutMs),
+    warnings: [],
+  };
 }
 
 /* ------------------------------------------------------------------ locating the project */

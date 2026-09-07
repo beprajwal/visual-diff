@@ -76,3 +76,18 @@ describe('vdiff run — CI overrides', () => {
     expect(options.ignoreHTTPSErrors).toBe(true);
   });
 });
+
+describe('vdiff run — step timeout', () => {
+  it('reads VDIFF_STEP_TIMEOUT, lets the flag win, and refuses a unitless value', async () => {
+    const fromEnv = harness({ VDIFF_STEP_TIMEOUT: '90s' });
+    await run(fromEnv.ctx, invocation);
+    expect(fromEnv.calls[0]?.stepTimeoutMs).toBe(90_000);
+
+    const flag = harness({ VDIFF_STEP_TIMEOUT: '90s' });
+    await run(flag.ctx, { ...invocation, stepTimeoutMs: 5_000 });
+    expect(flag.calls[0]?.stepTimeoutMs).toBe(5_000);
+
+    const bad = harness({ VDIFF_STEP_TIMEOUT: '90' });
+    await expect(run(bad.ctx, invocation)).rejects.toMatchObject({ code: 'invalid-duration', exitCode: 2 });
+  });
+});

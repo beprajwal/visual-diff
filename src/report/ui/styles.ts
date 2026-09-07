@@ -646,7 +646,22 @@ select {
 }
 
 .tabs { display: flex; gap: 4px; }
-.legend { display: flex; gap: 8px; color: var(--fg-faint); flex-wrap: wrap; }
+.legend { display: flex; gap: 4px; color: var(--fg-faint); flex-wrap: wrap; }
+/* Every legend entry is the control it documents: a click does what the key does. */
+.legend button.legend-action {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-faint);
+  padding: 1px 6px;
+  font: inherit;
+}
+.legend button.legend-action:hover { background: var(--bg-hover); color: var(--fg-dim); }
+.legend button.legend-action[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+.legend button.legend-action[aria-pressed="true"] kbd { color: inherit; border-color: currentColor; }
 .legend kbd {
   border: 1px solid var(--line-strong);
   border-bottom-width: 2px;

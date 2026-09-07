@@ -410,3 +410,14 @@ resolved URL is what the recording must match). The structural diff still compar
 Also from that run: `vdiff run` now prints *why* a step failed under the step table, and the action
 uploads the run directory when a replay fails, because a failure screenshot on a runner nobody can
 open is not evidence.
+
+**D45 — The per-action timeout is configurable, because CI is always cold.**
+The next thing the same CI run said, once it could say anything: `page.goto: Timeout 15000ms
+exceeded`. A warm `next dev` answers in a second; a cold one compiles the route on first hit, which
+the repository's own e2e configuration budgets at 10–30 seconds and multiplies by four for local
+servers. The replayer's 15-second default was tuned for the warm case and was not adjustable. Now it
+is: `app.stepTimeout: 60s` in `config.yaml`, `--step-timeout` on `vdiff run`, `VDIFF_STEP_TIMEOUT` in
+the environment for the action — the same flag-over-environment-over-file order as D41, and the same
+unit-required duration syntax as `readyTimeout`, because a bare `30` is ambiguous in exactly the way
+a unit exists to prevent. The default stays 15 seconds: a flow that needs longer on a warm server
+is a flow with a slow page, and the tool should keep saying so.

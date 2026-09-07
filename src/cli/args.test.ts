@@ -877,3 +877,11 @@ describe('run — CI overrides (D41)', () => {
     expect('ignoreHttpsErrors' in plain).toBe(false);
   });
 });
+
+describe('run --step-timeout', () => {
+  it('parses a duration with a unit and refuses one without', () => {
+    expect(ok(['run', 'checkout', '--step-timeout', '90s'])).toMatchObject({ stepTimeoutMs: 90_000 });
+    expect(ok(['run', 'checkout', '--step-timeout', '2m'])).toMatchObject({ stepTimeoutMs: 120_000 });
+    expect(err(['run', 'checkout', '--step-timeout', '90'])).toMatchObject({ code: 'invalid-duration' });
+  });
+});

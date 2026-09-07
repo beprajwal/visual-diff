@@ -395,3 +395,20 @@ describe('browser.ignoreHTTPSErrors', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('app.stepTimeout', () => {
+  it('is parsed as a duration and absent when not written', () => {
+    const set = parse(`${MINIMAL}\n  stepTimeout: 90s`);
+    if (!set.ok) throw new Error(JSON.stringify(set.issues));
+    expect(set.value.app.stepTimeoutMs).toBe(90_000);
+    const unset = parse(MINIMAL);
+    if (!unset.ok) throw new Error(JSON.stringify(unset.issues));
+    expect('stepTimeoutMs' in unset.value.app).toBe(false);
+  });
+
+  it('refuses a unitless value, naming the key', () => {
+    const result = parse(`${MINIMAL}\n  stepTimeout: 90`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues[0]?.message).toContain('app.stepTimeout');
+  });
+});

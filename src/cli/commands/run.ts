@@ -23,7 +23,8 @@ import {
   type RunWarning,
 } from '../../types.js';
 import type { CommandContext, CommandResult } from '../command.js';
-import type { Invocation } from '../args.js';
+import { durationToMs, type Invocation } from '../args.js';
+import { configError } from '../error.js';
 import { formatLogTail, readLogTail } from '../log.js';
 import { table } from '../output.js';
 import { identitySuffix, variantOf, VARIANT_NONE, type VariantName } from '../variant.js';
@@ -69,6 +70,20 @@ function isTruthy(value: string | undefined): boolean {
   return value !== undefined && /^(1|true|yes)$/i.test(value.trim());
 }
 
+/** `VDIFF_STEP_TIMEOUT=90s` → ms. Unset or empty is unset; a malformed value is a config error. */
+function envDuration(value: string | undefined): number | undefined {
+  const raw = nonEmpty(value);
+  if (raw === undefined) return undefined;
+  const ms = durationToMs(raw);
+  if (ms === null) {
+    throw configError(
+      'invalid-duration',
+      `VDIFF_STEP_TIMEOUT '${raw}' needs a unit: 60s, 2m, 1500ms`,
+    );
+  }
+  return ms;
+}
+
 export async function run(
   ctx: CommandContext,
   invocation: RunInvocation,
@@ -100,6 +115,8 @@ export async function run(
   if (invocation.ignoreHttpsErrors === true || isTruthy(env['VDIFF_IGNORE_HTTPS_ERRORS'])) {
     options.ignoreHTTPSErrors = true;
   }
+  const stepTimeout = invocation.stepTimeoutMs ?? envDuration(env['VDIFF_STEP_TIMEOUT']);
+  if (stepTimeout !== undefined) options.stepTimeoutMs = stepTimeout;
 
   const result = await ctx.ports.runFlow(options);
   const { meta, steps } = result;

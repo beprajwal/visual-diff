@@ -799,6 +799,10 @@ export async function runFlow(
           ...((options.ignoreHTTPSErrors ?? store.config.browser?.ignoreHTTPSErrors) === true
             ? { ignoreHTTPSErrors: true }
             : {}),
+          // The per-action timeout: the run's override, then the file, then the replayer's default.
+          ...((options.stepTimeoutMs ?? store.config.app.stepTimeoutMs) === undefined
+            ? {}
+            : { timeoutMs: options.stepTimeoutMs ?? store.config.app.stepTimeoutMs }),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
         });
       });

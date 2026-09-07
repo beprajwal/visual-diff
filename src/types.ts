@@ -337,6 +337,12 @@ export interface AppConfig {
   /** URL probed for readiness; $PORT is substituted. */
   readyOn: string;
   readyTimeoutMs: number;
+  /**
+   * Per-action timeout inside a step — a `goto`, a `click`, a `waitFor`. Absent means the runner's
+   * default (15s), which suits a warm dev server; a cold `next dev` compiling a route on first hit
+   * needs more, and CI is always cold.
+   */
+  stepTimeoutMs?: number;
 }
 
 export interface DiffConfig {
@@ -1260,6 +1266,8 @@ export interface RunOptions {
   readyOn?: string;
   /** Overrides `browser.ignoreHTTPSErrors` for this run. */
   ignoreHTTPSErrors?: boolean;
+  /** Overrides `app.stepTimeoutMs` for this run — the per-action timeout inside a step. */
+  stepTimeoutMs?: number;
   /** Write an unscrubbed HAR. Requires an explicit flag (spec §6). */
   noScrub?: boolean;
   json?: boolean;
