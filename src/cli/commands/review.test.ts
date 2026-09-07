@@ -109,7 +109,7 @@ describe('vdiff review', () => {
       root: '/project',
       provider: 'anthropic',
       model: 'claude-opus-5',
-      apiKey: 'sk-ant-1',
+      auth: { kind: 'api-key', apiKey: 'sk-ant-1' },
     });
     expect(h.requests[0]?.context).toBeUndefined();
     expect(h.store.state.calls).toEqual(['writeReview checkout/0003..0007']);
@@ -141,7 +141,7 @@ describe('vdiff review', () => {
     expect(h.requests[0]).toMatchObject({
       provider: 'openai',
       model: 'gpt-6-astra',
-      apiKey: 'o',
+      auth: { kind: 'api-key', apiKey: 'o' },
       shots: 1,
       context: 'Rename the Pay button to "Pay now".\n',
     });

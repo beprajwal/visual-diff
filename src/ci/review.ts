@@ -43,6 +43,7 @@ import {
 } from '../types.js';
 import * as paths from '../store/paths.js';
 import { selectCells, shotCells, type ShotCell } from './layout.js';
+import type { ReviewAuth } from './review-provider.js';
 
 /* ------------------------------------------------------------------ request and response */
 
@@ -52,7 +53,8 @@ export interface ReviewRequest {
   result: DiffResult;
   provider: ReviewProvider;
   model: string;
-  apiKey: string;
+  /** How to authenticate: a key, a bearer, or federation variables to mint one from (D43). */
+  auth: ReviewAuth;
   /** Overrides the provider's default endpoint (a proxy, a gateway). No trailing slash. */
   baseUrl?: string;
   /**
@@ -488,6 +490,76 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+/** The Anthropic API origin, a proxy or gateway when `baseUrl` names one. */
+function anthropicOrigin(request: ReviewRequest): string {
+  return request.baseUrl ?? 'https://api.anthropic.com';
+}
+
+/**
+ * Workload Identity Federation (D43): trade the runner's own OIDC identity for a short-lived
+ * Anthropic token, RFC 7523 `jwt-bearer` grant at `POST /v1/oauth/token`. The identity token is
+ * read here, at exchange time, so a file that rotates is read fresh. One exchange per process: an
+ * identity token carrying `jti` can be exchanged once, so a job that reviews several flows should
+ * mint the bearer once and pass it as `ANTHROPIC_AUTH_TOKEN` — which is what the action does.
+ */
+async function exchangeFederatedToken(
+  request: ReviewRequest,
+  auth: Extract<ReviewAuth, { kind: 'federation' }>,
+  fetchFn: FetchFn,
+): Promise<string> {
+  let assertion: string;
+  if (auth.identityTokenFile !== undefined) {
+    try {
+      assertion = (await readFile(auth.identityTokenFile, 'utf8')).trim();
+    } catch (cause) {
+      throw new ReviewError(
+        'review-identity-token-unreadable',
+        `could not read the identity token at ${auth.identityTokenFile}: ${(cause as Error).message}`,
+        'ANTHROPIC_IDENTITY_TOKEN_FILE must point at the OIDC JWT the runner fetched for this job',
+      );
+    }
+  } else if (auth.identityToken !== undefined) {
+    assertion = auth.identityToken;
+  } else {
+    throw new ReviewError('review-identity-token-missing', 'federation was configured without an identity token');
+  }
+
+  const body: Record<string, string> = {
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion,
+    federation_rule_id: auth.federationRuleId,
+    organization_id: auth.organizationId,
+    service_account_id: auth.serviceAccountId,
+  };
+  if (auth.workspaceId !== undefined) body['workspace_id'] = auth.workspaceId;
+
+  const answer = (await post(fetchFn, `${anthropicOrigin(request)}/v1/oauth/token`, {}, body, 'anthropic')) as {
+    access_token?: string;
+    token_type?: string;
+  };
+  if (typeof answer.access_token !== 'string' || answer.access_token.length === 0) {
+    throw new ReviewError(
+      'review-exchange-malformed',
+      'the token exchange answered without an access_token',
+      'check the federation rule, organisation and service account ids; the exchange did not fail, it returned nothing usable',
+    );
+  }
+  return answer.access_token;
+}
+
+/** The credential header for Anthropic, minting a bearer first when federation is configured. */
+async function anthropicAuthHeaders(request: ReviewRequest, fetchFn: FetchFn): Promise<Record<string, string>> {
+  const auth = request.auth;
+  switch (auth.kind) {
+    case 'api-key':
+      return { 'x-api-key': auth.apiKey };
+    case 'bearer':
+      return { authorization: `Bearer ${auth.token}` };
+    case 'federation':
+      return { authorization: `Bearer ${await exchangeFederatedToken(request, auth, fetchFn)}` };
+  }
+}
+
 /** Anthropic Messages API: `POST /v1/messages`, structured output through `output_config`. */
 async function callAnthropic(
   request: ReviewRequest,
@@ -510,14 +582,9 @@ async function callAnthropic(
     messages: [{ role: 'user', content }],
     output_config: { format: { type: 'json_schema', schema: REVIEW_SCHEMA } },
   };
-  const url = `${request.baseUrl ?? 'https://api.anthropic.com'}/v1/messages`;
-  const answer = (await post(
-    fetchFn,
-    url,
-    { 'x-api-key': request.apiKey, 'anthropic-version': '2023-06-01' },
-    body,
-    'anthropic',
-  )) as {
+  const url = `${anthropicOrigin(request)}/v1/messages`;
+  const headers = { ...(await anthropicAuthHeaders(request, fetchFn)), 'anthropic-version': '2023-06-01' };
+  const answer = (await post(fetchFn, url, headers, body, 'anthropic')) as {
     content?: Array<{ type: string; text?: string }>;
     stop_reason?: string;
     stop_details?: { explanation?: string } | null;
@@ -577,10 +644,17 @@ async function callOpenai(
     max_output_tokens: 8000,
   };
   const url = `${request.baseUrl ?? 'https://api.openai.com'}/v1/responses`;
+  if (request.auth.kind !== 'api-key') {
+    throw new ReviewError(
+      'review-auth-unsupported',
+      `the OpenAI API takes an API key; a ${request.auth.kind} credential cannot be used with it`,
+      'set OPENAI_API_KEY',
+    );
+  }
   const answer = (await post(
     fetchFn,
     url,
-    { authorization: `Bearer ${request.apiKey}` },
+    { authorization: `Bearer ${request.auth.apiKey}` },
     body,
     'openai',
   )) as {

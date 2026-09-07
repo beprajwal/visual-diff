@@ -92,6 +92,10 @@ describe('action.yml', () => {
     expect(Object.keys(action.inputs).sort()).toEqual(
       [
         'anthropic-api-key',
+        'anthropic-federation-rule-id',
+        'anthropic-organization-id',
+        'anthropic-service-account-id',
+        'anthropic-workspace-id',
         'artifact',
         'artifact-name',
         'base-ref',
@@ -327,7 +331,7 @@ describe('the review and the hosted report (D39, D40)', () => {
     const step = action.runs.steps.find((s) => s.name === 'Diff, review and export');
     expect(step?.run).toBeDefined();
     const run = step!.run!;
-    expect(run).toContain('if [ -n "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}" ]; then');
+    expect(run).toContain('if [ -n "${ANTHROPIC_API_KEY}${ANTHROPIC_AUTH_TOKEN}${OPENAI_API_KEY}" ]; then');
     expect(run.indexOf('review "$flow"')).toBeLessThan(run.indexOf('export "$flow"'));
     expect(run).toContain('::warning::vdiff review failed');
     // The pull request's own description is what the model judges "unrelated" against.
@@ -364,5 +368,35 @@ describe('the recordings travel with the baseline (D42)', () => {
     // Same key shape on both sides, or the restore can never hit what the save wrote.
     expect(String(restore?.with?.['key']).replace(/\$\{\{ steps\.resolve\.outputs\.base_sha \}\}/, 'SHA'))
       .toBe(String(save?.with?.['key']).replace(/\$\{\{ github\.sha \}\}/, 'SHA'));
+  });
+});
+
+describe('keyless review through Workload Identity Federation (D43)', () => {
+  it('mints the bearer once, in its own step, and hands it to the review step alone', () => {
+    const mint = action.runs.steps.find((s) => s.id === 'oidc');
+    expect(mint?.name).toBe('Mint an Anthropic token from the runner identity');
+    expect(mint?.uses).toBe('actions/github-script@v7');
+    // Only when a rule is named and no key is: a key would win precedence anyway (SDK order).
+    expect(mint?.if).toContain("inputs.anthropic-federation-rule-id != ''");
+    expect(mint?.if).toContain("inputs.anthropic-api-key == ''");
+    // The exchange is one request: getIDToken, then POST /v1/oauth/token, then a masked output.
+    const script = String(mint?.with?.['script']);
+    expect(script).toContain("core.getIDToken('https://api.anthropic.com')");
+    expect(script).toContain('/v1/oauth/token');
+    expect(script).toContain('urn:ietf:params:oauth:grant-type:jwt-bearer');
+    expect(script).toContain('core.setSecret(');
+
+    const review = action.runs.steps.find((s) => s.name === 'Diff, review and export');
+    expect(review?.env?.['ANTHROPIC_AUTH_TOKEN']).toBe('${{ steps.oidc.outputs.token }}');
+    expect(review?.run).toContain('${ANTHROPIC_API_KEY}${ANTHROPIC_AUTH_TOKEN}${OPENAI_API_KEY}');
+
+    // The federation ids reach exactly the minting step.
+    const withFederation = action.runs.steps.filter((step) =>
+      JSON.stringify({ with: step.with, env: step.env }).includes('inputs.anthropic-federation-rule-id'),
+    );
+    expect(withFederation.map((s) => s.name)).toEqual(['Mint an Anthropic token from the runner identity']);
+    for (const input of ['anthropic-federation-rule-id', 'anthropic-organization-id', 'anthropic-service-account-id', 'anthropic-workspace-id']) {
+      expect(action.inputs[input]?.default).toBe('');
+    }
   });
 });

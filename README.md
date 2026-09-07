@@ -159,7 +159,30 @@ The provider is whichever key is present (Anthropic when both are). The key reac
 and only `vdiff review` reads it; a failed review is a warning, and the comment falls back to the
 numbers. The review is stored as `review.json` beside `findings.json`, travels in the bundle, shows
 in `report.html`, and always says which model wrote it and what it was shown. It never gates —
-`fail-on` still counts findings, not opinions. The same command works anywhere:
+`fail-on` still counts findings, not opinions.
+
+**No key at all** is also an option for Anthropic. Register GitHub Actions as an issuer in the
+Claude Console (Settings → Workload identity → Connect workload), grant the workflow
+`id-token: write`, and name the rule; the job exchanges its own OIDC identity for a token that lives
+minutes, and nothing is stored or rotated:
+
+```yaml
+permissions:
+  id-token: write
+  # …
+- uses: beprajwal/visual-diff@v0.10.0
+  with:
+    anthropic-federation-rule-id: fdrl_…
+    anthropic-organization-id: 00000000-0000-0000-0000-000000000000
+    anthropic-service-account-id: svac_…
+```
+
+Outside the action, `vdiff review` reads the same credentials the Anthropic SDK does, in the same
+order: `ANTHROPIC_API_KEY`, then `ANTHROPIC_AUTH_TOKEN`, then the federation variables
+(`ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
+`ANTHROPIC_IDENTITY_TOKEN_FILE`). A GitHub identity token can be exchanged once, so a job that
+reviews several flows should mint the bearer once and export it as `ANTHROPIC_AUTH_TOKEN`; the
+action does exactly that. The same command works anywhere:
 
 ```sh
 ANTHROPIC_API_KEY=… vdiff review checkout --context pr.md   # or OPENAI_API_KEY; --provider forces one

@@ -380,3 +380,20 @@ drift between the two replays. The baseline cache now carries `.visual-diff/flow
 `.visual-diff/runs`, under the same key: a baseline job records once, and a pull request that
 restores it replays the same traffic for its base and its head. A miss still records and still
 works; it is slower and noisier, never failed — the D32 posture, extended to the recording.
+
+**D43 — The review can run keyless: the runner's own identity, exchanged for a short-lived token.**
+A repository secret holding an Anthropic key is the thing Workload Identity Federation exists to
+remove, and a CI job is its canonical case. `vdiff review` now accepts Anthropic's three credentials
+in the SDK's own precedence — `ANTHROPIC_API_KEY`, then `ANTHROPIC_AUTH_TOKEN` (a bearer, which is
+what a federated `sk-ant-oat01-…` token is), then the federation variables
+(`ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
+`ANTHROPIC_IDENTITY_TOKEN[_FILE]`, optional `ANTHROPIC_WORKSPACE_ID`) from which it mints the
+bearer itself with the RFC 7523 `jwt-bearer` grant at `/v1/oauth/token`. The action takes the
+federation ids as inputs (`anthropic-federation-rule-id` and friends), requests the GitHub OIDC
+token with audience `https://api.anthropic.com`, exchanges it **once** in its own step, masks the
+result and hands it to the review step as `ANTHROPIC_AUTH_TOKEN`. Once, because a GitHub identity
+token carries `jti` and is single-use: a job reviewing three flows would otherwise fail on the
+second exchange with `jti_reused`. The workflow needs `id-token: write`; the installed template says
+so. The OpenAI path is unchanged — it has no federation to speak of. The key still wins when both are
+configured, so a repository can migrate the way the WIF docs describe: set up federation beside the
+key, then delete the key.

@@ -107,6 +107,29 @@ inputs:
       Model id for the review. Empty uses the provider's default (`claude-opus-5` / `gpt-6-astra`).
     required: false
     default: ''
+  anthropic-federation-rule-id:
+    description: >-
+      Keyless review through Anthropic Workload Identity Federation (D43): the `fdrl_…` rule that
+      trusts this repository's GitHub OIDC token. Set it, with the organization and service-account
+      ids below, and the job mints a short-lived Anthropic token from its own identity instead of
+      reading a stored key. The workflow must grant `id-token: write`. Ignored when
+      `anthropic-api-key` is set — a key wins, as it does in the SDK.
+    required: false
+    default: ''
+  anthropic-organization-id:
+    description: 'Anthropic organization UUID, for federation.'
+    required: false
+    default: ''
+  anthropic-service-account-id:
+    description: 'The `svac_…` service account the federation rule targets.'
+    required: false
+    default: ''
+  anthropic-workspace-id:
+    description: >-
+      The `wrkspc_…` workspace to scope the minted token to. Required only when the rule is enabled
+      for more than one workspace.
+    required: false
+    default: ''
   install:
     description: >-
       Command that installs the project's dependencies before the head run. Empty auto-detects from
@@ -395,6 +418,58 @@ runs:
           ${{ inputs.working-directory }}/.visual-diff/flows/*.har
         key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ github.sha }}
 
+    # ---------------------------------------------------------------- keyless review (D43)
+    #
+    # With a federation rule named and no key, the job's own GitHub identity is exchanged for a
+    # short-lived Anthropic token — once, here, because a GitHub OIDC token carries `jti` and can be
+    # exchanged exactly one time; a job reviewing three flows would otherwise fail on the second.
+    # The result is masked and handed to the review step as ANTHROPIC_AUTH_TOKEN. Needs
+    # `id-token: write` on the workflow, which the installed template documents.
+    - name: Mint an Anthropic token from the runner identity
+      id: oidc
+      if: inputs.mode == 'pr' && inputs.anthropic-federation-rule-id != '' && inputs.anthropic-api-key == ''
+      uses: actions/github-script@v7
+      env:
+        FEDERATION_RULE_ID: ${{ inputs.anthropic-federation-rule-id }}
+        ORGANIZATION_ID: ${{ inputs.anthropic-organization-id }}
+        SERVICE_ACCOUNT_ID: ${{ inputs.anthropic-service-account-id }}
+        WORKSPACE_ID: ${{ inputs.anthropic-workspace-id }}
+      with:
+        script: |
+          const { FEDERATION_RULE_ID, ORGANIZATION_ID, SERVICE_ACCOUNT_ID, WORKSPACE_ID } = process.env;
+          for (const [name, value] of Object.entries({ ORGANIZATION_ID, SERVICE_ACCOUNT_ID })) {
+            if (!value) core.setFailed(`anthropic-federation-rule-id is set but ${name.toLowerCase().replace('_', '-')} is empty`);
+          }
+          const assertion = await core.getIDToken('https://api.anthropic.com');
+          const body = {
+            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+            assertion,
+            federation_rule_id: FEDERATION_RULE_ID,
+            organization_id: ORGANIZATION_ID,
+            service_account_id: SERVICE_ACCOUNT_ID,
+            ...(WORKSPACE_ID ? { workspace_id: WORKSPACE_ID } : {}),
+          };
+          const origin = (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+          const response = await fetch(`${origin}/v1/oauth/token`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const text = await response.text();
+          if (!response.ok) {
+            // The deny reason is deliberately opaque here; the Console's authentication history has it.
+            core.setFailed(`token exchange answered ${response.status}: ${text.slice(0, 300)} — check the rule's match against this run's sub claim (repo:${context.repo.owner}/${context.repo.repo}:…) in the Claude Console authentication history`);
+            return;
+          }
+          const token = JSON.parse(text).access_token;
+          if (!token) {
+            core.setFailed('token exchange answered without an access_token');
+            return;
+          }
+          core.setSecret(token);
+          core.setOutput('token', token);
+          core.info(`minted a federated Anthropic token for the review (expires in ${JSON.parse(text).expires_in}s)`);
+
     # ---------------------------------------------------------------- diff, review and export
     #
     # The review (D39) sits between the diff and the export so the bundle, the page and the comment
@@ -413,6 +488,8 @@ runs:
         HTML: ${{ inputs.html }}
         CLI: ${{ inputs.cli }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        # The federated bearer minted above (D43); empty when no rule was named or a key was.
+        ANTHROPIC_AUTH_TOKEN: ${{ steps.oidc.outputs.token }}
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         REVIEW_MODEL: ${{ inputs.review-model }}
         # What the model judges the change against: without it, "unrelated" cannot be told from
@@ -435,7 +512,7 @@ runs:
           # the finding table without downloading anything.
           $cli diff "$flow"
 
-          if [ -n "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}" ]; then
+          if [ -n "${ANTHROPIC_API_KEY}${ANTHROPIC_AUTH_TOKEN}${OPENAI_API_KEY}" ]; then
             args=(review "$flow")
             if [ -n "$REVIEW_MODEL" ]; then args+=(--model "$REVIEW_MODEL"); fi
             if [ -n "$context_file" ]; then args+=(--context "$context_file"); fi
