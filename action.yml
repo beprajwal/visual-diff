@@ -333,12 +333,18 @@ runs:
         eval "$command"
 
     # ---------------------------------------------------------------- the base side (D32)
+    # The recordings travel with the runs (D42): a baseline captured on the default branch recorded
+    # each flow's HAR, and a pull request that restores it replays the same traffic on both sides
+    # instead of recording afresh against a backend that may have drifted since. HARs are gitignored
+    # by design, so this cache is the only place CI can get one from.
     - name: Restore baseline runs
       id: baseline
       if: inputs.mode == 'pr' && inputs.baseline != 'replay'
       uses: actions/cache/restore@v4
       with:
-        path: ${{ inputs.working-directory }}/.visual-diff/runs
+        path: |
+          ${{ inputs.working-directory }}/.visual-diff/runs
+          ${{ inputs.working-directory }}/.visual-diff/flows/*.har
         key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ steps.resolve.outputs.base_sha }}
 
     - name: Replay the base revision
@@ -384,7 +390,9 @@ runs:
       if: inputs.mode == 'baseline'
       uses: actions/cache/save@v4
       with:
-        path: ${{ inputs.working-directory }}/.visual-diff/runs
+        path: |
+          ${{ inputs.working-directory }}/.visual-diff/runs
+          ${{ inputs.working-directory }}/.visual-diff/flows/*.har
         key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ github.sha }}
 
     # ---------------------------------------------------------------- diff, review and export

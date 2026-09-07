@@ -358,3 +358,25 @@ repository's `main`) and the name, so a pull request with several bots on it say
 is before a number is read. The bundle's own `comment.md` is the one place an external URL now
 appears; the page and the images remain fully in-bundle, and the test that guarded that was made
 precise rather than removed.
+
+**D41 — A run can be told where the app is, without editing a committed file.**
+A repository's `config.yaml` names the origin its developers use — behind a local proxy, on a
+`.lvh.me` host, whatever their stack wants. CI fronts the same app on a different origin (a TLS
+proxy that makes it same-site with a real auth domain, say), and a historical replay reads its flow
+from git, so no edit to the working tree can reach the base side. `vdiff run` therefore takes
+`--base-url` and `--ready-on` — and, because the composite action calls it with no flags, reads
+`VDIFF_BASE_URL` and `VDIFF_READY_ON` from the environment as the fallback. Flag over environment
+over file. `browser.ignoreHTTPSErrors` (config) and `VDIFF_IGNORE_HTTPS_ERRORS` (environment) accept
+the proxy's self-signed certificate, in the browser and in the readiness probe alike — the probe
+moved off `fetch` for exactly that, since `fetch` cannot relax TLS for one request without a
+process-wide switch. Rejected: `${VAR}` templating inside `baseUrl` and `readyOn`, because it would
+change the spec's hash, could not reach a flow already in history, and would collide with the
+`$PORT` placeholder and the `${VAR}` fill values that already mean something else.
+
+**D42 — The recordings travel with the baseline.**
+HARs are gitignored on purpose (they are large and they are data), so a CI runner starts with none
+and a first run records against a live backend on both sides — correct, but exposed to backend
+drift between the two replays. The baseline cache now carries `.visual-diff/flows/*.har` beside
+`.visual-diff/runs`, under the same key: a baseline job records once, and a pull request that
+restores it replays the same traffic for its base and its head. A miss still records and still
+works; it is slower and noisier, never failed — the D32 posture, extended to the recording.

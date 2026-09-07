@@ -423,11 +423,15 @@ async function bindServer(
 ): Promise<ServerBinding> {
   const config = store.config;
   const configuredBase = options.baseUrl ?? spec.baseUrl ?? config.baseUrl;
+  // The run's override wins over the file (CI spec D41): a runner fronting the dev server on
+  // another origin says so once, for both sides of the diff, without touching a committed file.
+  const readyOn = options.readyOn ?? config.app.readyOn;
+  const insecureTls = options.ignoreHTTPSErrors ?? config.browser?.ignoreHTTPSErrors ?? false;
 
   if (target.mode === 'attach' && configuredBase !== undefined) {
     const port = portOfUrl(configuredBase);
-    const readyUrl = port === null ? config.app.readyOn : substitutePort(config.app.readyOn, port);
-    if (await probe(readyUrl)) {
+    const readyUrl = port === null ? readyOn : substitutePort(readyOn, port);
+    if (await probe(readyUrl, undefined, insecureTls)) {
       return { mode: 'attach', baseUrl: configuredBase };
     }
   }
@@ -435,12 +439,13 @@ async function bindServer(
   const handle = await startDevServer({
     command: config.app.dev,
     cwd: target.projectDir,
-    readyOn: config.app.readyOn,
+    readyOn,
     readyTimeoutMs: config.app.readyTimeoutMs,
+    insecureTls,
   });
   return {
     mode: 'spawn',
-    baseUrl: spawnedBaseUrl(configuredBase, handle.port, config.app.readyOn),
+    baseUrl: spawnedBaseUrl(configuredBase, handle.port, readyOn),
     handle,
   };
 }
@@ -791,6 +796,9 @@ export async function runFlow(
           ...(scenarioInForce ? { newScenarioRuntime } : {}),
           ...(options.continueOnError === undefined ? {} : { continueOnError: options.continueOnError }),
           ...(storageState === undefined ? {} : { storageState }),
+          ...((options.ignoreHTTPSErrors ?? store.config.browser?.ignoreHTTPSErrors) === true
+            ? { ignoreHTTPSErrors: true }
+            : {}),
           deviceScaleFactor: DEFAULTS.deviceScaleFactor,
         });
       });

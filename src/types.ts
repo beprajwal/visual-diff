@@ -373,6 +373,12 @@ export interface RetentionConfig {
  */
 export interface BrowserConfig {
   storageState?: string;
+  /**
+   * Accept a certificate the browser would reject — a CI proxy with `tls internal` fronting the
+   * dev server so the app is same-site with a real auth domain. Applies to the readiness probe
+   * too, because a probe that refuses the certificate never sees the server it is waiting for.
+   */
+  ignoreHTTPSErrors?: boolean;
 }
 
 export interface Config {
@@ -1243,7 +1249,17 @@ export interface RunOptions {
    */
   scenario?: ScenarioName;
   continueOnError?: boolean;
+  /** Overrides the flow's `baseUrl` for this run — the origin CI serves the app at, typically. */
   baseUrl?: string;
+  /**
+   * Overrides `app.readyOn` for this run. Paired with `baseUrl` when CI fronts the dev server with
+   * a proxy on a different origin than the one `.visual-diff/config.yaml` names for local work.
+   * Applies to a historical replay too, which is the point: the flow read from git keeps its
+   * local origin, and the override is what makes both sides of a CI diff reach the same server.
+   */
+  readyOn?: string;
+  /** Overrides `browser.ignoreHTTPSErrors` for this run. */
+  ignoreHTTPSErrors?: boolean;
   /** Write an unscrubbed HAR. Requires an explicit flag (spec §6). */
   noScrub?: boolean;
   json?: boolean;

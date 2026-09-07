@@ -127,7 +127,7 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.9.0
+- uses: beprajwal/visual-diff@v0.10.0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
@@ -149,7 +149,7 @@ judges against, so a PR that says "rename the Pay button" and also moves the hea
 so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.9.0
+- uses: beprajwal/visual-diff@v0.10.0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
@@ -180,6 +180,27 @@ serves; the comment's **Open the full report** then opens the interactive page f
 Who can open it is the repository's Pages visibility — private to the organisation on GitHub
 Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a minute, so the link can
 404 briefly after the first push of a new pull request.
+
+### When CI serves the app on another origin
+
+`config.yaml` names the origin your developers use. A runner often cannot: it fronts the dev server
+with a TLS proxy so the app is same-site with a real auth domain and the session cookies apply. Tell
+the run where the app is instead of editing a committed file — the override reaches the base side
+too, whose flow is read from git:
+
+```sh
+vdiff run checkout --base-url https://e2e.dev.example.test/core --ready-on https://e2e.dev.example.test/core/403 --ignore-https-errors
+```
+
+The action calls `vdiff run` without flags, so the same three are read from the environment:
+`VDIFF_BASE_URL`, `VDIFF_READY_ON`, `VDIFF_IGNORE_HTTPS_ERRORS=1`. Set them as job `env:` and every
+run in the job, base and head, uses them. `browser.ignoreHTTPSErrors: true` in `config.yaml` is the
+permanent form of the last one. Flag beats environment beats file.
+
+Recordings travel with the baseline: the cache the action keeps for a captured default branch holds
+each flow's HAR beside the runs, so a pull request that restores it replays the same traffic on both
+sides rather than recording twice against a backend that may have moved in between. A miss records
+and still works.
 
 Two commands do the rendering, and both work on their own, in any CI system or none:
 

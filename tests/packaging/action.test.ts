@@ -348,3 +348,21 @@ describe('the review and the hosted report (D39, D40)', () => {
     expect(action.inputs['pages-url']?.default).toBe('');
   });
 });
+
+describe('the recordings travel with the baseline (D42)', () => {
+  it('caches each flow HAR beside the runs, on save and on restore, under the same key', () => {
+    const restore = action.runs.steps.find((s) => s.name === 'Restore baseline runs');
+    const save = action.runs.steps.find((s) => s.name === 'Save the baseline');
+    for (const step of [restore, save]) {
+      expect(step?.uses).toMatch(/^actions\/cache\/(restore|save)@v4$/);
+      const paths = String(step?.with?.['path']).split('\n').map((p) => p.trim()).filter(Boolean);
+      expect(paths).toEqual([
+        '${{ inputs.working-directory }}/.visual-diff/runs',
+        '${{ inputs.working-directory }}/.visual-diff/flows/*.har',
+      ]);
+    }
+    // Same key shape on both sides, or the restore can never hit what the save wrote.
+    expect(String(restore?.with?.['key']).replace(/\$\{\{ steps\.resolve\.outputs\.base_sha \}\}/, 'SHA'))
+      .toBe(String(save?.with?.['key']).replace(/\$\{\{ github\.sha \}\}/, 'SHA'));
+  });
+});

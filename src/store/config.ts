@@ -62,6 +62,7 @@ import * as paths from './paths.js';
 import type { E2eNoiseOverrides } from '../diff/e2e-noise.js';
 import {
   DEFAULTS,
+  type BrowserConfig,
   type ValidationIssue,
   type ValidationResult,
 } from '../types.js';
@@ -135,6 +136,8 @@ const e2eSchema = z
 const browserSchema = z
   .object({
     storageState: z.string().min(1).optional(),
+    /** Accept a self-signed certificate — a CI proxy with `tls internal` in front of the app. */
+    ignoreHTTPSErrors: z.boolean().optional(),
   })
   .strict();
 
@@ -237,10 +240,17 @@ export function buildConfig(
   };
   if (file.app.install !== undefined) config.app.install = file.app.install;
   if (file.baseUrl !== undefined) config.baseUrl = file.baseUrl;
-  if (file.browser?.storageState !== undefined) {
+  if (file.browser !== undefined) {
+    const browser: BrowserConfig = {};
     // Against the working tree's root on purpose: a historical replay reads its flow from git but
     // its session from the machine it runs on.
-    config.browser = { storageState: path.resolve(root, file.browser.storageState) };
+    if (file.browser.storageState !== undefined) {
+      browser.storageState = path.resolve(root, file.browser.storageState);
+    }
+    if (file.browser.ignoreHTTPSErrors !== undefined) {
+      browser.ignoreHTTPSErrors = file.browser.ignoreHTTPSErrors;
+    }
+    if (Object.keys(browser).length > 0) config.browser = browser;
   }
 
   // Only what was written. An absent key stays absent all the way to `e2eNoiseSettings`, which is

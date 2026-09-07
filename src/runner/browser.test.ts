@@ -558,3 +558,15 @@ describe('describeSettle', () => {
     );
   });
 });
+
+describe('contextOptions — ignoreHTTPSErrors', () => {
+  it('accepts the certificate only when asked to', () => {
+    expect(contextOptions({ viewport, network: 'off', ignoreHTTPSErrors: true }).ignoreHTTPSErrors).toBe(
+      true,
+    );
+    expect(contextOptions({ viewport, network: 'off', ignoreHTTPSErrors: false }).ignoreHTTPSErrors).toBe(
+      undefined,
+    );
+    expect(contextOptions({ viewport, network: 'off' }).ignoreHTTPSErrors).toBeUndefined();
+  });
+});
