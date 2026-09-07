@@ -127,7 +127,7 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.10.0
+- uses: beprajwal/visual-diff@v0.11.0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
@@ -149,7 +149,7 @@ judges against, so a PR that says "rename the Pay button" and also moves the hea
 so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.10.0
+- uses: beprajwal/visual-diff@v0.11.0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
@@ -170,7 +170,7 @@ minutes, and nothing is stored or rotated:
 permissions:
   id-token: write
   # …
-- uses: beprajwal/visual-diff@v0.10.0
+- uses: beprajwal/visual-diff@v0.11.0
   with:
     anthropic-federation-rule-id: fdrl_…
     anthropic-organization-id: 00000000-0000-0000-0000-000000000000
@@ -300,6 +300,19 @@ steps:
     waitFor: "[data-test=account-menu]"
     shoot: false
 ```
+
+`${VAR}` works in `goto` paths too, and either place accepts a shell-style default. A flow whose
+addresses are rows in a developer's database — a project id, a thread id — names the local value as
+the default and lets CI override it, so one committed flow drives both:
+
+```yaml
+steps:
+  - id: autolog
+    goto: /projects/${VDIFF_PROJECT:-9b9f9847-b63e-4a15-81a1-5b461552b2c9}/autolog
+```
+
+A default is committed text and is never handed to the HAR scrubber; a `goto` value is never
+scrubbed at all, because the resolved URL is what the recording must match on replay.
 
 The storage-state file is what Playwright's `context.storageState({ path })` writes after a login;
 an existing Playwright auth setup project produces one already, and

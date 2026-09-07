@@ -128,6 +128,17 @@ export async function run(
 
   const failed = steps.filter((step) => step.status === 'failed');
   const blocked = steps.filter((step) => step.status === 'blocked');
+
+  // Why each step failed, right under the table. In CI this line is the whole diagnosis: the run
+  // directory with the failure screenshot is on a runner nobody can open, and "autolog-upload
+  // failed" alone sends the reader to download an artifact to learn it was a selector timeout.
+  for (const step of failed) {
+    const failure = step.failure;
+    if (failure === undefined) continue;
+    const where = failure.selector === undefined ? '' : ` (${failure.verb ?? 'step'} ${failure.selector})`;
+    human.push(`  ${step.id} failed${where}: ${failure.message.split('\n')[0]}`);
+    if (failure.screenshot !== undefined) human.push(`    screenshot: ${failure.screenshot}`);
+  }
   // A mock-only run has no recording, so "har 0 hit" would be a true sentence that reads as a
   // failure. Report what the mode actually produces: rules served, requests missed (D13).
   // `harHits` is necessarily 0 under `mock` — nothing consulted a recording, because there is no

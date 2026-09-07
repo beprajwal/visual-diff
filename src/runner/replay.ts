@@ -281,7 +281,12 @@ export async function performStep(page: Page, step: Step, timeoutMs: number): Pr
     }
   }
   if (step.goto !== undefined) {
-    await page.goto(step.goto, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    // A path may carry `${VAR}` / `${VAR:-default}` references — a project id that differs between
+    // a developer's data and CI's (D44). run.ts has already refused a flow with an unresolvable one.
+    await page.goto(interpolateEnv(step.goto, process.env), {
+      waitUntil: 'domcontentloaded',
+      timeout: timeoutMs,
+    });
   }
   if (step.click !== undefined) {
     await page.locator(step.click).first().click({ timeout: timeoutMs });
