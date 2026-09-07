@@ -50,6 +50,7 @@ describe('flow vocabulary (spec §6, D8)', () => {
       'fill',
       'press',
       'hover',
+      'upload',
       'scroll',
       'waitFor',
       'viewport',

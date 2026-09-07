@@ -55,6 +55,7 @@ export const STEP_VERBS = [
   'fill',
   'press',
   'hover',
+  'upload',
   'scroll',
   'waitFor',
   'viewport',
@@ -95,6 +96,13 @@ export interface Step {
   fill?: Record<string, string>;
   press?: string;
   hover?: string;
+  /**
+   * Attach files: selector → one path or several, relative to `.visual-diff/` (a committed
+   * `fixtures/` directory, by convention). The selector may be the `<input type=file>` itself or
+   * the button that opens the file dialog; the replayer handles both. What lets a flow *create* the
+   * state it captures — a document still parsing — instead of pointing at data that has to exist.
+   */
+  upload?: Record<string, string | string[]>;
   scroll?: ScrollAction;
   /** Switch the viewport for this step onward within the current context. */
   viewport?: ViewportId;

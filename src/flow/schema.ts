@@ -58,6 +58,9 @@ const zStep = z
     fill: z.record(z.string(), z.string()).optional(),
     press: z.string().min(1).optional(),
     hover: z.string().min(1).optional(),
+    upload: z
+      .record(z.string().min(1), z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]))
+      .optional(),
     scroll: zScroll.optional(),
     waitFor: z.string().min(1).optional(),
     viewport: z.string().min(1).optional(),

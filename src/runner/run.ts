@@ -799,6 +799,9 @@ export async function runFlow(
           ...((options.ignoreHTTPSErrors ?? store.config.browser?.ignoreHTTPSErrors) === true
             ? { ignoreHTTPSErrors: true }
             : {}),
+          // `upload` paths resolve inside the working tree's `.visual-diff/`, like the session file:
+          // a historical replay reads its flow from git and its fixtures from the machine.
+          fixturesDir: paths.vdiffDir(root),
           // The per-action timeout: the run's override, then the file, then the replayer's default.
           ...((options.stepTimeoutMs ?? store.config.app.stepTimeoutMs) === undefined
             ? {}

@@ -107,6 +107,7 @@ A step is `id` plus any of these keys. Nothing else is accepted.
 | `press` | string | press a keyboard key |
 | `hover` | selector | hover the first match |
 | `fill` | `{selector: value, …}` | fill each field in order |
+| `upload` | `{selector: path or [paths], …}` | attach committed fixture files (paths relative to `.visual-diff/`, e.g. `fixtures/spec.pdf`); the selector may be the `input[type=file]` or the button that opens the file dialog |
 | `scroll` | `{selector}` or `{x, y}` or `{to: top\|bottom}` | scroll into view, to an offset, or to an edge |
 | `waitFor` | selector | wait for the first match to become visible |
 | `viewport` | `WIDTHxHEIGHT` | resize from this step onward |
@@ -209,6 +210,24 @@ file, so the same state serves both sides of a diff.
 browser:
   storageState: .visual-diff/auth/state.json
 ```
+
+**Create the state you capture.** A state that depends on data — a document still parsing, a
+thread with an upload — should be produced by the flow, not pointed at: commit a small fixture under
+`.visual-diff/fixtures/`, `upload` it, and capture on the thread the flow itself just made. A flow
+that names a specific row (`?thread=c99b…`) only replays where that row exists, which is one
+developer's machine.
+
+```yaml
+  - id: attach-spec
+    upload: { "[aria-label='Add Attachment']": fixtures/spec-sample.pdf }
+    fill: { "[aria-label='Message input']": "Here is the spec." }
+    press: Enter
+    waitFor: "[data-slot='agent-parse-progress']"
+```
+
+**Environment references in `fill` and `goto`.** Both accept `${NAME}` and the shell's
+`${NAME:-default}`; a `goto` that carries a project id names the local one as the default so CI can
+override it with one variable.
 
 **Environment references in `fill`.** A `fill` value may contain `${NAME}` (uppercase identifier);
 it is replaced from the environment when the step runs. The flow keeps the reference, the structural

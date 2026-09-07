@@ -139,6 +139,14 @@ function normalizeStep(input: FlowSpecInput['steps'][number]): Step {
   if (input.fill !== undefined) step.fill = { ...input.fill };
   if (input.press !== undefined) step.press = input.press;
   if (input.hover !== undefined) step.hover = input.hover;
+  if (input.upload !== undefined) {
+    step.upload = Object.fromEntries(
+      Object.entries(input.upload).map(([selector, files]) => [
+        selector,
+        Array.isArray(files) ? [...files] : files,
+      ]),
+    );
+  }
   if (input.scroll !== undefined) step.scroll = { ...input.scroll };
   if (input.waitFor !== undefined) step.waitFor = input.waitFor;
   if (input.viewport !== undefined) step.viewport = input.viewport;

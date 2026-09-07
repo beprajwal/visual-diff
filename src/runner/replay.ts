@@ -33,10 +33,12 @@ import {
   type StepVerb,
   type Viewport,
   type ViewportId,
+  EXIT,
 } from '../types.js';
 import { newContext, settle, type ContextOptions } from './browser.js';
 import { captureA11ySnapshot, collectArgs, collectDom, toDomSnapshot } from './capture.js';
 import { interpolateEnv } from './env-template.js';
+import { resolveFixturePaths } from './fixtures.js';
 import { RunnerError, errorMessage, errorStack } from './errors.js';
 import type { ScenarioError } from '../mocking/index.js';
 import type { ScenarioRuntime } from './scenario.js';
@@ -106,6 +108,8 @@ export interface ReplayOptions {
   storageState?: string;
   /** Accept a certificate the browser would reject (`browser.ignoreHTTPSErrors`). */
   ignoreHTTPSErrors?: boolean;
+  /** The `.visual-diff/` directory an `upload` step's file paths are relative to. */
+  fixturesDir?: string;
   maxDomNodes?: number;
   /** Per-action timeout. */
   timeoutMs?: number;
@@ -273,7 +277,54 @@ async function checkExpectation(page: Page, expectation: Expectation, timeoutMs:
  * would be a second definition of what a step means, and the clone would descend from a page the
  * flow never actually produces.
  */
-export async function performStep(page: Page, step: Step, timeoutMs: number): Promise<void> {
+/** What a step needs beyond the page: where its fixture files live. */
+export interface StepContext {
+  fixturesDir?: string;
+}
+
+/**
+ * Attach files to the element `selector` names. An `<input type=file>` takes them directly, hidden
+ * or not; anything else is clicked and expected to open a file dialog, which Playwright intercepts.
+ * Both shapes exist in the wild — assistant-style composers create their input on the fly.
+ */
+async function uploadTo(
+  page: Page,
+  selector: string,
+  files: string | string[],
+  timeoutMs: number,
+  context: StepContext,
+): Promise<void> {
+  if (context.fixturesDir === undefined) {
+    throw new RunnerError({
+      code: 'fixtures-dir-missing',
+      message: `step uploads through "${selector}" but the replay was given no fixtures directory`,
+      exitCode: EXIT.CONFIG_ERROR,
+      kind: 'flow-invalid',
+    });
+  }
+  const paths = resolveFixturePaths(context.fixturesDir, files);
+  const locator = page.locator(selector).first();
+  await locator.waitFor({ state: 'attached', timeout: timeoutMs });
+  const isFileInput = await locator.evaluate(
+    (element) => element instanceof HTMLInputElement && element.type === 'file',
+  );
+  if (isFileInput) {
+    await locator.setInputFiles(paths, { timeout: timeoutMs });
+    return;
+  }
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: timeoutMs }),
+    locator.click({ timeout: timeoutMs }),
+  ]);
+  await chooser.setFiles(paths);
+}
+
+export async function performStep(
+  page: Page,
+  step: Step,
+  timeoutMs: number,
+  context: StepContext = {},
+): Promise<void> {
   if (step.viewport !== undefined) {
     const [width, height] = step.viewport.split('x').map(Number);
     if (Number.isInteger(width) && Number.isInteger(height) && width && height) {
@@ -305,6 +356,11 @@ export async function performStep(page: Page, step: Step, timeoutMs: number): Pr
   }
   if (step.hover !== undefined) {
     await page.locator(step.hover).first().hover({ timeout: timeoutMs });
+  }
+  if (step.upload !== undefined) {
+    for (const [selector, files] of Object.entries(step.upload)) {
+      await uploadTo(page, selector, files, timeoutMs, context);
+    }
   }
   if (step.scroll !== undefined) {
     const scroll = step.scroll;
@@ -428,6 +484,8 @@ export function nextAnchor(steps: readonly Step[], from: number): number {
 export async function replayViewport(options: ReplayOptions): Promise<ViewportReplay> {
   const { flow, viewport } = options;
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const stepContext: StepContext =
+    options.fixturesDir === undefined ? {} : { fixturesDir: options.fixturesDir };
   /**
    * URLs the app-origin backstop handed to the dev server because the recording had no entry for
    * them (`browser.ts#routeAppOriginOnly`). Playwright reports those as ordinary finished requests,
@@ -598,7 +656,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
           ...(options.newScenarioRuntime === undefined
             ? {}
             : { newScenarioRuntime: options.newScenarioRuntime }),
-          perform: (target, step) => performStep(target, step, timeoutMs),
+          perform: (target, step) => performStep(target, step, timeoutMs, stepContext),
           timeoutMs,
         });
         for (const [ruleId, extracted] of sources) variant.attachCloneSource(ruleId, extracted);
@@ -638,7 +696,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
       let failureShot: { screenshot: Uint8Array; dom: DomSnapshot } | undefined;
 
       try {
-        await performStep(page, step, timeoutMs);
+        await performStep(page, step, timeoutMs, stepContext);
         if (shoot) shot = await captureShot(page, step, viewport.id, options, () => inFlight);
       } catch (error) {
         failure = { message: errorMessage(error) };
