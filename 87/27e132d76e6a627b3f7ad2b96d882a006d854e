@@ -1,0 +1,53 @@
+src/runner/run.ts
+  s_d518fde157222a::t_55618e0b3c692a 802-804
+src/flow/parse.test.ts
+  s_d518fde157222a::t_435a03ef48b3f1 106
+  s_d518fde157222a::t_395ca476e8f701 85
+src/types.test.ts
+  s_d518fde157222a::t_def250ea33f11c 53
+README.md
+  s_d518fde157222a::t_dbc60d7229dba3 280-284
+skills/visual-diff-flows/SKILL.md
+  s_d518fde157222a::t_e99598f79a8f8f 110
+  s_d518fde157222a::t_8b1b90244dc30c 214-231
+src/types.ts
+  s_d518fde157222a::t_594512932ed732 58
+  s_d518fde157222a::t_5098f74455f082 99-105
+src/runner/fixtures.ts
+  s_d518fde157222a::t_ad0ebe701d3434 1-44
+src/runner/replay.ts
+  s_d518fde157222a::t_f7b720a62273d5 111-112
+  s_d518fde157222a::t_cf2c34586566df 36
+  s_d518fde157222a::t_001f1ebc184c4c 280-327
+  s_d518fde157222a::t_010d673843b065 41
+  s_d518fde157222a::t_d24ff9fa6c62e8 360-364
+  s_d518fde157222a::t_997f0a18fd2508 659
+  s_d518fde157222a::t_9c7952ce4090a1 487-488
+  s_d518fde157222a::t_91d54a850d030a 699
+src/runner/fixtures.test.ts
+  s_d518fde157222a::t_25f1f0e80e5b0f 1-30
+src/cli/templates.ts
+  s_d518fde157222a::t_08341c21a5ae8e 20,26
+src/flow/schema.ts
+  s_d518fde157222a::t_0764aa3d1c3b20 61-63
+src/flow/parse.ts
+  s_d518fde157222a::t_9def9500ab988a 142-149
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_5bf184393cc67b 436-447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8727e132d76e6a627b3f7ad2b96d882a006d854e",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
