@@ -1,0 +1,18 @@
+action.yml
+  h_d568a51a780fb5 146
+package.json
+  h_d568a51a780fb5 3
+src/version.ts
+  h_d568a51a780fb5 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "95f69b30861579c4cf417943e5e38e19508b48e2",
+  "prompts": {},
+  "humans": {
+    "h_d568a51a780fb5": {
+      "author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
