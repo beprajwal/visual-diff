@@ -8,6 +8,8 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -82,19 +84,46 @@ export function allocatePort(): Promise<number> {
 /** One readiness probe. Any HTTP answer counts — a 404 still proves the server is listening. */
 const GATEWAY_DOWN = new Set([502, 503, 504]);
 
-export async function probe(url: string, timeoutMs = 2_000): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+/**
+ * `insecure` accepts a certificate Node would reject — the CI proxy with `tls internal` that
+ * `browser.ignoreHTTPSErrors` exists for. Node's own request API rather than `fetch`, because
+ * `fetch` cannot relax TLS for one request without a global switch, and a probe must not flip the
+ * whole process's certificate checking to reach one dev server.
+ */
+export async function probe(url: string, timeoutMs = 2_000, insecure = false): Promise<boolean> {
+  let target: URL;
   try {
-    const response = await fetch(url, { signal: controller.signal, redirect: 'manual' });
-    // A proxy in front of the dev server answers on its own even while the upstream is down or
-    // still compiling; those answers are gateway statuses, and they are not "ready".
-    return !GATEWAY_DOWN.has(response.status);
+    target = new URL(url);
   } catch {
     return false;
-  } finally {
-    clearTimeout(timer);
   }
+  const request = target.protocol === 'https:' ? httpsRequest : httpRequest;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const req = request(
+      target,
+      { method: 'GET', ...(target.protocol === 'https:' ? { rejectUnauthorized: !insecure } : {}) },
+      (response) => {
+        // A proxy in front of the dev server answers on its own even while the upstream is down or
+        // still compiling; those answers are gateway statuses, and they are not "ready".
+        const status = response.statusCode ?? 0;
+        response.resume();
+        finish(!GATEWAY_DOWN.has(status));
+      },
+    );
+    const timer = setTimeout(() => {
+      req.destroy();
+      finish(false);
+    }, timeoutMs);
+    req.on('error', () => finish(false));
+    req.end();
+  });
 }
 
 export interface WaitOptions {
@@ -102,6 +131,8 @@ export interface WaitOptions {
   intervalMs?: number;
   /** Aborts the wait early — used to fail fast when the dev process has already exited. */
   stop?: () => string | null;
+  /** Accept a self-signed certificate on the probe (`browser.ignoreHTTPSErrors`). */
+  insecure?: boolean;
 }
 
 export async function waitForReady(url: string, options: WaitOptions): Promise<void> {
@@ -110,7 +141,7 @@ export async function waitForReady(url: string, options: WaitOptions): Promise<v
   for (;;) {
     const stopped = options.stop?.() ?? null;
     if (stopped !== null) throw new RunnerError({ code: 'server-exited', message: stopped, kind: 'server-not-ready' });
-    if (await probe(url)) return;
+    if (await probe(url, undefined, options.insecure ?? false)) return;
     if (Date.now() >= deadline) {
       throw new RunnerError({
         code: 'server-not-ready',
@@ -159,6 +190,8 @@ export interface StartDevServerOptions {
   readyTimeoutMs: number;
   port?: number;
   env?: NodeJS.ProcessEnv;
+  /** Accept a self-signed certificate on the readiness probe (`browser.ignoreHTTPSErrors`). */
+  insecureTls?: boolean;
 }
 
 /**
@@ -216,6 +249,7 @@ export async function startDevServer(options: StartDevServerOptions): Promise<De
     await waitForReady(readyUrl, {
       timeoutMs: options.readyTimeoutMs,
       stop: () => exited,
+      ...(options.insecureTls === undefined ? {} : { insecure: options.insecureTls }),
     });
   } catch (error) {
     await stop();

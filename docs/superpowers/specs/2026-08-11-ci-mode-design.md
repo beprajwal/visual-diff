@@ -358,3 +358,42 @@ repository's `main`) and the name, so a pull request with several bots on it say
 is before a number is read. The bundle's own `comment.md` is the one place an external URL now
 appears; the page and the images remain fully in-bundle, and the test that guarded that was made
 precise rather than removed.
+
+**D41 — A run can be told where the app is, without editing a committed file.**
+A repository's `config.yaml` names the origin its developers use — behind a local proxy, on a
+`.lvh.me` host, whatever their stack wants. CI fronts the same app on a different origin (a TLS
+proxy that makes it same-site with a real auth domain, say), and a historical replay reads its flow
+from git, so no edit to the working tree can reach the base side. `vdiff run` therefore takes
+`--base-url` and `--ready-on` — and, because the composite action calls it with no flags, reads
+`VDIFF_BASE_URL` and `VDIFF_READY_ON` from the environment as the fallback. Flag over environment
+over file. `browser.ignoreHTTPSErrors` (config) and `VDIFF_IGNORE_HTTPS_ERRORS` (environment) accept
+the proxy's self-signed certificate, in the browser and in the readiness probe alike — the probe
+moved off `fetch` for exactly that, since `fetch` cannot relax TLS for one request without a
+process-wide switch. Rejected: `${VAR}` templating inside `baseUrl` and `readyOn`, because it would
+change the spec's hash, could not reach a flow already in history, and would collide with the
+`$PORT` placeholder and the `${VAR}` fill values that already mean something else.
+
+**D42 — The recordings travel with the baseline.**
+HARs are gitignored on purpose (they are large and they are data), so a CI runner starts with none
+and a first run records against a live backend on both sides — correct, but exposed to backend
+drift between the two replays. The baseline cache now carries `.visual-diff/flows/*.har` beside
+`.visual-diff/runs`, under the same key: a baseline job records once, and a pull request that
+restores it replays the same traffic for its base and its head. A miss still records and still
+works; it is slower and noisier, never failed — the D32 posture, extended to the recording.
+
+**D43 — The review can run keyless: the runner's own identity, exchanged for a short-lived token.**
+A repository secret holding an Anthropic key is the thing Workload Identity Federation exists to
+remove, and a CI job is its canonical case. `vdiff review` now accepts Anthropic's three credentials
+in the SDK's own precedence — `ANTHROPIC_API_KEY`, then `ANTHROPIC_AUTH_TOKEN` (a bearer, which is
+what a federated `sk-ant-oat01-…` token is), then the federation variables
+(`ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
+`ANTHROPIC_IDENTITY_TOKEN[_FILE]`, optional `ANTHROPIC_WORKSPACE_ID`) from which it mints the
+bearer itself with the RFC 7523 `jwt-bearer` grant at `/v1/oauth/token`. The action takes the
+federation ids as inputs (`anthropic-federation-rule-id` and friends), requests the GitHub OIDC
+token with audience `https://api.anthropic.com`, exchanges it **once** in its own step, masks the
+result and hands it to the review step as `ANTHROPIC_AUTH_TOKEN`. Once, because a GitHub identity
+token carries `jti` and is single-use: a job reviewing three flows would otherwise fail on the
+second exchange with `jti_reused`. The workflow needs `id-token: write`; the installed template says
+so. The OpenAI path is unchanged — it has no federation to speak of. The key still wins when both are
+configured, so a repository can migrate the way the WIF docs describe: set up federation beside the
+key, then delete the key.

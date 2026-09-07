@@ -60,6 +60,15 @@ function describeWarning(warning: RunWarning): string {
   return `${warning.kind}: ${warning.message}${rules}${steps}${urls}`;
 }
 
+/** An environment value that was set to something. `VDIFF_BASE_URL=` in a workflow is unset. */
+function nonEmpty(value: string | undefined): string | undefined {
+  return value !== undefined && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isTruthy(value: string | undefined): boolean {
+  return value !== undefined && /^(1|true|yes)$/i.test(value.trim());
+}
+
 export async function run(
   ctx: CommandContext,
   invocation: RunInvocation,
@@ -79,6 +88,18 @@ export async function run(
   // Only sent when asked for: `keep: false` on every ordinary run would read as a decision the
   // caller made about retention, and they made no such decision.
   if (invocation.keep) options.keep = true;
+
+  // CI overrides (CI spec D41): the flag wins, the environment is the fallback, the file is the
+  // default. Read from the environment because the composite action calls `vdiff run` with no
+  // flags, and a runner that fronts the app on another origin sets these once for the whole job.
+  const env = ctx.env ?? process.env;
+  const baseUrl = invocation.baseUrl ?? nonEmpty(env['VDIFF_BASE_URL']);
+  if (baseUrl !== undefined) options.baseUrl = baseUrl;
+  const readyOn = invocation.readyOn ?? nonEmpty(env['VDIFF_READY_ON']);
+  if (readyOn !== undefined) options.readyOn = readyOn;
+  if (invocation.ignoreHttpsErrors === true || isTruthy(env['VDIFF_IGNORE_HTTPS_ERRORS'])) {
+    options.ignoreHTTPSErrors = true;
+  }
 
   const result = await ctx.ports.runFlow(options);
   const { meta, steps } = result;

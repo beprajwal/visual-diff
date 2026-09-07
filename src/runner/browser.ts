@@ -89,6 +89,8 @@ export interface ContextOptions {
   deviceScaleFactor?: number;
   /** Absolute path of the Playwright storage state every context starts from (auth spec §2). */
   storageState?: string;
+  /** Accept a certificate the browser would reject (`browser.ignoreHTTPSErrors`). */
+  ignoreHTTPSErrors?: boolean;
   network: NetworkMode;
   /** Absolute HAR path. **Required** for 'record' and 'replay'; absent is a hard error. */
   har?: string;
@@ -144,6 +146,7 @@ export function contextOptions(options: ContextOptions): BrowserContextOptions {
   };
   if (options.baseUrl !== undefined) base.baseURL = options.baseUrl;
   if (options.storageState !== undefined) base.storageState = options.storageState;
+  if (options.ignoreHTTPSErrors === true) base.ignoreHTTPSErrors = true;
   if (options.network === 'record') {
     // Recording is the one mode that legitimately reaches the live network — but only because
     // every response is being written to `recordHar`. Without it the run is a live-network run

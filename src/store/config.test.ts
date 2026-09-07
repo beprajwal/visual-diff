@@ -373,3 +373,25 @@ describe('project discovery', () => {
   });
 
 });
+
+describe('browser.ignoreHTTPSErrors', () => {
+  it('is carried through, alone or beside the storage state', () => {
+    const alone = parse(`${MINIMAL}\nbrowser:\n  ignoreHTTPSErrors: true`);
+    if (!alone.ok) throw new Error(JSON.stringify(alone.issues));
+    expect(alone.value.browser).toEqual({ ignoreHTTPSErrors: true });
+
+    const both = parse(
+      `${MINIMAL}\nbrowser:\n  storageState: .visual-diff/auth/state.json\n  ignoreHTTPSErrors: false`,
+    );
+    if (!both.ok) throw new Error(JSON.stringify(both.issues));
+    expect(both.value.browser).toEqual({
+      storageState: path.resolve(ROOT, '.visual-diff/auth/state.json'),
+      ignoreHTTPSErrors: false,
+    });
+  });
+
+  it('rejects a non-boolean', () => {
+    const result = parse(`${MINIMAL}\nbrowser:\n  ignoreHTTPSErrors: yes please`);
+    expect(result.ok).toBe(false);
+  });
+});

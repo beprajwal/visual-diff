@@ -89,7 +89,7 @@ export async function review(
     result,
     provider: credentials.provider,
     model: credentials.model,
-    apiKey: credentials.apiKey,
+    auth: credentials.auth,
     generatedAt: new Date().toISOString(),
   };
   if (credentials.baseUrl !== undefined) request.baseUrl = credentials.baseUrl;

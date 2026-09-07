@@ -188,3 +188,17 @@ describe('probe through a proxy', () => {
     }
   });
 });
+
+describe('probe — insecure', () => {
+  it('still answers false for nothing listening, over http and https alike', async () => {
+    const port = await allocatePort();
+    await expect(probe(`http://127.0.0.1:${port}/`, 250, true)).resolves.toBe(false);
+    await expect(probe(`https://127.0.0.1:${port}/`, 250, true)).resolves.toBe(false);
+    await expect(probe('not a url', 250, true)).resolves.toBe(false);
+  });
+
+  it('treats gateway statuses as not ready in the insecure path too', async () => {
+    const url = await listenOn(await allocatePort(), 503);
+    await expect(probe(url, 1_000, true)).resolves.toBe(false);
+  });
+});

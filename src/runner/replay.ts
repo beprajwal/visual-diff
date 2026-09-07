@@ -104,6 +104,8 @@ export interface ReplayOptions {
   deviceScaleFactor?: number;
   /** Absolute path of the storage state this viewport's contexts start from (auth spec §2). */
   storageState?: string;
+  /** Accept a certificate the browser would reject (`browser.ignoreHTTPSErrors`). */
+  ignoreHTTPSErrors?: boolean;
   maxDomNodes?: number;
   /** Per-action timeout. */
   timeoutMs?: number;
@@ -443,6 +445,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     ...(options.har === undefined ? {} : { har: options.har }),
     ...(options.deviceScaleFactor === undefined ? {} : { deviceScaleFactor: options.deviceScaleFactor }),
     ...(options.storageState === undefined ? {} : { storageState: options.storageState }),
+    ...(options.ignoreHTTPSErrors === undefined ? {} : { ignoreHTTPSErrors: options.ignoreHTTPSErrors }),
   };
 
   const contextOpts: ContextOptions = {

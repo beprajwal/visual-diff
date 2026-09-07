@@ -851,3 +851,29 @@ describe('parseArgs — the --e2e timeline switch (e2e spec §6, D27)', () => {
     });
   });
 });
+
+describe('run — CI overrides (D41)', () => {
+  it('parses --base-url, --ready-on and --ignore-https-errors', () => {
+    expect(
+      ok([
+        'run',
+        'checkout',
+        '--base-url',
+        'https://e2e.dev.example.test/core',
+        '--ready-on',
+        'https://e2e.dev.example.test/core/403',
+        '--ignore-https-errors',
+      ]),
+    ).toMatchObject({
+      kind: 'run',
+      baseUrl: 'https://e2e.dev.example.test/core',
+      readyOn: 'https://e2e.dev.example.test/core/403',
+      ignoreHttpsErrors: true,
+    });
+    // Absent means absent — the file's values rule, and the command reads the environment.
+    const plain = ok(['run', 'checkout']);
+    expect('baseUrl' in plain).toBe(false);
+    expect('readyOn' in plain).toBe(false);
+    expect('ignoreHttpsErrors' in plain).toBe(false);
+  });
+});

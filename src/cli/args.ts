@@ -68,6 +68,16 @@ export type Invocation =
       keep: boolean;
       continueOnError: boolean;
       noScrub: boolean;
+      /**
+       * CI overrides (CI spec D41). The origin the app is served at and the URL to probe for it,
+       * when a runner fronts the dev server on a different host than `.visual-diff/config.yaml`
+       * names for local work. Also read from `VDIFF_BASE_URL` / `VDIFF_READY_ON` by the command,
+       * because the composite action calls `vdiff run` without flags.
+       */
+      baseUrl?: string;
+      readyOn?: string;
+      /** Accept a self-signed certificate. Also `VDIFF_IGNORE_HTTPS_ERRORS=1`. */
+      ignoreHttpsErrors?: true;
       json: boolean;
     }
   | {
@@ -302,6 +312,9 @@ export const COMMANDS: Record<string, CommandSpec> = {
       'no-net': { type: 'boolean' },
       'continue-on-error': { type: 'boolean' },
       'no-scrub': { type: 'boolean' },
+      'base-url': { type: 'string' },
+      'ready-on': { type: 'string' },
+      'ignore-https-errors': { type: 'boolean' },
     }),
     minPositionals: 1,
     maxPositionals: 1,
@@ -992,6 +1005,11 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       if (viewports !== undefined) invocation.viewports = viewports;
       if (record) invocation.network = 'record';
       if (noNet) invocation.network = 'off';
+      const baseUrl = values['base-url'];
+      if (typeof baseUrl === 'string') invocation.baseUrl = baseUrl;
+      const readyOn = values['ready-on'];
+      if (typeof readyOn === 'string') invocation.readyOn = readyOn;
+      if (bool(values, 'ignore-https-errors')) invocation.ignoreHttpsErrors = true;
       return { ok: true, value: invocation };
     }
 
