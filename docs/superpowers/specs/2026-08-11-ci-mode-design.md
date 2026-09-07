@@ -457,3 +457,10 @@ baseline (D42), which is what makes the base deterministic across pull requests.
 replay` is available for a flow whose traffic is known not to change. What is given up is
 same-traffic determinism between the two sides of one diff; what is kept is that the diff is
 about the change.
+
+**D43, amended — a denied exchange is a warning.** The first keyless run was denied (the rule
+trusted the branch subject; a job in a GitHub Environment presents `repo:<owner>/<repo>:environment:<name>`),
+and the mint step failed the job before the diff, the export and the comment ran. The review is the
+paragraph a credential buys; the evidence and the comment are what the job promises. So the mint
+step now warns, names the subject to check, and leaves the token empty; the review is skipped and
+the numbers-only comment goes out. Same posture as a failed `vdiff review`.
