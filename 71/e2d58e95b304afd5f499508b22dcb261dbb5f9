@@ -1,0 +1,27 @@
+README.md
+  s_d518fde157222a::t_7b7d3ba9a444c5 215,315-316
+src/cli/args.test.ts
+  s_d518fde157222a::t_00bb091662ea78 862,864,869-870
+src/cli/commands/run-overrides.test.ts
+  s_d518fde157222a::t_8e152fcd20f7f5 58-59,64-65
+src/cli/commands/run.ts
+  s_d518fde157222a::t_82d257ad565f2c 150
+src/runner/env-template.test.ts
+  s_d518fde157222a::t_7585f0cc917939 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "71e2d58e95b304afd5f499508b22dcb261dbb5f9",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "unknown"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
