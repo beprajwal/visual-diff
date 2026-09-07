@@ -859,15 +859,15 @@ describe('run — CI overrides (D41)', () => {
         'run',
         'checkout',
         '--base-url',
-        'https://e2e.dev.example.test/core',
+        'https://ci.example.test/core',
         '--ready-on',
-        'https://e2e.dev.example.test/core/403',
+        'https://ci.example.test/core/403',
         '--ignore-https-errors',
       ]),
     ).toMatchObject({
       kind: 'run',
-      baseUrl: 'https://e2e.dev.example.test/core',
-      readyOn: 'https://e2e.dev.example.test/core/403',
+      baseUrl: 'https://ci.example.test/core',
+      readyOn: 'https://ci.example.test/core/403',
       ignoreHttpsErrors: true,
     });
     // Absent means absent — the file's values rule, and the command reads the environment.
@@ -875,5 +875,13 @@ describe('run — CI overrides (D41)', () => {
     expect('baseUrl' in plain).toBe(false);
     expect('readyOn' in plain).toBe(false);
     expect('ignoreHttpsErrors' in plain).toBe(false);
+  });
+});
+
+describe('run --step-timeout', () => {
+  it('parses a duration with a unit and refuses one without', () => {
+    expect(ok(['run', 'checkout', '--step-timeout', '90s'])).toMatchObject({ stepTimeoutMs: 90_000 });
+    expect(ok(['run', 'checkout', '--step-timeout', '2m'])).toMatchObject({ stepTimeoutMs: 120_000 });
+    expect(err(['run', 'checkout', '--step-timeout', '90'])).toMatchObject({ code: 'invalid-duration' });
   });
 });

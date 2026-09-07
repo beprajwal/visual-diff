@@ -4,7 +4,7 @@
  * A flow is committed, so a credential can never be written into it. What a flow may write is a
  * reference — `fill: { "[name=password]": "${VDIFF_PASSWORD}" }` — resolved from the environment
  * of the machine that replays it. The syntax is deliberately one shape: `${` + an uppercase
- * identifier + `}`, optionally with a shell-style default, `${VDIFF_PROJECT:-9b9f9847-…}`. A `$`
+ * identifier + `}`, optionally with a shell-style default, `${VDIFF_PROJECT:-7c2e9a10-…}`. A `$`
  * followed by anything else is literal text, so a value that happens to contain a dollar sign needs
  * no escaping.
  *

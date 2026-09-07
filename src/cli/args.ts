@@ -78,6 +78,8 @@ export type Invocation =
       readyOn?: string;
       /** Accept a self-signed certificate. Also `VDIFF_IGNORE_HTTPS_ERRORS=1`. */
       ignoreHttpsErrors?: true;
+      /** Per-action timeout inside a step, from `--step-timeout 60s`. Also `VDIFF_STEP_TIMEOUT`. */
+      stepTimeoutMs?: number;
       json: boolean;
     }
   | {
@@ -315,6 +317,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       'base-url': { type: 'string' },
       'ready-on': { type: 'string' },
       'ignore-https-errors': { type: 'boolean' },
+      'step-timeout': { type: 'string' },
     }),
     minPositionals: 1,
     maxPositionals: 1,
@@ -784,6 +787,20 @@ function applyPairFilters(
   return null;
 }
 
+/**
+ * `60s`, `2m`, `1500ms` → milliseconds; null for anything else. The same shape `config.yaml` takes
+ * for `readyTimeout` and `stepTimeout`, written here again because the parser must stay
+ * dependency-free (see the header) and a unitless number is refused on purpose — "30" as seconds
+ * or milliseconds is exactly the ambiguity a unit exists to remove.
+ */
+export function durationToMs(input: string): number | null {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m)\s*$/.exec(input);
+  if (match === null) return null;
+  const value = Number.parseFloat(match[1] as string);
+  const unit = { ms: 1, s: 1_000, m: 60_000 }[match[2] as 'ms' | 's' | 'm'];
+  return Math.round(value * unit);
+}
+
 function bool(values: Record<string, unknown>, name: string): boolean {
   return values[name] === true;
 }
@@ -1010,6 +1027,19 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const readyOn = values['ready-on'];
       if (typeof readyOn === 'string') invocation.readyOn = readyOn;
       if (bool(values, 'ignore-https-errors')) invocation.ignoreHttpsErrors = true;
+      const stepTimeout = values['step-timeout'];
+      if (typeof stepTimeout === 'string') {
+        const ms = durationToMs(stepTimeout);
+        if (ms === null) {
+          return fail(
+            'run',
+            'invalid-duration',
+            `--step-timeout '${stepTimeout}' needs a unit: 60s, 2m, 1500ms`,
+            spec.usage,
+          );
+        }
+        invocation.stepTimeoutMs = ms;
+      }
       return { ok: true, value: invocation };
     }
 

@@ -55,14 +55,14 @@ describe('vdiff run — CI overrides', () => {
 
   it('reads VDIFF_BASE_URL, VDIFF_READY_ON and VDIFF_IGNORE_HTTPS_ERRORS from the environment', async () => {
     const h = harness({
-      VDIFF_BASE_URL: 'https://e2e.dev.example.test/core',
-      VDIFF_READY_ON: 'https://e2e.dev.example.test/core/403',
+      VDIFF_BASE_URL: 'https://ci.example.test/core',
+      VDIFF_READY_ON: 'https://ci.example.test/core/403',
       VDIFF_IGNORE_HTTPS_ERRORS: 'true',
     });
     await run(h.ctx, invocation);
     expect(h.calls[0]).toMatchObject({
-      baseUrl: 'https://e2e.dev.example.test/core',
-      readyOn: 'https://e2e.dev.example.test/core/403',
+      baseUrl: 'https://ci.example.test/core',
+      readyOn: 'https://ci.example.test/core/403',
       ignoreHTTPSErrors: true,
     });
   });
@@ -74,5 +74,20 @@ describe('vdiff run — CI overrides', () => {
     expect('baseUrl' in options).toBe(false);
     expect(options.readyOn).toBe('http://flag.test/');
     expect(options.ignoreHTTPSErrors).toBe(true);
+  });
+});
+
+describe('vdiff run — step timeout', () => {
+  it('reads VDIFF_STEP_TIMEOUT, lets the flag win, and refuses a unitless value', async () => {
+    const fromEnv = harness({ VDIFF_STEP_TIMEOUT: '90s' });
+    await run(fromEnv.ctx, invocation);
+    expect(fromEnv.calls[0]?.stepTimeoutMs).toBe(90_000);
+
+    const flag = harness({ VDIFF_STEP_TIMEOUT: '90s' });
+    await run(flag.ctx, { ...invocation, stepTimeoutMs: 5_000 });
+    expect(flag.calls[0]?.stepTimeoutMs).toBe(5_000);
+
+    const bad = harness({ VDIFF_STEP_TIMEOUT: '90' });
+    await expect(run(bad.ctx, invocation)).rejects.toMatchObject({ code: 'invalid-duration', exitCode: 2 });
   });
 });

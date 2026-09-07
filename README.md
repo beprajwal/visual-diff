@@ -127,7 +127,7 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.11.0
+- uses: beprajwal/visual-diff@v0.12.0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
@@ -149,7 +149,7 @@ judges against, so a PR that says "rename the Pay button" and also moves the hea
 so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.11.0
+- uses: beprajwal/visual-diff@v0.12.0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
@@ -170,7 +170,7 @@ minutes, and nothing is stored or rotated:
 permissions:
   id-token: write
   # …
-- uses: beprajwal/visual-diff@v0.11.0
+- uses: beprajwal/visual-diff@v0.12.0
   with:
     anthropic-federation-rule-id: fdrl_…
     anthropic-organization-id: 00000000-0000-0000-0000-000000000000
@@ -212,13 +212,18 @@ the run where the app is instead of editing a committed file — the override re
 too, whose flow is read from git:
 
 ```sh
-vdiff run checkout --base-url https://e2e.dev.example.test/core --ready-on https://e2e.dev.example.test/core/403 --ignore-https-errors
+vdiff run checkout --base-url https://ci.example.test/core --ready-on https://ci.example.test/core/403 --ignore-https-errors
 ```
 
 The action calls `vdiff run` without flags, so the same three are read from the environment:
 `VDIFF_BASE_URL`, `VDIFF_READY_ON`, `VDIFF_IGNORE_HTTPS_ERRORS=1`. Set them as job `env:` and every
 run in the job, base and head, uses them. `browser.ignoreHTTPSErrors: true` in `config.yaml` is the
 permanent form of the last one. Flag beats environment beats file.
+
+A cold dev server is the other thing a runner has that a laptop does not: `next dev` compiles a
+route on its first hit, often past the replayer's 15-second per-action default. Give steps longer
+with `app.stepTimeout: 60s` in `config.yaml`, `vdiff run --step-timeout 60s`, or
+`VDIFF_STEP_TIMEOUT=90s` in the job — same order, same unit-required syntax as `readyTimeout`.
 
 Recordings travel with the baseline: the cache the action keeps for a captured default branch holds
 each flow's HAR beside the runs, so a pull request that restores it replays the same traffic on both
@@ -307,8 +312,8 @@ the default and lets CI override it, so one committed flow drives both:
 
 ```yaml
 steps:
-  - id: autolog
-    goto: /projects/${VDIFF_PROJECT:-9b9f9847-b63e-4a15-81a1-5b461552b2c9}/autolog
+  - id: orders
+    goto: /projects/${VDIFF_PROJECT:-7c2e9a10-4f3b-4d2e-9b1a-0c5d6e7f8a90}/orders
 ```
 
 A default is committed text and is never handed to the HAR scrubber; a `goto` value is never

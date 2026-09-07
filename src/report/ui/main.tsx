@@ -27,7 +27,7 @@ import {
   viewportsOf,
   visibleCells,
 } from './derive.js';
-import { KEY_BINDINGS, resolveKey } from './keys.js';
+import { KEY_BINDINGS, resolveKey, type KeyActionType } from './keys.js';
 import { formatHash, parseHash } from './route.js';
 import { pairId, screenshotPath } from './paths.js';
 import {
@@ -326,6 +326,37 @@ export function App({ client }: AppProps) {
 
   /* ------------------------------------------------------------ keyboard (§9) */
 
+  // One table of actions, reached two ways: a key press, or a click on the same entry in the
+  // legend. A reviewer on a touch device, or one who never reads shortcut hints, gets every
+  // binding as a button; the legend stops being documentation and becomes the control.
+  const performKeyAction = useCallback((action: KeyActionType): void => {
+    switch (action) {
+      case 'step-next':
+        dispatch({ type: 'step-next' });
+        break;
+      case 'step-prev':
+        dispatch({ type: 'step-prev' });
+        break;
+      case 'run-older':
+        dispatch({ type: 'run-older' });
+        break;
+      case 'run-newer':
+        dispatch({ type: 'run-newer' });
+        break;
+      case 'toggle-overlay':
+        dispatch({ type: 'toggle-overlay' });
+        break;
+      case 'toggle-findings-only':
+        dispatch({ type: 'toggle-findings-only' });
+        break;
+      case 'dismiss':
+        dispatch({ type: 'dismiss' });
+        break;
+      default:
+        break;
+    }
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const action = resolveKey({
@@ -338,35 +369,18 @@ export function App({ client }: AppProps) {
       });
       if (!action) return;
       event.preventDefault();
-      switch (action) {
-        case 'step-next':
-          dispatch({ type: 'step-next' });
-          break;
-        case 'step-prev':
-          dispatch({ type: 'step-prev' });
-          break;
-        case 'run-older':
-          dispatch({ type: 'run-older' });
-          break;
-        case 'run-newer':
-          dispatch({ type: 'run-newer' });
-          break;
-        case 'toggle-overlay':
-          dispatch({ type: 'toggle-overlay' });
-          break;
-        case 'toggle-findings-only':
-          dispatch({ type: 'toggle-findings-only' });
-          break;
-        case 'dismiss':
-          dispatch({ type: 'dismiss' });
-          break;
-        default:
-          break;
-      }
+      performKeyAction(action);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [performKeyAction]);
+
+  /** Whether a legend toggle is currently on, so its button reads as pressed. */
+  const legendPressed = (action: KeyActionType): boolean | undefined => {
+    if (action === 'toggle-overlay') return state.view === 'overlay';
+    if (action === 'toggle-findings-only') return state.findingsOnly;
+    return undefined;
+  };
 
   /* ------------------------------------------------------------ render */
 
@@ -404,12 +418,22 @@ export function App({ client }: AppProps) {
             </button>
             <span class="spacer" />
             {state.loadingDiff ? <span class="note">computing…</span> : null}
-            <span class="legend">
-              {KEY_BINDINGS.map((binding) => (
-                <span key={binding.key}>
-                  <kbd>{binding.label}</kbd> {binding.description}
-                </span>
-              ))}
+            <span class="legend" role="group" aria-label="actions, also available as keyboard shortcuts">
+              {KEY_BINDINGS.map((binding) => {
+                const pressed = legendPressed(binding.action);
+                return (
+                  <button
+                    type="button"
+                    key={binding.key}
+                    class="legend-action"
+                    title={`${binding.description} — key ${binding.label}`}
+                    {...(pressed === undefined ? {} : { 'aria-pressed': pressed })}
+                    onClick={() => performKeyAction(binding.action)}
+                  >
+                    <kbd>{binding.label}</kbd> {binding.description}
+                  </button>
+                );
+              })}
             </span>
           </div>
 
