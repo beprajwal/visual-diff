@@ -473,9 +473,16 @@ runs:
         WORKSPACE_ID: ${{ inputs.anthropic-workspace-id }}
       with:
         script: |
+          // The review is a paragraph a key buys; the evidence and the comment are what the job
+          // promises. So nothing in this step fails the job: a denied exchange is a warning, the
+          // token output stays empty, and the comment goes out with the numbers alone (D39, D43).
           const { FEDERATION_RULE_ID, ORGANIZATION_ID, SERVICE_ACCOUNT_ID, WORKSPACE_ID } = process.env;
+          core.setOutput('token', '');
           for (const [name, value] of Object.entries({ ORGANIZATION_ID, SERVICE_ACCOUNT_ID })) {
-            if (!value) core.setFailed(`anthropic-federation-rule-id is set but ${name.toLowerCase().replace('_', '-')} is empty`);
+            if (!value) {
+              core.warning(`anthropic-federation-rule-id is set but anthropic-${name.toLowerCase().replace('_', '-')} is empty; the review is skipped`);
+              return;
+            }
           }
           const assertion = await core.getIDToken('https://api.anthropic.com');
           const body = {
@@ -495,12 +502,14 @@ runs:
           const text = await response.text();
           if (!response.ok) {
             // The deny reason is deliberately opaque here; the Console's authentication history has it.
-            core.setFailed(`token exchange answered ${response.status}: ${text.slice(0, 300)} — check the rule's match against this run's sub claim (repo:${context.repo.owner}/${context.repo.repo}:…) in the Claude Console authentication history`);
+            // The most common cause is the rule's subject: a job that runs in a GitHub Environment
+            // presents `repo:<owner>/<repo>:environment:<name>`, not the branch or pull_request form.
+            core.warning(`token exchange answered ${response.status}: ${text.slice(0, 300)} — the review is skipped. Check the rule's match against this run's sub claim (repo:${context.repo.owner}/${context.repo.repo}:…) in the Claude Console authentication history`);
             return;
           }
           const token = JSON.parse(text).access_token;
           if (!token) {
-            core.setFailed('token exchange answered without an access_token');
+            core.warning('token exchange answered without an access_token; the review is skipped');
             return;
           }
           core.setSecret(token);

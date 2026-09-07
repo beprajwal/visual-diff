@@ -415,3 +415,13 @@ describe('the head side records by default (D48)', () => {
     expect(base?.run).not.toContain('--record');
   });
 });
+
+describe('a denied token exchange never fails the job (D43)', () => {
+  it('warns and leaves the token empty instead of calling setFailed', () => {
+    const mint = action.runs.steps.find((s) => s.id === 'oidc');
+    const script = String(mint?.with?.['script']);
+    expect(script).not.toContain('core.setFailed(');
+    expect(script).toContain("core.setOutput('token', '')");
+    expect(script.match(/core\.warning\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+});
