@@ -1,0 +1,47 @@
+src/adapters/github-actions/templates.ts
+  s_d518fde157222a::t_35e7947bf5a457 101-109
+action.yml
+  s_d518fde157222a::t_9ac1d7eef81a32 491-492
+  s_d518fde157222a::t_0d705c46b106d3 515
+  s_d518fde157222a::t_3285fbd0b5a78d 421-472
+  s_d518fde157222a::t_96d01b62183055 110-132
+tests/packaging/action.test.ts
+  s_d518fde157222a::t_ef83b7a0d68d7d 95-98
+  s_d518fde157222a::t_f383269bb92cad 334
+  s_d518fde157222a::t_c9fb2caee2d174 373-402
+src/ci/review-provider.ts
+  s_d518fde157222a::t_52e45e579704c9 2-3,9-11,13-17,22,28-43,64-78,82,92,96-153,155,167,172,175-176,180-181,184-185,190-192
+src/cli/commands/review.test.ts
+  s_d518fde157222a::t_c9fb2caee2d174 112,144
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_c9fb2caee2d174 383-399
+src/ci/review.test.ts
+  s_d518fde157222a::t_c9fb2caee2d174 120,124,135,144,208,265,321,372,431-591
+  s_d518fde157222a::t_cf9cb581d4c322 592
+src/cli/commands/review.ts
+  s_d518fde157222a::t_b3f77f9efbe652 92
+src/ci/review.ts
+  s_d518fde157222a::t_8eeb4ec60b7e47 493-562
+  s_d518fde157222a::t_875522798637f4 56-57
+  s_d518fde157222a::t_ad955a685f3a2f 585-587
+  s_d518fde157222a::t_1db4b4945f782a 46
+  s_d518fde157222a::t_f7b2a94c526a95 647-653,657
+README.md
+  s_d518fde157222a::t_6cc6db743fc6c7 162-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "381b94549dc9628ff48fd33d7ac23aea10550006",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
