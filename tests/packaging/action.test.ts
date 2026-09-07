@@ -105,6 +105,7 @@ describe('action.yml', () => {
         'fail-on',
         'flows',
         'github-token',
+        'head-network',
         'html',
         'images',
         'install',
@@ -398,5 +399,19 @@ describe('keyless review through Workload Identity Federation (D43)', () => {
     for (const input of ['anthropic-federation-rule-id', 'anthropic-organization-id', 'anthropic-service-account-id', 'anthropic-workspace-id']) {
       expect(action.inputs[input]?.default).toBe('');
     }
+  });
+});
+
+describe('the head side records by default (D48)', () => {
+  it('records the working tree unless head-network says replay, and validates the input', () => {
+    expect(action.inputs['head-network']?.default).toBe('record');
+    const head = action.runs.steps.find((s) => s.name === 'Replay the working tree');
+    expect(head?.env?.['HEAD_NETWORK']).toBe('${{ inputs.head-network }}');
+    expect(head?.run).toContain('$cli run "$flow" --record');
+    const resolve = action.runs.steps.find((s) => s.id === 'resolve');
+    expect(resolve?.run).toContain('head-network must be record or replay');
+    // The base side still replays whatever the cache restored: only the head has new traffic.
+    const base = action.runs.steps.find((s) => s.name === 'Replay the base revision');
+    expect(base?.run).not.toContain('--record');
   });
 });
