@@ -469,7 +469,10 @@ runs:
         PAGES_URL: ${{ inputs.pages-url }}
       run: |
         set -euo pipefail
-        prefix="pr-${PR_NUMBER:-manual}/${SHA:0:12}"
+        # `vdiff` sits between the pull request and the commit so the branch can hold other things
+        # under the same pull request without colliding, and so a Pages URL reads as ours:
+        #   <pages-url>/pr-13/vdiff/4f9c2a1b7e3d/checkout/report.html
+        prefix="pr-${PR_NUMBER:-manual}/vdiff/${SHA:0:12}"
         work="${RUNNER_TEMP}/vdiff-publish"
         rm -rf "$work"
         git clone --depth 1 --branch "$BRANCH" \
