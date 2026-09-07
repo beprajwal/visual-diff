@@ -43,6 +43,15 @@ inputs:
     description: 'auto | cache | replay — where the base side comes from (D32).'
     required: false
     default: auto
+  head-network:
+    description: >-
+      record | replay — how the head side reaches the network (D48). `record` (the default) lets the
+      pull request's code talk to the live backend and records what it saw: a change that adds or
+      alters a request is the thing under review, and a recording made by the base has no answer
+      for it. `replay` serves the head from the base's recording instead, which is deterministic
+      but fails any step whose requests the base never made.
+    required: false
+    default: record
   fail-on:
     description: >-
       none | high | any. Default none: findings are reported and the check stays green (D30).
@@ -210,6 +219,7 @@ runs:
         BASELINE: ${{ inputs.baseline }}
         FAIL_ON: ${{ inputs.fail-on }}
         IMAGES: ${{ inputs.images }}
+        HEAD_NETWORK: ${{ inputs.head-network }}
         PUBLISH_BRANCH: ${{ inputs.publish-branch }}
         PAGES_URL: ${{ inputs.pages-url }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -225,6 +235,7 @@ runs:
         case "$BASELINE" in auto|cache|replay) ;; *) echo "::error::baseline must be auto, cache or replay, got '$BASELINE'"; exit 2 ;; esac
         case "$FAIL_ON" in none|high|any) ;; *) echo "::error::fail-on must be none, high or any, got '$FAIL_ON'"; exit 2 ;; esac
         case "$IMAGES" in changed|all|none) ;; *) echo "::error::images must be changed, all or none, got '$IMAGES'"; exit 2 ;; esac
+        case "$HEAD_NETWORK" in record|replay) ;; *) echo "::error::head-network must be record or replay, got '$HEAD_NETWORK'"; exit 2 ;; esac
 
         if [ ! -d .visual-diff ]; then
           echo "::error::no .visual-diff directory in $(pwd) — run \`vdiff init\` and commit it"
@@ -404,12 +415,21 @@ runs:
       env:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         CLI: ${{ inputs.cli }}
+        HEAD_NETWORK: ${{ inputs.head-network }}
         NODE_OPTIONS: --max-old-space-size=6144
       run: |
         set -euo pipefail
         cli=${CLI:-vdiff}
+        # The head records by default (D48): the base's recording — restored from the cache or made
+        # a step ago — has no answer for a request the pull request added, and a replay that aborts
+        # it fails the step for the wrong reason. `replay` is for a flow whose traffic is known not
+        # to change.
         for flow in $FLOWS; do
-          $cli run "$flow"
+          if [ "${HEAD_NETWORK:-record}" = "record" ]; then
+            $cli run "$flow" --record
+          else
+            $cli run "$flow"
+          fi
         done
 
     # A replay that failed leaves its evidence — the failure screenshot, the DOM at the moment,

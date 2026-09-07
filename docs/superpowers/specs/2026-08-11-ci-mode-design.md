@@ -445,3 +445,15 @@ the button that opens the dialog, because assistant-style composers create their
 and only the dialog is observable. With it, a flow attaches a fixture and captures the parsing state
 on the thread it just made, on whichever project it is pointed at. Data a flow can make is data no
 one has to seed.
+
+**D48 — The head side records; the base side replays.**
+The first pull-request-mode run replayed the head against the recording the base had just made,
+and failed the one step the pull request added: its new request had no answer in that recording,
+replay aborted it (D9 forbids falling through to the network), and the new list never rendered.
+That is the general case, not an accident — a change that adds or alters a request is precisely
+what a pull request is for. So the action's head run passes `--record`: the pull request's code
+reaches the live backend and records what it saw, while the base keeps replaying the cached
+baseline (D42), which is what makes the base deterministic across pull requests. `head-network:
+replay` is available for a flow whose traffic is known not to change. What is given up is
+same-traffic determinism between the two sides of one diff; what is kept is that the diff is
+about the change.
