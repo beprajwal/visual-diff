@@ -14,6 +14,8 @@ import type {
   FeedbackEntry,
   PairLabel,
   PairRef,
+  Review,
+  ReviewProvider,
   RunId,
   RunSummary,
   ScenarioName,
@@ -184,6 +186,31 @@ export interface ExportData {
   notices: string[];
   /** The bundle's own `comment.md`, rendered with bundle-relative image paths. */
   comment: { path: string; bytes: number };
+  result: DiffResult;
+}
+
+/**
+ * `vdiff review <flow> [base] [head]` — a model's reading of the pair, persisted beside its
+ * `findings.json` (CI spec D39). The review itself is the payload; the rest says what it cost.
+ */
+export interface ReviewData {
+  flow: string;
+  pair: PairRef;
+  review: Review;
+  /** Absolute path of the stored `review.json`. */
+  path: string;
+  /** Absolute path written by `--out`, when one was; null otherwise. */
+  out: string | null;
+  provider: ReviewProvider;
+  model: string;
+  /** Images attached to the request. Zero under `--shots 0` or when no screenshot was on disk. */
+  images: number;
+  /** Provider-reported token counts; null when the response did not carry them. */
+  usage: { inputTokens: number | null; outputTokens: number | null };
+  /** True when `--context` supplied a description of the intended change. */
+  contextProvided: boolean;
+  /** The changes the model flagged as `unrelated` or `regression` — what a caller would warn on. */
+  flagged: number;
   result: DiffResult;
 }
 

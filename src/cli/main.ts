@@ -44,6 +44,7 @@ import { init } from './commands/init.js';
 import { install } from './commands/install.js';
 import { installBrowser } from './commands/install-browser.js';
 import { pin, prune } from './commands/pin.js';
+import { review } from './commands/review.js';
 import { run } from './commands/run.js';
 import { runs } from './commands/runs.js';
 import { scenarioCheck, scenarioList, scenarioNew } from './commands/scenario.js';
@@ -91,6 +92,8 @@ async function dispatch(
       return runs(ctx, invocation);
     case 'diff':
       return diff(ctx, invocation);
+    case 'review':
+      return review(ctx, invocation);
     case 'comment':
       return comment(ctx, invocation);
     case 'export':

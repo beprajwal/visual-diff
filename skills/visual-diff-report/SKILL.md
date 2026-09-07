@@ -67,7 +67,11 @@ Publish with the Artifact tool. Conventions that make the link durable and finda
   "Checkout". Shape: `<Project> <Flow> Diff` (e.g. "Acme-Web Checkout Diff"). Put the pair being
   compared in the `description`, not the title — the title stays stable across runs.
 - Favicon on first publish only: 📸.
-- Artifacts start private. Tell the user the link is theirs to share; nothing was made public.
+- **Audience.** Artifacts start private to the publisher, and the publish tool has no audience
+  parameter — sharing is a control in the page header, not an API. The intended default for a diff
+  report is *everyone in the workspace or organisation*: after publishing, tell the user to open the
+  page, use **Share**, and pick the organisation (Team/Enterprise plans; on Pro/Max the only wider
+  option is a public link, so say that instead). Never describe the link as shared until they have.
 
 ## Step 3b — no artifact tool: hand off the file
 
@@ -99,6 +103,11 @@ branch the comment carries numbers and the link, not inline screenshots. Do not 
 ## What this skill never does
 
 - Post a comment, publish a page, or share anything without the user asking for that step.
-- Publish from CI. This is the interactive path; the action's transport story is unchanged.
+- Publish from CI. This is the interactive path: an API-key session cannot publish a Claude
+  artifact and ChatGPT Sites has no deploy API, so neither works from a workflow. CI's equivalents
+  are the action's `pages-url` input (the exported report served by GitHub Pages from the publish
+  branch, visible to whoever can see the repository's Pages) and `anthropic-api-key` /
+  `openai-api-key` (a model writes the review the comment opens with). Point the user there when
+  they ask for "the artifact in CI".
 - Invent a report: no stored diff for the pair means nothing to publish — run the loop first
   (see **visual-diff**).

@@ -18,7 +18,16 @@ import { writeFileAtomic, writeJsonAtomic } from './internal/atomic.js';
 import { ensureDir, listDirEntries, pathExists, readJsonOrNull, rmrf } from './internal/fs.js';
 import { parsePairId } from './internal/id.js';
 import * as paths from './paths.js';
-import type { DiffResult, PairRef, Region, RegionSet, RunId, StepId, ViewportId } from '../types.js';
+import type {
+  DiffResult,
+  PairRef,
+  Region,
+  RegionSet,
+  Review,
+  RunId,
+  StepId,
+  ViewportId,
+} from '../types.js';
 
 export async function hasDiff(
   root: string,
@@ -65,6 +74,33 @@ export async function writeDiff(root: string, result: DiffResult): Promise<strin
   await writeJsonAtomic(file, result);
   // The findings file, not its directory: every caller either prints this path or reads it back,
   // and `vdiff diff` says "findings.json: <path>".
+  return file;
+}
+
+/**
+ * A stored review of the pair (CI spec D39), or null when none was written or the one on disk read
+ * a `findings.json` from a different engine version — the same cache rule `readDiff` applies, for
+ * the same reason: a review of a diff that no longer exists is not stale, it is about nothing.
+ */
+export async function readReview(
+  root: string,
+  flow: string,
+  base: RunId,
+  head: RunId,
+  engineVersion?: string,
+): Promise<Review | null> {
+  const stored = await readJsonOrNull<Review>(paths.diffReviewFile(root, flow, base, head));
+  if (stored === null) return null;
+  if (engineVersion !== undefined && stored.engineVersion !== engineVersion) return null;
+  return stored;
+}
+
+/** Write `review.json` beside the pair's `findings.json`. Returns that file's absolute path. */
+export async function writeReview(root: string, review: Review): Promise<string> {
+  const dir = paths.diffDir(root, review.flow, review.pair.base, review.pair.head);
+  await ensureDir(dir);
+  const file = path.join(dir, paths.REVIEW_FILENAME);
+  await writeJsonAtomic(file, review);
   return file;
 }
 

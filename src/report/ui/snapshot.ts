@@ -12,6 +12,7 @@ import type {
   DiffResult,
   FeedbackEntry,
   FeedbackInput,
+  Review,
   RunId,
   RunSummary,
 } from '../../types.js';
@@ -40,6 +41,8 @@ export interface ReportSnapshot {
   /** Pairing sentences and the gate verdict, rendered as a banner above the app. */
   notices?: string[];
   gate?: { level: string; tripped: boolean; reason: string };
+  /** A model's reading of the pair (CI spec D39), rendered in the banner when the bundle has one. */
+  review?: Review;
   version: string;
   generatedAt: string;
 }

@@ -91,6 +91,7 @@ describe('action.yml', () => {
     // the set is pinned rather than merely non-empty.
     expect(Object.keys(action.inputs).sort()).toEqual(
       [
+        'anthropic-api-key',
         'artifact',
         'artifact-name',
         'base-ref',
@@ -105,7 +106,10 @@ describe('action.yml', () => {
         'install',
         'mode',
         'node-version',
+        'openai-api-key',
+        'pages-url',
         'publish-branch',
+        'review-model',
         'version',
         'working-directory',
       ].sort(),
@@ -126,7 +130,17 @@ describe('action.yml', () => {
 
   it('reports the numbers a caller would gate or badge on', () => {
     expect(Object.keys(action.outputs).sort()).toEqual(
-      ['artifact-url', 'bundle-dir', 'changed-steps', 'comment-file', 'findings', 'gate', 'high'].sort(),
+      [
+        'artifact-url',
+        'bundle-dir',
+        'changed-steps',
+        'comment-file',
+        'findings',
+        'gate',
+        'high',
+        'report-url',
+        'reviewed',
+      ].sort(),
     );
   });
 
@@ -287,5 +301,50 @@ describe('the workflows vdiff install github-actions writes', () => {
     const baseline = parseYaml(baselineWorkflow(composed)) as WorkflowYaml;
     expect(pr.permissions?.['pull-requests']).toBe('write');
     expect(baseline.permissions).toEqual({ contents: 'read' });
+  });
+});
+
+describe('the review and the hosted report (D39, D40)', () => {
+  it('hands the model API keys to exactly one step, and never alongside the GitHub token', () => {
+    const withKeys = action.runs.steps.filter((step) => {
+      const values = [...Object.values(step.with ?? {}), ...Object.values(step.env ?? {})];
+      return values.some(
+        (value) =>
+          String(value).includes('inputs.anthropic-api-key') ||
+          String(value).includes('inputs.openai-api-key'),
+      );
+    });
+    expect(withKeys.map((step) => step.name)).toEqual(['Diff, review and export']);
+    const step = withKeys[0]!;
+    // The key lands in the variable the CLI reads, and the step holds no GitHub credential (D29).
+    expect(step.env?.['ANTHROPIC_API_KEY']).toBe('${{ inputs.anthropic-api-key }}');
+    expect(step.env?.['OPENAI_API_KEY']).toBe('${{ inputs.openai-api-key }}');
+    expect(JSON.stringify(step.env)).not.toContain('github-token');
+    expect(JSON.stringify(step.env)).not.toContain('github.token');
+  });
+
+  it('reviews only when a key is present, before the export, and never fails the job over it', () => {
+    const step = action.runs.steps.find((s) => s.name === 'Diff, review and export');
+    expect(step?.run).toBeDefined();
+    const run = step!.run!;
+    expect(run).toContain('if [ -n "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}" ]; then');
+    expect(run.indexOf('review "$flow"')).toBeLessThan(run.indexOf('export "$flow"'));
+    expect(run).toContain('::warning::vdiff review failed');
+    // The pull request's own description is what the model judges "unrelated" against.
+    expect(step!.env?.['PR_TITLE']).toBe('${{ github.event.pull_request.title }}');
+    expect(run).toContain('--context "$context_file"');
+  });
+
+  it('links the hosted report only when both publish-branch and pages-url are set', () => {
+    const publish = action.runs.steps.find((s) => s.name === 'Publish diff images');
+    expect(publish?.env?.['PAGES_URL']).toBe('${{ inputs.pages-url }}');
+    expect(publish?.run).toContain('report_base=');
+    const render = action.runs.steps.find((s) => s.name === 'Render the comment');
+    expect(render?.env?.['REPORT_BASE']).toBe('${{ steps.publish.outputs.report_base }}');
+    expect(render?.run).toContain('--report-url "$REPORT_BASE/$flow/report.html"');
+    // Defaults: no key, no page — the action behaves exactly as it did before either existed.
+    expect(action.inputs['anthropic-api-key']?.default).toBe('');
+    expect(action.inputs['openai-api-key']?.default).toBe('');
+    expect(action.inputs['pages-url']?.default).toBe('');
   });
 });

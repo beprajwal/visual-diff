@@ -49,6 +49,7 @@ export const SCREENSHOT_FILENAME = 'screenshot.png';
 export const DOM_FILENAME = 'dom.json';
 export const A11Y_FILENAME = 'a11y.json';
 export const FINDINGS_FILENAME = 'findings.json';
+export const REVIEW_FILENAME = 'review.json';
 export const PIXEL_FILENAME = 'pixel.png';
 export const REGIONS_FILENAME = 'regions.json';
 export const PENDING_FEEDBACK_FILENAME = 'pending.jsonl';
@@ -258,6 +259,11 @@ export function diffDir(root: string, flow: string, base: RunId, head: RunId): s
 
 export function diffFindingsFile(root: string, flow: string, base: RunId, head: RunId): string {
   return path.join(diffDir(root, flow, base, head), FINDINGS_FILENAME);
+}
+
+/** `review.json` — a model's reading of the pair, beside its `findings.json` (CI spec D39). */
+export function diffReviewFile(root: string, flow: string, base: RunId, head: RunId): string {
+  return path.join(diffDir(root, flow, base, head), REVIEW_FILENAME);
 }
 
 export function diffCropsDir(root: string, flow: string, base: RunId, head: RunId): string {

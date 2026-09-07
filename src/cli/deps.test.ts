@@ -162,6 +162,7 @@ describe('module edges', () => {
       'planE2eIngest',
       'readInstalledVersion',
       'renderComment',
+      'requestReview',
       'runFlow',
       'scenarioFile',
       'scenariosDir',

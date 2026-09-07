@@ -21,6 +21,7 @@ import {
   type DiffEngineOptions,
   type DiffResult,
   type PairRef,
+  type Review,
   type RunId,
   type ScenarioName,
 } from '../../types.js';
@@ -48,6 +49,12 @@ export interface ResolvedPair {
   cached: boolean;
   /** Default bundle directory for this pair, whether or not anything writes it (CI spec §5). */
   exportDir: string;
+  /**
+   * The stored `review.json` for this pair (CI spec D39), or null. Read here so `comment` and
+   * `export` render the same review — or the same absence of one — for the same pair; a review of
+   * a diff since recomputed under another engine version reads as null, as the store promises.
+   */
+  review: Review | null;
 }
 
 /**
@@ -106,6 +113,7 @@ export async function resolveDiff(
       path: store.diffFile(pair),
       cached: true,
       exportDir: store.exportDir(pair),
+      review: await store.readReview(pair, stored.engineVersion),
     };
   }
 
@@ -115,7 +123,17 @@ export async function resolveDiff(
     options,
   );
   const path = await store.writeDiff(pair, result);
-  return { config, pair, result, path, cached: false, exportDir: store.exportDir(pair) };
+  // A freshly computed diff has no review yet by definition: whatever `review.json` may be on disk
+  // described the previous engine's findings, and the engine-version check says so.
+  return {
+    config,
+    pair,
+    result,
+    path,
+    cached: false,
+    exportDir: store.exportDir(pair),
+    review: await store.readReview(pair, result.engineVersion),
+  };
 }
 
 /** The commands that reproduce a pair locally. Rendered into a comment's footer (CI spec §6). */

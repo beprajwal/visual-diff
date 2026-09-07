@@ -107,7 +107,9 @@ opt-in gate tripped. `vdiff diff` exits `0` even when findings exist — finding
 gate — and `3` is reachable only from `vdiff comment --fail-on`, which nothing sets by default.
 
 Supporting commands: `vdiff install <target>`, `vdiff init`, `vdiff flow new|check <name>`,
-`vdiff runs <flow>`, `vdiff pin|prune <run>`, `vdiff install-browser`.
+`vdiff runs <flow>`, `vdiff pin|prune <run>`, `vdiff install-browser`, and — with an Anthropic or
+OpenAI API key in the environment — `vdiff review <flow>`, which has a model write the review the
+agent would have (see [A model reads the diff](#a-model-reads-the-diff)).
 
 ## On a pull request
 
@@ -125,14 +127,59 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.8.0
+- uses: beprajwal/visual-diff@v0.9.0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
     baseline: auto               # auto | cache | replay
     publish-branch: ''           # set it to embed screenshots in the comment
+    pages-url: ''                # Pages URL serving that branch: the comment links report.html as a page
+    anthropic-api-key: ''        # or openai-api-key — a model writes the review the comment opens with
     cli: ''                      # e.g. `npx vdiff` to use the version pinned in package.json
 ```
+
+### A model reads the diff
+
+Locally, an agent turns the findings into a sentence, because it knows why the change was made. In
+CI nobody does, so the comment carried numbers. Give the action one API key and it also carries a
+**review**: the single most important change as a headline, every change ranked and marked
+`expected` / `unrelated` / `regression` / `unclear`, and a warning block for anything the pull
+request's own description does not account for. The pull request title and body are what the model
+judges against, so a PR that says "rename the Pay button" and also moves the heading colour gets told
+so.
+
+```yaml
+- uses: beprajwal/visual-diff@v0.9.0
+  with:
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+    # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
+```
+
+The provider is whichever key is present (Anthropic when both are). The key reaches exactly one step
+and only `vdiff review` reads it; a failed review is a warning, and the comment falls back to the
+numbers. The review is stored as `review.json` beside `findings.json`, travels in the bundle, shows
+in `report.html`, and always says which model wrote it and what it was shown. It never gates —
+`fail-on` still counts findings, not opinions. The same command works anywhere:
+
+```sh
+ANTHROPIC_API_KEY=… vdiff review checkout --context pr.md   # or OPENAI_API_KEY; --provider forces one
+vdiff comment checkout                                       # picks the stored review up automatically
+```
+
+### The report as a site
+
+`publish-branch` already pushes each pull request's `report.html` and images to a branch. Point
+GitHub Pages at that branch (Settings → Pages → Deploy from a branch) and tell the action the URL it
+serves; the comment's **Open the full report** then opens the interactive page for that pull request:
+
+```yaml
+    publish-branch: visual-diff-reports
+    pages-url: https://<owner>.github.io/<repo>
+```
+
+Who can open it is the repository's Pages visibility — private to the organisation on GitHub
+Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a minute, so the link can
+404 briefly after the first push of a new pull request.
 
 Two commands do the rendering, and both work on their own, in any CI system or none:
 
@@ -159,8 +206,9 @@ transports. Two consequences worth knowing before you read a comment and wonder:
 
 The design is in
 [`docs/superpowers/specs/2026-08-11-ci-mode-design.md`](docs/superpowers/specs/2026-08-11-ci-mode-design.md),
-including what CI mode deliberately still does not do: there is no hosted report and no
-baseline-approval workflow.
+including what CI mode deliberately still does not do: no hosting of our own (the report is a page
+only where *you* serve it — Pages, a branch, an artifact) and no baseline-approval workflow. The
+review and the Pages link are decisions D39 and D40 in the same document.
 
 ## A flow spec
 

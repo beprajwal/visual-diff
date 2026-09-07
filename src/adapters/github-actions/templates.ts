@@ -90,6 +90,19 @@ jobs:
           # report.html alone is the whole report; \`both\` adds report.inline.html beside the
           # linked page.
           # html: linked
+
+          # Let a model write the review: the headline change, what is outside this pull request's
+          # description, what looks broken. Set ONE key from a repository secret; the provider is
+          # whichever key is present. Without a key the comment carries the numbers alone.
+          # anthropic-api-key: \${{ secrets.ANTHROPIC_API_KEY }}
+          # openai-api-key: \${{ secrets.OPENAI_API_KEY }}
+          # review-model: claude-opus-5
+
+          # Serve the exported report as a site. Point GitHub Pages at the publish branch (Settings →
+          # Pages → Deploy from a branch) and name the URL it serves; the comment's "Open the full
+          # report" then opens report.html for this pull request. Visibility follows the repository's
+          # Pages setting — private Pages on Enterprise Cloud, public otherwise.
+          # pages-url: https://<owner>.github.io/<repo>
 `;
 }
 

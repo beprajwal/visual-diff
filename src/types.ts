@@ -941,6 +941,70 @@ export interface DiffResult {
   warnings: string[];
 }
 
+/* ------------------------------------------------------------------ model-written review (CI spec D39) */
+
+/** The hosted model APIs `vdiff review` can call. Chosen by which API key the environment holds. */
+export const REVIEW_PROVIDERS = ['anthropic', 'openai'] as const;
+export type ReviewProvider = (typeof REVIEW_PROVIDERS)[number];
+
+/**
+ * What the reviewer made of one change. It has the findings, the screenshots and — when the caller
+ * supplied one — the pull request's own description of the change, so the vocabulary is about how
+ * a change reads *against that description*, never a claim to know what the author meant:
+ *
+ * - `expected`   — consistent with the described change, or an obviously deliberate edit
+ * - `unrelated`  — real, but nothing in the description accounts for it: the thing that should not
+ *                  have moved and did
+ * - `regression` — looks broken on its face: clipping, overflow, a vanished control, lost contrast
+ * - `unclear`    — the evidence does not say
+ */
+export const REVIEW_ASSESSMENTS = ['expected', 'unrelated', 'regression', 'unclear'] as const;
+export type ReviewAssessment = (typeof REVIEW_ASSESSMENTS)[number];
+
+export interface ReviewChange {
+  /** Step id the change belongs to, exactly as `DiffResult.steps[].id` spells it. */
+  step: StepId;
+  /** Viewport the change was seen at; null when it applies to every viewport of the step. */
+  viewport: ViewportId | null;
+  /** One sentence: what changed, in the reviewer's words. */
+  description: string;
+  assessment: ReviewAssessment;
+}
+
+/**
+ * `review.json` — a model's reading of one stored diff (CI spec D39).
+ *
+ * Stored beside `findings.json` and keyed to the same pair and engine version, so a review of a
+ * diff that has since been recomputed reads as absent rather than as stale. Everything a reader
+ * needs to weigh it is on the object: which model wrote it, what it was shown, and when.
+ */
+export interface Review {
+  flow: string;
+  pair: { base: RunId; head: RunId };
+  /** Engine version of the `findings.json` this review read. Mismatch means the review is stale. */
+  engineVersion: string;
+  provider: ReviewProvider;
+  model: string;
+  generatedAt: IsoDate;
+  /**
+   * The single most important change, in one sentence — what a reviewer with ten seconds should
+   * know. A regression or an unrelated change outranks the biggest intended one.
+   */
+  headline: string;
+  /** Two or three sentences that read the whole diff, after the headline. */
+  summary: string;
+  /** Every distinct change the model saw, most important first. */
+  changes: ReviewChange[];
+  /**
+   * What a human should look at before merging: each `unrelated` or `regression` change restated
+   * as a warning, plus anything the screenshots show that the findings do not. Empty when the model
+   * saw nothing to raise — and the comment then says so, because silence is not the same as "fine".
+   */
+  concerns: string[];
+  /** How much the model was shown: how many (step, viewport) cells and how many images. */
+  evidence: { cells: number; images: number; contextProvided: boolean };
+}
+
 export interface DiffEngineOptions {
   minRegionArea: number;
   maxRegions: number;

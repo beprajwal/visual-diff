@@ -33,7 +33,7 @@ export async function exportCommand(
   ctx: CommandContext,
   invocation: ExportInvocation,
 ): Promise<CommandResult<ExportData>> {
-  const { config, pair, result, exportDir } = await resolveDiff(ctx, invocation);
+  const { config, pair, result, exportDir, review } = await resolveDiff(ctx, invocation);
 
   const composed = composePairNotices(result);
   const notices = [...composed.notices.map((notice) => notice.sentence), ...composed.degraded];
@@ -61,6 +61,9 @@ export async function exportCommand(
   };
   if (invocation.artifactUrl !== undefined) request.artifactUrl = invocation.artifactUrl;
   if (invocation.artifactName !== undefined) request.artifactName = invocation.artifactName;
+  // The stored review travels with the bundle (D39): as `review.json`, inside `comment.md`, and in
+  // the page's snapshot — so the zip a reviewer downloads says the same thing the comment did.
+  if (review !== null) request.review = review;
 
   const report = await ctx.ports.exportBundle(request);
 

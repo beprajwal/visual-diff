@@ -19,6 +19,8 @@ export const BUNDLE_FILES = {
   summary: 'summary.json',
   findings: 'findings.json',
   comment: 'comment.md',
+  /** A model's reading of the pair (D39). Written only when `vdiff review` produced one. */
+  review: 'review.json',
   report: 'report.html',
   /** The self-contained page `html: both` writes next to the linked one. */
   reportInline: 'report.inline.html',

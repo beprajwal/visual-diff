@@ -37,6 +37,7 @@ import type {
   FeedbackInput,
   LoadedRun,
   PairRef,
+  Review,
   Revision,
   RunId,
   RunMeta,
@@ -97,6 +98,10 @@ export interface Store {
   readDiff(pair: PairRef, engineVersion?: string): Promise<DiffResult | null>;
   /** Persists `findings.json` for the pair named inside `result`; returns its absolute path. */
   writeDiff(result: DiffResult): Promise<string>;
+  /** `review.json` for the pair (CI spec D39); null when absent or written for another engine. */
+  readReview(pair: PairRef, engineVersion?: string): Promise<Review | null>;
+  /** Persists `review.json` beside the pair's `findings.json`; returns its absolute path. */
+  writeReview(review: Review): Promise<string>;
   invalidateDiff(pair: PairRef): Promise<void>;
   listStoredPairs(flow: string): Promise<PairRef[]>;
 
@@ -158,6 +163,9 @@ export function openStore(config: Config): Store {
     readDiff: (pair, engineVersion) =>
       diffStore.readDiff(root, pair.flow, pair.base, pair.head, engineVersion),
     writeDiff: (result) => diffStore.writeDiff(root, result),
+    readReview: (pair, engineVersion) =>
+      diffStore.readReview(root, pair.flow, pair.base, pair.head, engineVersion),
+    writeReview: (review) => diffStore.writeReview(root, review),
     invalidateDiff: (pair) => diffStore.invalidateDiff(root, pair.flow, pair.base, pair.head),
     listStoredPairs: (flow) => diffStore.listStoredPairs(root, flow),
 
@@ -352,10 +360,12 @@ export {
   readDiff,
   readFindingsCount,
   readRegions,
+  readReview,
   runsReferencedByDiffs,
   statBlob,
   writeCrop,
   writeDiff,
+  writeReview,
   writePixelDiff,
   writeRegions,
 } from './diff-store.js';
