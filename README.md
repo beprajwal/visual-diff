@@ -212,7 +212,7 @@ the run where the app is instead of editing a committed file — the override re
 too, whose flow is read from git:
 
 ```sh
-vdiff run checkout --base-url https://e2e.dev.example.test/core --ready-on https://e2e.dev.example.test/core/403 --ignore-https-errors
+vdiff run checkout --base-url https://ci.example.test/core --ready-on https://ci.example.test/core/403 --ignore-https-errors
 ```
 
 The action calls `vdiff run` without flags, so the same three are read from the environment:
@@ -312,8 +312,8 @@ the default and lets CI override it, so one committed flow drives both:
 
 ```yaml
 steps:
-  - id: autolog
-    goto: /projects/${VDIFF_PROJECT:-9b9f9847-b63e-4a15-81a1-5b461552b2c9}/autolog
+  - id: orders
+    goto: /projects/${VDIFF_PROJECT:-7c2e9a10-4f3b-4d2e-9b1a-0c5d6e7f8a90}/orders
 ```
 
 A default is committed text and is never handed to the HAR scrubber; a `goto` value is never

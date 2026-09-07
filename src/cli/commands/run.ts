@@ -147,7 +147,7 @@ export async function run(
   const blocked = steps.filter((step) => step.status === 'blocked');
 
   // Why each step failed, right under the table. In CI this line is the whole diagnosis: the run
-  // directory with the failure screenshot is on a runner nobody can open, and "autolog-upload
+  // directory with the failure screenshot is on a runner nobody can open, and "pay-form
   // failed" alone sends the reader to download an artifact to learn it was a selector timeout.
   for (const step of failed) {
     const failure = step.failure;

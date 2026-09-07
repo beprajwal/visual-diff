@@ -51,7 +51,7 @@ describe('interpolateEnv', () => {
 describe('defaults and goto references (D44)', () => {
   const portable = {
     steps: [
-      { id: 'open', goto: '/projects/${VDIFF_PROJECT:-9b9f9847-local}/autolog' },
+      { id: 'open', goto: '/projects/${VDIFF_PROJECT:-proj-local}/orders' },
       { id: 'thread', goto: '/projects/${VDIFF_PROJECT:-9b9f9847-local}/agent?thread=${VDIFF_THREAD}' },
       { id: 'login', fill: { '[name=email]': '${VDIFF_EMAIL:-dev@example.com}' } },
     ],

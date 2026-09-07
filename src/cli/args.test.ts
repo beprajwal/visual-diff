@@ -859,15 +859,15 @@ describe('run — CI overrides (D41)', () => {
         'run',
         'checkout',
         '--base-url',
-        'https://e2e.dev.example.test/core',
+        'https://ci.example.test/core',
         '--ready-on',
-        'https://e2e.dev.example.test/core/403',
+        'https://ci.example.test/core/403',
         '--ignore-https-errors',
       ]),
     ).toMatchObject({
       kind: 'run',
-      baseUrl: 'https://e2e.dev.example.test/core',
-      readyOn: 'https://e2e.dev.example.test/core/403',
+      baseUrl: 'https://ci.example.test/core',
+      readyOn: 'https://ci.example.test/core/403',
       ignoreHttpsErrors: true,
     });
     // Absent means absent — the file's values rule, and the command reads the environment.
