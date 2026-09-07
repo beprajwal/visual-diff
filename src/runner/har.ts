@@ -7,7 +7,10 @@
  * `--no-scrub`, which is why scrubbing is the default path and the flag only skips this call.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { createWriteStream } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { finished } from 'node:stream/promises';
 
 import { DEFAULTS } from '../types.js';
 
@@ -171,7 +174,32 @@ export function retargetHar(source: string, targetOrigin: string): { har: string
     request.url = url.toString();
     rewritten += 1;
   }
-  return { har: `${JSON.stringify(parsed, null, 2)}\n`, rewritten };
+  return { har: serializeHar(parsed), rewritten };
+}
+
+/** The in-place half of `retargetHar`: rewrite loopback URLs on the parsed object, count them. */
+function retargetHarObject(parsed: unknown, targetOrigin: string): number {
+  const entries = (parsed as { log?: { entries?: unknown } } | undefined)?.log?.entries;
+  if (!Array.isArray(entries)) return 0;
+  let target: URL;
+  try {
+    target = new URL(targetOrigin);
+  } catch {
+    return 0;
+  }
+  let rewritten = 0;
+  for (const entry of entries) {
+    const request = (entry as { request?: { url?: unknown } }).request;
+    if (request === undefined || typeof request.url !== 'string') continue;
+    if (!isLoopbackUrl(request.url)) continue;
+    const url = new URL(request.url);
+    if (url.host === target.host && url.protocol === target.protocol) continue;
+    url.protocol = target.protocol;
+    url.host = target.host;
+    request.url = url.toString();
+    rewritten += 1;
+  }
+  return rewritten;
 }
 
 /**
@@ -183,15 +211,14 @@ export async function retargetHarFile(
   targetOrigin: string,
   outFile: string,
 ): Promise<string> {
-  let source: string;
+  let parsed: unknown;
   try {
-    source = await readFile(file, 'utf8');
+    parsed = JSON.parse(await readFile(file, 'utf8'));
   } catch {
     return file;
   }
-  const { har, rewritten } = retargetHar(source, targetOrigin);
-  if (rewritten === 0) return file;
-  await writeFile(outFile, har, 'utf8');
+  if (retargetHarObject(parsed, targetOrigin) === 0) return file;
+  await writeHarFile(outFile, parsed);
   return outFile;
 }
 
@@ -360,18 +387,81 @@ export function scrubHar(source: string, options: ScrubOptions = {}): ScrubResul
     return { har: source, redacted: 0 };
   }
   const redacted = scrubHarObject(parsed, options);
-  return { har: `${JSON.stringify(parsed, null, 2)}\n`, redacted };
+  return { har: serializeHar(parsed), redacted };
+}
+
+/**
+ * A HAR as one compact line per entry — no indentation, because a recording is read by
+ * `routeFromHAR` and never by a person, and pretty-printing a 400 MB recording doubles the string
+ * the serializer has to hold. `writeHarFile` is the streaming form of the same layout.
+ */
+export function serializeHar(parsed: unknown): string {
+  const chunks: string[] = [];
+  for (const chunk of harChunks(parsed)) chunks.push(chunk);
+  return chunks.join('');
+}
+
+/**
+ * The HAR document as a sequence of strings, entries one at a time. What lets a recording bigger
+ * than the JS heap has room for as a single string still be written: nothing here ever holds more
+ * than one entry's JSON at once, on top of the parsed object itself.
+ */
+function* harChunks(parsed: unknown): Generator<string> {
+  const doc = parsed as { log?: Record<string, unknown> } | null;
+  const log = doc?.log;
+  const entries = log?.['entries'];
+  if (doc === null || typeof doc !== 'object' || log === undefined || !Array.isArray(entries)) {
+    yield `${JSON.stringify(parsed)}\n`;
+    return;
+  }
+  yield '{';
+  let first = true;
+  for (const [key, value] of Object.entries(doc)) {
+    if (key === 'log') continue;
+    yield `${first ? '' : ','}${JSON.stringify(key)}:${JSON.stringify(value)}`;
+    first = false;
+  }
+  yield `${first ? '' : ','}"log":{`;
+  let firstLogKey = true;
+  for (const [key, value] of Object.entries(log)) {
+    if (key === 'entries') continue;
+    yield `${firstLogKey ? '' : ','}${JSON.stringify(key)}:${JSON.stringify(value)}`;
+    firstLogKey = false;
+  }
+  yield `${firstLogKey ? '' : ','}"entries":[`;
+  for (let index = 0; index < entries.length; index += 1) {
+    yield `${index === 0 ? '' : ','}${JSON.stringify(entries[index])}`;
+  }
+  yield ']}}\n';
+}
+
+/** Stream a parsed HAR to `file`, entry by entry, honouring backpressure. */
+export async function writeHarFile(file: string, parsed: unknown): Promise<void> {
+  const stream = createWriteStream(file, { encoding: 'utf8' });
+  try {
+    for (const chunk of harChunks(parsed)) {
+      if (!stream.write(chunk)) await once(stream, 'drain');
+    }
+    stream.end();
+    await finished(stream);
+  } catch (error) {
+    stream.destroy();
+    throw error;
+  }
 }
 
 /** Scrub a HAR that Playwright just wrote. Returns the number of redacted values. */
 export async function scrubHarFile(file: string, options: ScrubOptions = {}): Promise<number> {
-  let source: string;
+  let parsed: unknown;
   try {
-    source = await readFile(file, 'utf8');
+    parsed = JSON.parse(await readFile(file, 'utf8'));
   } catch {
+    // Missing, or a HAR we cannot parse — and one we cannot promise is clean: leave it be.
     return 0;
   }
-  const result = scrubHar(source, options);
-  if (result.har !== source) await writeFile(file, result.har, 'utf8');
-  return result.redacted;
+  const redacted = scrubHarObject(parsed, options);
+  // Rewritten even when nothing was redacted: Playwright's pretty-printed file becomes the compact
+  // layout every later read expects, and the write is the same streaming path either way.
+  await writeHarFile(file, parsed);
+  return redacted;
 }

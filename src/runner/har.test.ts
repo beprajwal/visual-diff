@@ -3,7 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { REDACTED, indexHar, indexHarFile, scrubHar, scrubHarFile } from './har.js';
+import {
+  REDACTED,
+  indexHar,
+  indexHarFile,
+  retargetHar,
+  scrubHar,
+  scrubHarFile,
+  serializeHar,
+  writeHarFile,
+} from './har.js';
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -289,5 +298,57 @@ describe('indexHarFile', () => {
   it('is an empty index — never a throw — for a file that is not there', async () => {
     const dir = await tempDir();
     expect((await indexHarFile(join(dir, 'nope.har'))).size).toBe(0);
+  });
+});
+
+describe('serializeHar / writeHarFile (D46)', () => {
+  const har = {
+    log: {
+      version: '1.2',
+      creator: { name: 'Playwright', version: '1.49' },
+      entries: [
+        { request: { url: 'https://a.test/1', method: 'GET' }, response: { status: 200 } },
+        { request: { url: 'https://a.test/2', method: 'POST' }, response: { status: 201 } },
+      ],
+    },
+  };
+
+  it('writes one compact line per entry and parses back to the same object', () => {
+    const text = serializeHar(har);
+    expect(JSON.parse(text)).toEqual(har);
+    expect(text.endsWith('\n')).toBe(true);
+    // Compact: no indentation anywhere, the whole document on one line.
+    expect(text.trimEnd().includes('\n')).toBe(false);
+    expect(text).not.toContain('  ');
+  });
+
+  it('keeps the log-level keys and a document with no entries array', () => {
+    expect(JSON.parse(serializeHar({ log: { version: '1.2' } }))).toEqual({ log: { version: '1.2' } });
+    expect(JSON.parse(serializeHar({ other: 1 }))).toEqual({ other: 1 });
+  });
+
+  it('streams to a file that reads back identical to the serialized string', async () => {
+    const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'vdiff-har-'));
+    try {
+      const file = join(dir, 'out.har');
+      await writeHarFile(file, har);
+      expect(await readFile(file, 'utf8')).toBe(serializeHar(har));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('scrubHar and retargetHar emit the compact layout', () => {
+    const scrubbed = scrubHar(JSON.stringify(har, null, 2));
+    expect(scrubbed.har).toBe(serializeHar(har));
+    const retargeted = retargetHar(
+      JSON.stringify({ log: { entries: [{ request: { url: 'http://127.0.0.1:3000/x' } }] } }),
+      'http://127.0.0.1:4000',
+    );
+    expect(retargeted.rewritten).toBe(1);
+    expect(retargeted.har.trimEnd().includes('\n')).toBe(false);
   });
 });

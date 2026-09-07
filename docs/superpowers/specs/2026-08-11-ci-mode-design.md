@@ -421,3 +421,15 @@ the environment for the action — the same flag-over-environment-over-file orde
 unit-required duration syntax as `readyTimeout`, because a bare `30` is ambiguous in exactly the way
 a unit exists to prevent. The default stays 15 seconds: a flow that needs longer on a warm server
 is a flow with a slow page, and the tool should keep saying so.
+
+**D46 — A recording is written entry by entry, never as one pretty-printed string.**
+The next failure in the same CI run was not the app's: `FATAL ERROR: Reached heap limit` inside
+`JSON.stringify`, five minutes in, after every step had replayed. A flow that drives a real
+application records hundreds of megabytes of responses, and the scrubber and the retargeter both
+re-serialised the whole document with two-space indentation — a string roughly twice the file, held
+in a heap that was already holding the parsed object. Nobody reads a recording; `routeFromHAR` does.
+So the HAR is now written compactly, one entry at a time, through a stream with backpressure
+(`writeHarFile`), and the two pure functions return the same compact layout. The action also gives
+the replay steps a 6 GB heap, because the parse itself still holds the document, and the runner has
+the memory. What this does not fix is the size of the recording; a `recordHar` that attaches bodies
+instead of embedding them is the next step if a flow outgrows even this.

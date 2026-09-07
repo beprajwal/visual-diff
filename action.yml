@@ -379,6 +379,10 @@ runs:
         BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
         BASELINE: ${{ inputs.baseline }}
         CLI: ${{ inputs.cli }}
+        # A first run records the flow's HAR and reads it back whole to scrub it; a large app's
+        # recording is hundreds of megabytes of JSON, more than Node's default heap. The runner has
+        # the memory; the process is told it may use it. Inherited by the dev server it spawns.
+        NODE_OPTIONS: --max-old-space-size=6144
       run: |
         set -euo pipefail
         cli=${CLI:-vdiff}
@@ -400,6 +404,7 @@ runs:
       env:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         CLI: ${{ inputs.cli }}
+        NODE_OPTIONS: --max-old-space-size=6144
       run: |
         set -euo pipefail
         cli=${CLI:-vdiff}
