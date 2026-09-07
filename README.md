@@ -277,6 +277,11 @@ steps:
     waitFor: "text=Payment"
 ```
 
+A flow can also `upload` committed fixture files (`upload: { "input[type=file]": fixtures/spec.pdf }`,
+paths relative to `.visual-diff/`; the selector may be the input or the button that opens the file
+dialog), which is how a flow creates the state it captures instead of pointing at data that has to
+exist on every machine.
+
 Step `id`s are stable and load-bearing: diffs align runs by `id`, never by index. `.visual-diff/flows/`
 and `.visual-diff/config.yaml` must be committed; runs, diffs, cache and feedback are ignored.
 

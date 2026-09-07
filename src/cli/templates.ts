@@ -17,12 +17,13 @@ export const EXAMPLE_FLOW_NAME = 'example';
  * nothing to read — and the failure is a confusing "variant absent at the target SHA" on a file
  * that is plainly sitting on disk. Everything else — runs, diffs, cache, feedback — is local.
  */
-export const GITIGNORE_BLOCK = `# visual-diff — flows, scenarios, variants and config are committed; runs, diffs, cache and feedback are local.
+export const GITIGNORE_BLOCK = `# visual-diff — flows, scenarios, variants, fixtures and config are committed; runs, diffs, cache and feedback are local.
 .visual-diff/*
 !.visual-diff/config.yaml
 !.visual-diff/flows/
 !.visual-diff/scenarios/
 !.visual-diff/variants/
+!.visual-diff/fixtures/
 `;
 
 /** Presence of this line means the block has already been installed. */

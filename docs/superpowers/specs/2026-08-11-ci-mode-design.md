@@ -433,3 +433,15 @@ So the HAR is now written compactly, one entry at a time, through a stream with 
 the replay steps a 6 GB heap, because the parse itself still holds the document, and the runner has
 the memory. What this does not fix is the size of the recording; a `recordHar` that attaches bodies
 instead of embedding them is the next step if a flow outgrows even this.
+
+**D47 — A flow may `upload` a committed fixture, so it can create the state it captures.**
+The last two steps of the first real CI flow needed "a thread whose document is still parsing" —
+a row in one developer's database, which no environment variable can conjure elsewhere. The
+closed vocabulary gains one verb: `upload: { selector: path | [paths] }`, paths relative to
+`.visual-diff/` (a committed `fixtures/` directory, which `vdiff init`'s gitignore block now keeps),
+resolved on the replaying machine like the session file and refused if they escape the directory.
+The selector may be the `<input type=file>` itself — Playwright sets its files, hidden or not — or
+the button that opens the dialog, because assistant-style composers create their input on the fly
+and only the dialog is observable. With it, a flow attaches a fixture and captures the parsing state
+on the thread it just made, on whichever project it is pointed at. Data a flow can make is data no
+one has to seed.

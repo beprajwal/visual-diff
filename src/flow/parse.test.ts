@@ -82,6 +82,7 @@ steps:
     fill: { "#b": "v" }
     press: Enter
     hover: "#c"
+    upload: { "input[type=file]": fixtures/spec.pdf }
     scroll: { to: bottom }
     waitFor: "#d"
     viewport: 390x844
@@ -102,6 +103,7 @@ steps:
       fill: { '#b': 'v' },
       press: 'Enter',
       hover: '#c',
+      upload: { 'input[type=file]': 'fixtures/spec.pdf' },
       scroll: { to: 'bottom' },
       waitFor: '#d',
       viewport: '390x844',
