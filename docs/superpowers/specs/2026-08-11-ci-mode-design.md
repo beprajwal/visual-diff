@@ -397,3 +397,16 @@ second exchange with `jti_reused`. The workflow needs `id-token: write`; the ins
 so. The OpenAI path is unchanged — it has no federation to speak of. The key still wins when both are
 configured, so a repository can migrate the way the WIF docs describe: set up federation beside the
 key, then delete the key.
+
+**D44 — `goto` paths take `${VAR}` references, and a reference may carry a default.**
+The first CI run of a real flow failed on its first step for a reason no design document had
+listed: the project ids in its `goto` paths were rows in one developer's local database. A flow
+that is committed and replayed on another machine — a colleague's, a runner's — needs its addresses
+to be parameters the same way its credentials already are. So `goto` resolves `${VAR}` exactly as
+`fill` does, and both accept the shell's `${VAR:-default}`, so a flow can name the local id as the
+default and let CI override it. Two asymmetries are deliberate: a default is never handed to the HAR
+scrubber (it is committed text, not a secret), and a `goto` value is never scrubbed at all (the
+resolved URL is what the recording must match). The structural diff still compares templates.
+Also from that run: `vdiff run` now prints *why* a step failed under the step table, and the action
+uploads the run directory when a replay fails, because a failure screenshot on a runner nobody can
+open is not evidence.

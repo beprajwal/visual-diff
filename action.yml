@@ -407,6 +407,18 @@ runs:
           $cli run "$flow"
         done
 
+    # A replay that failed leaves its evidence — the failure screenshot, the DOM at the moment,
+    # server.log, install.log — in a run directory on a runner nobody can open. Keep it, so the reason
+    # a step failed is one download away rather than a re-run with more logging.
+    - name: Upload the runs when a replay failed
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}-runs
+        path: ${{ inputs.working-directory }}/.visual-diff/runs
+        if-no-files-found: ignore
+        retention-days: 7
+
     # In baseline mode that is the whole job: capture, cache, stop. Nothing is diffed, because there
     # is nothing yet to diff it against.
     - name: Save the baseline
