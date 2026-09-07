@@ -1,0 +1,66 @@
+src/types.ts
+  s_d518fde157222a::t_53cab27f741047 376-381
+  s_d518fde157222a::t_78366e54da295e 1252,1254-1262
+README.md
+  s_d518fde157222a::t_94ed00a9b92613 130,152
+  s_d518fde157222a::t_ef71c504997cda 184-204
+tests/packaging/action.test.ts
+  s_d518fde157222a::t_ca4878350abdd4 351-368
+src/runner/replay.ts
+  s_d518fde157222a::t_c2e0cde6bea2c5 448
+  s_d518fde157222a::t_9d8abebb3db520 107-108
+src/cli/commands/run.ts
+  s_d518fde157222a::t_ef59b25462ad30 63-71
+  s_d518fde157222a::t_062513f0d84ee8 92-103
+src/cli/args.ts
+  s_d518fde157222a::t_0fe2ee9722d44c 315-317
+  s_d518fde157222a::t_084877327d6589 1008-1012
+  s_d518fde157222a::t_7cf434ecb835db 71-80
+src/runner/browser.test.ts
+  s_d518fde157222a::t_c12642fe548ece 561-572
+src/cli/commands/run-overrides.test.ts
+  s_d518fde157222a::t_6a95cb7d731b3b 1-78
+action.yml
+  s_d518fde157222a::t_588eddd21df625 336-339,345-347
+  s_d518fde157222a::t_bd699111a8bd37 393-395
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_ca4878350abdd4 361-382
+src/runner/browser.ts
+  s_d518fde157222a::t_26cf0373e04f7d 92-93
+  s_d518fde157222a::t_26e84097284eb7 149
+src/runner/devserver.ts
+  s_d518fde157222a::t_60c55778d55635 134-135,144
+  s_d518fde157222a::t_17b1cabcc997a3 193-194
+  s_d518fde157222a::t_c04161abf28cb4 11-12
+  s_d518fde157222a::t_e90e10793604db 87-94,96,100-126
+  s_d518fde157222a::t_acdca98132c3bb 252
+src/runner/devserver.test.ts
+  s_d518fde157222a::t_c12642fe548ece 191-204
+src/runner/run.ts
+  s_d518fde157222a::t_fd2dbe347331c4 426-429,433-434,442,444,448
+  s_d518fde157222a::t_7ba93c3abc950c 799-801
+src/store/config.test.ts
+  s_d518fde157222a::t_c12642fe548ece 376-397
+src/store/config.ts
+  s_d518fde157222a::t_a70acd3664d1cb 139-140
+  s_d518fde157222a::t_19fdfc5484f5d2 243-244,247-253
+  s_d518fde157222a::t_fcf2f3f2d5d003 65
+src/cli/args.test.ts
+  s_d518fde157222a::t_c12642fe548ece 854-879
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "ef6c69dba5b865f9864fbb7a1206138c92861140",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
