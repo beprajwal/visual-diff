@@ -80,6 +80,33 @@ inputs:
       one (D31). Requires contents: write.
     required: false
     default: ''
+  pages-url:
+    description: >-
+      URL GitHub Pages serves `publish-branch` at, e.g. `https://<owner>.github.io/<repo>` (Settings →
+      Pages → Deploy from a branch, pointed at that branch). Set both and the comment's "Open the
+      full report" call to action opens this pull request's report.html as a page (D40). Who can see
+      it is the repository's Pages visibility: private Pages on GitHub Enterprise Cloud, public
+      otherwise. Ignored without `publish-branch`.
+    required: false
+    default: ''
+  anthropic-api-key:
+    description: >-
+      Anthropic API key, from a repository secret. Set it and `vdiff review` asks the model to read
+      each diff and write the review the comment opens with — the headline change, what is not
+      accounted for by the pull request's description, what looks broken (D39). The key reaches the
+      review step only. Empty skips the review; the comment then carries the numbers alone.
+    required: false
+    default: ''
+  openai-api-key:
+    description: >-
+      OpenAI API key, the same way. When both keys are set, Anthropic is used.
+    required: false
+    default: ''
+  review-model:
+    description: >-
+      Model id for the review. Empty uses the provider's default (`claude-opus-5` / `gpt-6-astra`).
+    required: false
+    default: ''
   install:
     description: >-
       Command that installs the project's dependencies before the head run. Empty auto-detects from
@@ -133,6 +160,14 @@ outputs:
   artifact-url:
     description: 'URL of the uploaded bundle, when one was uploaded.'
     value: ${{ steps.upload.outputs.artifact-url }}
+  report-url:
+    description: >-
+      URL of the first flow's report.html as a page, when `publish-branch` and `pages-url` are both
+      set (D40). One page per flow lives under the same prefix.
+    value: ${{ steps.render.outputs.report_url }}
+  reviewed:
+    description: 'true when a model wrote the review for at least one flow (D39); false otherwise.'
+    value: ${{ steps.export.outputs.reviewed }}
 
 runs:
   using: composite
@@ -152,11 +187,18 @@ runs:
         BASELINE: ${{ inputs.baseline }}
         FAIL_ON: ${{ inputs.fail-on }}
         IMAGES: ${{ inputs.images }}
+        PUBLISH_BRANCH: ${{ inputs.publish-branch }}
+        PAGES_URL: ${{ inputs.pages-url }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         set -euo pipefail
 
         case "$MODE" in pr|baseline) ;; *) echo "::error::mode must be pr or baseline, got '$MODE'"; exit 2 ;; esac
+        # A Pages URL without a branch to serve has nothing to point at. Said once here rather than
+        # discovered from a comment whose call to action 404s (D40).
+        if [ -n "$PAGES_URL" ] && [ -z "$PUBLISH_BRANCH" ]; then
+          echo "::warning::pages-url is set but publish-branch is empty — nothing is published, so the comment will not link a hosted report"
+        fi
         case "$BASELINE" in auto|cache|replay) ;; *) echo "::error::baseline must be auto, cache or replay, got '$BASELINE'"; exit 2 ;; esac
         case "$FAIL_ON" in none|high|any) ;; *) echo "::error::fail-on must be none, high or any, got '$FAIL_ON'"; exit 2 ;; esac
         case "$IMAGES" in changed|all|none) ;; *) echo "::error::images must be changed, all or none, got '$IMAGES'"; exit 2 ;; esac
@@ -345,8 +387,13 @@ runs:
         path: ${{ inputs.working-directory }}/.visual-diff/runs
         key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ github.sha }}
 
-    # ---------------------------------------------------------------- diff and export
-    - name: Diff and export
+    # ---------------------------------------------------------------- diff, review and export
+    #
+    # The review (D39) sits between the diff and the export so the bundle, the page and the comment
+    # all carry it. It is the only step that holds a model API key, and the key goes to `vdiff review`
+    # alone — the CLI still never sees the GitHub token (D29). A review that fails is a warning, not a
+    # failed job: the evidence is what CI mode promises, the paragraph is what a key buys.
+    - name: Diff, review and export
       id: export
       if: inputs.mode == 'pr'
       shell: bash
@@ -357,13 +404,40 @@ runs:
         IMAGES: ${{ inputs.images }}
         HTML: ${{ inputs.html }}
         CLI: ${{ inputs.cli }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        REVIEW_MODEL: ${{ inputs.review-model }}
+        # What the model judges the change against: without it, "unrelated" cannot be told from
+        # "intended", and the review says so.
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_BODY: ${{ github.event.pull_request.body }}
       run: |
         set -euo pipefail
         cli=${CLI:-vdiff}
+        reviewed=false
+
+        context_file=''
+        if [ -n "${PR_TITLE}${PR_BODY}" ]; then
+          context_file="${RUNNER_TEMP}/vdiff-pr-context.md"
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$context_file"
+        fi
+
         for flow in $FLOWS; do
           # `diff` first so its human output lands in the log: a reader scanning the job should see
           # the finding table without downloading anything.
           $cli diff "$flow"
+
+          if [ -n "${ANTHROPIC_API_KEY}${OPENAI_API_KEY}" ]; then
+            args=(review "$flow")
+            if [ -n "$REVIEW_MODEL" ]; then args+=(--model "$REVIEW_MODEL"); fi
+            if [ -n "$context_file" ]; then args+=(--context "$context_file"); fi
+            if $cli "${args[@]}"; then
+              reviewed=true
+            else
+              echo "::warning::vdiff review failed for flow '$flow' (exit $?); the comment will carry the numbers without a review"
+            fi
+          fi
+
           # `--html` is only passed when it deviates from the default, so a user-pinned `cli:` older
           # than the flag keeps working until they opt in.
           if [ "${HTML:-linked}" = "linked" ]; then
@@ -372,6 +446,7 @@ runs:
             $cli export "$flow" --images "$IMAGES" --html "$HTML" --out "$BUNDLE_ROOT/$flow"
           fi
         done
+        echo "reviewed=$reviewed" >> "$GITHUB_OUTPUT"
 
     # ---------------------------------------------------------------- publish images (D31)
     #
@@ -391,6 +466,7 @@ runs:
         REPO: ${{ github.repository }}
         SERVER: ${{ github.server_url }}
         SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        PAGES_URL: ${{ inputs.pages-url }}
       run: |
         set -euo pipefail
         prefix="pr-${PR_NUMBER:-manual}/${SHA:0:12}"
@@ -429,6 +505,13 @@ runs:
           git push "https://x-access-token:${GH_TOKEN}@${SERVER#https://}/${REPO}.git" "HEAD:${BRANCH}"
         fi
         echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
+        # The same files as a *site* (D40): raw.githubusercontent.com serves report.html as text, so
+        # the page needs Pages in front of the branch. The user names that URL; this derives the
+        # per-pull-request prefix under it. Pages deploys a pushed branch in about a minute, so the
+        # link may 404 briefly after the first push of a new prefix.
+        if [ -n "$PAGES_URL" ]; then
+          echo "report_base=${PAGES_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
+        fi
 
     # ---------------------------------------------------------------- artifact, then comment
     #
@@ -453,6 +536,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         IMAGE_BASE: ${{ steps.publish.outputs.image_base }}
+        REPORT_BASE: ${{ steps.publish.outputs.report_base }}
         ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
         FAIL_ON: ${{ inputs.fail-on }}
@@ -465,12 +549,18 @@ runs:
         changed=0
         gate=ok
         first=''
+        report_url=''
 
         for flow in $FLOWS; do
           args=(comment "$flow" --json --fail-on "$FAIL_ON" --artifact-name "$ARTIFACT_NAME"
                 --out "$BUNDLE_ROOT/$flow/comment.md")
           if [ -n "$IMAGE_BASE" ]; then args+=(--image-base "$IMAGE_BASE/$flow"); fi
           if [ -n "$ARTIFACT_URL" ]; then args+=(--artifact-url "$ARTIFACT_URL"); fi
+          # The hosted page (D40): the comment's call to action, rendered with the verdict.
+          if [ -n "$REPORT_BASE" ]; then
+            args+=(--report-url "$REPORT_BASE/$flow/report.html")
+            if [ -z "$report_url" ]; then report_url="$REPORT_BASE/$flow/report.html"; fi
+          fi
 
           # `--fail-on` exits 3 when it trips (D30). The verdict is collected here and enforced in
           # the last step of the job, after the comment has been posted (D35).
@@ -514,6 +604,7 @@ runs:
         echo "changed_steps=$changed" >> "$GITHUB_OUTPUT"
         echo "gate=$gate" >> "$GITHUB_OUTPUT"
         echo "comment_file=$first" >> "$GITHUB_OUTPUT"
+        echo "report_url=$report_url" >> "$GITHUB_OUTPUT"
 
     # One comment per flow, found by its marker and updated in place, so a pull request with fourteen
     # pushes has one visual-diff comment per flow rather than fourteen (D33).

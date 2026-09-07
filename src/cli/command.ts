@@ -33,6 +33,12 @@ export interface CommandContext {
    * real home directory would install into the machine running it.
    */
   home?: string;
+  /**
+   * The environment `vdiff review` reads its API key from (CI spec D39). Optional so a test can
+   * construct a context without one — the command falls back to `process.env` — and so a test
+   * that *does* supply one never depends on the keys of the machine running it.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
   ports: Ports;
   /** Tool version, stamped into every envelope. */
   version: string;

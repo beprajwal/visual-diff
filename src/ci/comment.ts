@@ -17,7 +17,7 @@
  *     exists to prevent (D33).
  */
 
-import type { DiffResult, Finding } from '../types.js';
+import type { DiffResult, Finding, Review } from '../types.js';
 import { evaluateGate, GATE_NONE, type GateLevel, type GateVerdict } from './gate.js';
 import {
   BUNDLE_FILES,
@@ -25,10 +25,20 @@ import {
   shotCells,
   type ShotCell,
 } from './layout.js';
+import { reviewLines } from './review-render.js';
 
 /** GitHub's hard limit is 65536 characters; the margin absorbs whatever a transport prepends. */
 export const MAX_COMMENT_BYTES = 65000;
 export const DEFAULT_MAX_IMAGES = 4;
+
+/**
+ * The mark, served from this repository so a comment on any pull request anywhere can show it.
+ * Pinned to `main` rather than a tag: the file changes about never, and a comment rendered by a
+ * pre-release build must not carry a link to a tag that does not exist yet.
+ */
+export const LOGO_URL =
+  'https://raw.githubusercontent.com/beprajwal/visual-diff/main/assets/logo-128.png';
+export const PRODUCT_NAME = 'visual-diff';
 
 export interface CommentInput {
   result: DiffResult;
@@ -53,6 +63,12 @@ export interface CommentInput {
    * footer credit to a zip, this is the comment's call to action, so it renders with the verdict.
    */
   reportUrl?: string;
+  /**
+   * A model's reading of the diff (D39), rendered right after the verdict: the headline, a warning
+   * when anything is outside the described change or looks broken, then the ranked changes. Absent
+   * renders the comment CI mode always rendered — numbers, tables, links.
+   */
+  review?: Review;
   /** Shown when there is no `artifactUrl` — an artifact a reader has to find by name is still a lead. */
   artifactName?: string;
   /** The gate this job was configured with. Omitted renders no gate line at all. */
@@ -146,7 +162,13 @@ function verdictLines(input: CommentInput): string[] {
   const pair = `${result.pair.base}..${result.pair.head}`;
   const lines: string[] = [];
 
-  lines.push(`### visual-diff — \`${result.flow}\` \`${pair}\``);
+  // The mark and the name, so a reader scanning a pull request with four bots on it knows whose
+  // comment this is before reading a number. Inline HTML is the only way to put an image in a
+  // GitHub heading; the alt text is empty because the name follows it.
+  lines.push(
+    `### <img src="${LOGO_URL}" width="22" alt="" align="absmiddle"> ${PRODUCT_NAME} — ` +
+      `\`${result.flow}\` \`${pair}\``,
+  );
   lines.push('');
 
   const headline =
@@ -340,6 +362,10 @@ export function renderComment(input: CommentInput): CommentDocument {
   const hint = artifactHintFor(input);
 
   const head = [marker, ...verdictLines(input)];
+  // The review sits between the verdict and the pictures (D39): it is the sentence the numbers
+  // could not write, so it reads before the evidence it is about. Never shrunk away — its own
+  // renderer caps the lists — for the same reason the verdict is not.
+  const review = input.review === undefined ? [] : ['', ...reviewLines(input.review)];
   const foot = footerLines(input);
   const everyCell = shotCells(input.result);
   const cells = selectCells(everyCell, 'changed');
@@ -351,6 +377,7 @@ export function renderComment(input: CommentInput): CommentDocument {
     const images = imagesSection(cells, imageBudget, input.imageBase, hint);
     const lines = [
       ...head,
+      ...review,
       ...images.lines,
       ...(withSteps ? stepsSection(input.result, everyCell) : []),
       ...foot,

@@ -15,9 +15,11 @@
 
 import {
   EXIT,
+  REVIEW_PROVIDERS,
   SCENARIO_NONE,
   type CliError,
   type NetworkMode,
+  type ReviewProvider,
   type RunId,
   type ScenarioName,
   type ViewportId,
@@ -32,6 +34,7 @@ import {
   isGateLevel,
   isHtmlMode,
   isImageSelection,
+  isReviewProvider,
   type GateLevel,
   type HtmlMode,
   type ImageSelection,
@@ -122,6 +125,31 @@ export type Invocation =
        * outright still crosses the axis if that is what was asked for, and the pair is then flagged.
        */
       e2e: boolean;
+      json: boolean;
+    }
+  | {
+      /**
+       * `vdiff review <flow> [base] [head]` — ask a hosted model to read the stored diff and write
+       * the review an agent would have (CI spec D39). Persists `review.json` beside
+       * `findings.json`; `comment` and `export` pick it up from there.
+       */
+      kind: 'review';
+      flow: string;
+      base?: RunId;
+      head?: RunId;
+      scenario?: ScenarioName;
+      variant?: VariantName;
+      e2e: boolean;
+      /** Forces a provider. Absent: whichever API key the environment holds. */
+      provider?: ReviewProvider;
+      /** Model id. Absent: the provider's default. */
+      model?: string;
+      /** Changed cells to send screenshots for. Absent: the module default; 0 sends findings only. */
+      shots?: number;
+      /** File whose text describes the intended change — a pull request's title and body. */
+      context?: string;
+      /** Also write the review to this file. It is stored beside findings.json regardless. */
+      out?: string;
       json: boolean;
     }
   | {
@@ -303,6 +331,22 @@ export const COMMANDS: Record<string, CommandSpec> = {
     usage: 'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>] [--e2e]',
     summary: 'compute and print summary (defaults: N-1 vs N)',
     flags: flags({
+      scenario: { type: 'string' },
+      variant: { type: 'string' },
+      e2e: { type: 'boolean' },
+    }),
+    minPositionals: 1,
+    maxPositionals: 3,
+  },
+  review: {
+    usage: 'vdiff review <flow> [base] [head] [--provider anthropic|openai] [--model <id>] [--context <file>]',
+    summary: 'have a model read a stored diff and write the review (needs an API key)',
+    flags: flags({
+      provider: { type: 'string' },
+      model: { type: 'string' },
+      shots: { type: 'number' },
+      context: { type: 'string' },
+      out: { type: 'string' },
       scenario: { type: 'string' },
       variant: { type: 'string' },
       e2e: { type: 'boolean' },
@@ -1062,6 +1106,51 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       applyPair(invocation, positionals);
       const narrowed = applyPairFilters('diff', spec, values, wantsE2e, invocation);
       if (narrowed !== null) return narrowed;
+      return { ok: true, value: invocation };
+    }
+
+    case 'review': {
+      const wantsE2e = bool(values, 'e2e');
+      const provider = values['provider'];
+      if (typeof provider === 'string' && !isReviewProvider(provider)) {
+        return fail(
+          'review',
+          'invalid-provider',
+          `unknown --provider '${provider}'`,
+          `expected one of: ${REVIEW_PROVIDERS.join(', ')}`,
+        );
+      }
+      const invocation: Extract<Invocation, { kind: 'review' }> = {
+        kind: 'review',
+        flow: positionals[0] as string,
+        e2e: wantsE2e,
+        json,
+      };
+      if (typeof provider === 'string' && isReviewProvider(provider)) invocation.provider = provider;
+      applyPair(invocation, positionals);
+      const narrowed = applyPairFilters('review', spec, values, wantsE2e, invocation);
+      if (narrowed !== null) return narrowed;
+
+      for (const [flag, field] of [
+        ['model', 'model'],
+        ['context', 'context'],
+        ['out', 'out'],
+      ] as const) {
+        const value = values[flag];
+        if (typeof value === 'string') invocation[field] = value;
+      }
+      const shots = values['shots'];
+      if (typeof shots === 'number') {
+        if (!Number.isInteger(shots) || shots < 0) {
+          return fail(
+            'review',
+            'invalid-cap',
+            `--shots must be a non-negative whole number, got '${shots}'`,
+            spec.usage,
+          );
+        }
+        invocation.shots = shots;
+      }
       return { ok: true, value: invocation };
     }
 

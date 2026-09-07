@@ -16,6 +16,17 @@ export type { GateLevel, GateVerdict } from '../ci/gate.js';
 export { HTML_MODES, IMAGE_SELECTIONS, isHtmlMode, isImageSelection } from '../ci/layout.js';
 export type { HtmlMode, ImageSelection } from '../ci/layout.js';
 
+// The review's provider vocabulary (D39) — a leaf too: env-variable names and defaults, no client.
+export {
+  DEFAULT_REVIEW_MODEL,
+  REVIEW_KEY_ENV,
+  isReviewProvider,
+  resolveReviewProvider,
+} from '../ci/review-provider.js';
+export type { ReviewCredentials } from '../ci/review-provider.js';
+// And its renderer — the same lines the comment carries, printed by `vdiff review` in human mode.
+export { flaggedChanges, reviewLines } from '../ci/review-render.js';
+
 /** What `--images` defaults to: the shots that moved (CI spec §5). */
 export const DEFAULT_IMAGE_SELECTION = 'changed';
 

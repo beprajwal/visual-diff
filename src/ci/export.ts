@@ -15,7 +15,7 @@
 import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { DiffResult, IsoDate, RunMeta, RunSummary } from '../types.js';
+import type { DiffResult, IsoDate, Review, RunMeta, RunSummary } from '../types.js';
 import * as paths from '../store/paths.js';
 import { screenshotPath } from '../report/ui/paths.js';
 import type { ReportSnapshot } from '../report/ui/snapshot.js';
@@ -40,6 +40,8 @@ export interface BundleSummary {
   /** Pair-label sentences, exactly as the comment and the page show them. */
   notices: string[];
   gate: GateVerdict | null;
+  /** The model-written review the bundle carries in `review.json` (D39); null when none was. */
+  review: Review | null;
   engineVersion: string;
   version: string;
   generatedAt: IsoDate;
@@ -89,6 +91,12 @@ export interface ExportRequest {
   generatedAt: IsoDate;
   notices?: readonly string[];
   gate?: GateVerdict;
+  /**
+   * A model's reading of the pair (D39). Written into the bundle as `review.json`, rendered into
+   * its `comment.md`, and embedded in the page's snapshot. Absent writes the bundle exactly as
+   * before this field existed.
+   */
+  review?: Review;
   /** Link the bundle's own `comment.md` should carry, when the caller already knows it. */
   artifactUrl?: string;
   artifactName?: string;
@@ -263,9 +271,21 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
   if (request.artifactUrl !== undefined) commentInput.artifactUrl = request.artifactUrl;
   if (request.artifactName !== undefined) commentInput.artifactName = request.artifactName;
   if (request.repro !== undefined) commentInput.repro = request.repro;
+  if (request.review !== undefined) commentInput.review = request.review;
   const comment = renderComment(commentInput);
   await writeFile(path.join(outDir, BUNDLE_FILES.comment), comment.markdown, 'utf8');
   files.push(BUNDLE_FILES.comment);
+
+  // The review verbatim, like findings.json: a consumer reading the bundle gets the same object the
+  // store holds, attribution included, rather than only the rendering of it (D39).
+  if (request.review !== undefined) {
+    await writeFile(
+      path.join(outDir, BUNDLE_FILES.review),
+      `${JSON.stringify(request.review, null, 2)}\n`,
+      'utf8',
+    );
+    files.push(BUNDLE_FILES.review);
+  }
 
   // The snapshot the page carries: the diff verbatim, both runs summarised for the header's run
   // pickers, and an image map in the shape this bundle's `--html` mode asked for. Attribution is
@@ -282,6 +302,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
       ? {}
       : { notices: [...request.notices] }),
     ...(request.gate === undefined ? {} : { gate: request.gate }),
+    ...(request.review === undefined ? {} : { review: request.review }),
     version: request.version,
     generatedAt: request.generatedAt,
   });
@@ -333,6 +354,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
     summary: result.summary,
     notices: [...(request.notices ?? [])],
     gate: request.gate ?? null,
+    review: request.review ?? null,
     engineVersion: result.engineVersion,
     version: request.version,
     generatedAt: request.generatedAt,

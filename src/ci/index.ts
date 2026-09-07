@@ -47,4 +47,34 @@ export type { BundleRunInfo, BundleSummary, ExportReport, ExportRequest } from '
 export { renderReportPage } from './report-html.js';
 export type { ReportPageInput } from './report-html.js';
 
+// The model-written review (D39): the one edge here that opens a socket, and only when asked.
+export {
+  DEFAULT_REVIEW_SHOTS,
+  REVIEW_SCHEMA,
+  ReviewError,
+  collectEvidence,
+  describeDiff,
+  parseReviewBody,
+  rankCells,
+  requestReview,
+  userPrompt,
+} from './review.js';
+export type { ReviewEvidence, ReviewImage, ReviewRequest, ReviewResponse } from './review.js';
+export {
+  ASSESSMENT_MARK,
+  PROVIDER_LABEL,
+  flaggedChanges,
+  reviewAttribution,
+  reviewLines,
+} from './review-render.js';
+export type { ReviewRenderOptions } from './review-render.js';
+export {
+  DEFAULT_REVIEW_MODEL,
+  REVIEW_BASE_URL_ENV,
+  REVIEW_KEY_ENV,
+  isReviewProvider,
+  resolveReviewProvider,
+} from './review-provider.js';
+export type { ResolveReviewOutcome, ReviewCredentials } from './review-provider.js';
+
 export { resolveAppScript } from './app-script.js';

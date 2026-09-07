@@ -78,8 +78,11 @@ result is the normal case after a UI change — it does not mean something is br
 
 ## Step 4 — summarize
 
-This is your job, not the tool's. `vdiff` deliberately ships no model and no API key: it emits
-structured findings, and you turn them into a sentence, because you know *why* the change was made.
+This is your job, not the tool's. In an agent session `vdiff` calls no model: it emits structured
+findings, and you turn them into a sentence, because you know *why* the change was made. (`vdiff
+review` exists for the seat you are not in — CI, where an API key lets a model write this paragraph
+from the findings, the screenshots and the pull request description. Do not run it to do your own
+job; you have the intent it has to guess at.)
 
 Good: "The Pay button label changed to 'Pay now' and grew 26px, and a trust badge now sits below it —
 both intended. Step 3 also shifted the heading colour, which I did not intend."

@@ -34,7 +34,7 @@ export async function comment(
   ctx: CommandContext,
   invocation: CommentInvocation,
 ): Promise<CommandResult<CommentData>> {
-  const { pair, result } = await resolveDiff(ctx, invocation);
+  const { pair, result, review } = await resolveDiff(ctx, invocation);
 
   const composed = composePairNotices(result);
   const notices = [
@@ -50,6 +50,9 @@ export async function comment(
     version: ctx.version,
     repro: reproCommands(pair),
   };
+  // A stored review rides along without a flag (D39): `vdiff review` ran, so the comment carries
+  // its reading; it did not, so the comment is the one CI mode always rendered.
+  if (review !== null) input.review = review;
   if (invocation.imageBase !== undefined) input.imageBase = invocation.imageBase;
   if (invocation.artifactUrl !== undefined) input.artifactUrl = invocation.artifactUrl;
   if (invocation.artifactName !== undefined) input.artifactName = invocation.artifactName;

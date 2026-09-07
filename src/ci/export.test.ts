@@ -13,6 +13,8 @@ import {
 } from '../report/ui/test-fixtures.js';
 import type { ReportSnapshot } from '../report/ui/snapshot.js';
 import { TINY_PNG } from '../store/fixtures.js';
+import { fakeReview } from '../cli/testing.js';
+import { LOGO_URL } from './comment.js';
 import { exportBundle } from './export.js';
 import { evaluateGate } from './gate.js';
 import type { BundleSummary } from './export.js';
@@ -216,7 +218,15 @@ describe('exportBundle', () => {
     });
     const comment = await readFile(join(out, 'comment.md'), 'utf8');
     expect(comment).toContain('src="./images/pay-form/1280x800/pixel.png"');
-    expect(comment).not.toContain('http');
+    // Every picture of the *diff* resolves inside the bundle. The one external reference the
+    // comment may carry is the product mark in its heading, which is not evidence.
+    const sources = [...comment.matchAll(/<img src="([^"]+)"/g)].map((m) => m[1]);
+    expect(sources.length).toBeGreaterThan(1);
+    for (const src of sources) {
+      if (src === LOGO_URL) continue;
+      expect(src, src).toMatch(/^\.\/images\//);
+    }
+    expect(comment.replace(LOGO_URL, '')).not.toContain('http');
   });
 
   it('renders the interactive page over an embedded snapshot, requesting nothing external (D38)', async () => {
@@ -303,5 +313,62 @@ describe('exportBundle', () => {
     const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')) as BundleSummary;
     expect(summary.html).toBe('both');
     expect(summary.files).toContain('report.inline.html');
+  });
+});
+
+describe('exportBundle with a review (D39)', () => {
+  let root: string;
+  let out: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'vdiff-export-review-'));
+    out = join(root, 'bundle');
+    await seedStore(root);
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('writes review.json, renders it into comment.md and embeds it in the snapshot', async () => {
+    const review = fakeReview({ headline: 'The Pay button grew wider.' });
+    const report = await exportBundle({
+      root,
+      result: fixtureDiff(),
+      outDir: out,
+      images: 'changed',
+      appScript: 'APP_STUB()',
+      version: '0.9.0',
+      generatedAt: '2026-09-07T09:00:00.000Z',
+      review,
+    });
+    expect(report.files).toContain('review.json');
+    expect(JSON.parse(await readFile(join(out, 'review.json'), 'utf8'))).toEqual(review);
+
+    const comment = await readFile(join(out, 'comment.md'), 'utf8');
+    expect(comment).toContain('#### Review');
+    expect(comment).toContain('**The Pay button grew wider.**');
+
+    const snapshot = snapshotOf(await readFile(join(out, 'report.html'), 'utf8'));
+    expect(snapshot.review).toEqual(review);
+
+    const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')) as BundleSummary;
+    expect(summary.review).toEqual(review);
+    expect(summary.files).toContain('review.json');
+  });
+
+  it('writes the bundle exactly as before when there is no review', async () => {
+    const report = await exportBundle({
+      root,
+      result: fixtureDiff(),
+      outDir: out,
+      images: 'changed',
+      version: '0.9.0',
+      generatedAt: '2026-09-07T09:00:00.000Z',
+    });
+    expect(report.files).not.toContain('review.json');
+    const summary = JSON.parse(await readFile(join(out, 'summary.json'), 'utf8')) as BundleSummary;
+    expect(summary.review).toBeNull();
+    expect(await readFile(join(out, 'comment.md'), 'utf8')).not.toContain('#### Review');
   });
 });

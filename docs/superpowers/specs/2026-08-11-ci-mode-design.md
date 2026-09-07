@@ -216,8 +216,15 @@ vdiff comment <flow> [base] [head] [--image-base <url>] [--artifact-url <url>]
                                    [--max-images <n>] [--report-url <url>]
                                    [--fail-on none|high|any] [--out <file>] [--json]
 vdiff export  <flow> [base] [head] [--out <dir>] [--images changed|all|none] [--json]
+vdiff review  <flow> [base] [head] [--provider anthropic|openai] [--model <id>] [--shots <n>]
+                                   [--context <file>] [--out <file>] [--json]          (D39)
 vdiff install github-actions [--dir <path>] [--force] [--dry-run]
 ```
+
+`review` resolves its pair the same way, then asks the model whose API key the environment holds
+(`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) to read the diff, and stores `review.json` beside
+`findings.json`. `comment` and `export` pick a stored review up without a flag. No key is exit 2; a
+provider failure is exit 1.
 
 `comment` and `export` resolve their pair exactly as `diff` does — same defaults, same
 `--scenario`/`--variant`/`--e2e` narrowing, same store — because a pair that means one thing in
@@ -244,6 +251,10 @@ Exit codes: `0` success, `1` run or replay failure, `2` config or spec error, `3
 | `artifact` | `true` | upload the evidence bundle |
 | `artifact-name` | `visual-diff` | artifact name |
 | `publish-branch` | *(empty)* | branch to push diff images to, enabling inline images (D31) |
+| `pages-url` | *(empty)* | URL GitHub Pages serves `publish-branch` at; with it, the comment links `report.html` as a page (D40) |
+| `anthropic-api-key` | *(empty)* | a model writes the review the comment opens with; reaches the review step only (D39) |
+| `openai-api-key` | *(empty)* | the same, via OpenAI; Anthropic wins when both are set (D39) |
+| `review-model` | *(provider default)* | model id for the review |
 | `html` | `linked` | `linked` \| `inline` \| `both` — how the bundle's page addresses its images (D36) |
 | `node-version` | `20` | Node used to run `vdiff` |
 | `version` | *(the action's own version)* | `@beprajwal/visual-diff` version installed |
@@ -289,3 +300,61 @@ locally, mocking and variants made the runs worth comparing, e2e mode let an exi
 store, and this puts the result where the review already happens. What it deliberately leaves for
 later is the half of "CI mode" this slice refuses to guess at: an approval state that makes a
 findings count meaningful as a gate, and a hosted place for the evidence to live.
+
+## 12. Addendum (2026-09-07): a model in the reviewer's seat, and the report as a page
+
+Two decisions added after v0.8.0. Both are opt-in, both leave the defaults exactly as §3 describes
+them, and both were shaped by what turned out *not* to be possible.
+
+**What was asked for, and why it is not what shipped.** The request was to use an Anthropic or
+OpenAI API key in CI to publish the report the way the `visual-diff-report` skill does interactively —
+as a Claude artifact, or a ChatGPT Site. Neither has a programmatic path: Claude Code's artifact
+publishing requires a claude.ai session (an API-key session cannot publish, and artifacts are off by
+default in GitHub Action contexts), and ChatGPT Sites deploys only from the ChatGPT app, with no API,
+no CLI command and no `OPENAI_API_KEY` route. Those are the vendors' constraints, not ours, and the
+skill already says so. What an API key *can* do in CI is the one thing CI mode was missing.
+
+**D39 — With an API key present, a model writes the review; the CLI renders it, the action carries it.**
+Step 4 of the agent loop — "summarize the findings; call out anything you did not intend" — had no
+author in CI, so the comment was numbers. `vdiff review` puts a model in that seat: it sends the
+findings (paths and environments stripped, findings capped and the cap stated — D33's rule), the
+screenshots for the most important changed cells (worst finding first, then pixel movement; base,
+head, pixel diff and crops, each labelled), and — from the action, always — the pull request's title
+and body. The answer is a JSON schema both providers enforce strictly: a **headline** (the one change
+a ten-second reader must know), a summary, every change ranked and assessed `expected` /
+`unrelated` / `regression` / `unclear`, and **concerns**. `unrelated` is the point: a real change the
+description does not account for is the thing that should not have moved and did, and the comment
+opens with a warning block counting them. The provider is whichever key the environment holds
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`; Anthropic when both), the model defaults to each provider's
+flagship and is overridable, and the call is one request over `fetch` — no SDK dependency for an
+optional feature an `npx` user may never touch, and `fetch` is injected in tests so the exact request
+shapes are pinned without a socket.
+
+What it deliberately is not: it is not a gate (`--fail-on` still counts findings), it is not an agent
+(one request, no tools, no retries that could double a bill), and it is not anonymous — `review.json`
+records provider, model and what the model was shown, and every rendering carries that line. It is
+stored beside `findings.json` under the same engine-version rule, so a review of a recomputed diff
+reads as absent; `comment` and `export` pick it up without a flag, the bundle carries `review.json`,
+and the page's snapshot renders it in its banner. Rejected: running a Claude Code or Codex agent in
+the action to do the same (heavier, slower, and still unable to publish); a flag on `comment` that
+calls the model at render time (two renderers, two bills, two possibly different reviews).
+
+This amends D29's "no HTTP client enters the package" in exactly one respect: `vdiff review` opens a
+socket to the model API the caller's key belongs to. The CLI still never talks to GitHub, and the
+action hands the model key to exactly one step — the drift test pins both.
+
+**D40 — The report becomes a site where the user already serves one.**
+D31 rejected GitHub Pages as a *default*; it remains right. But a repository that has nominated a
+`publish-branch` already has every pull request's `report.html` and images on a branch, and Pages
+can serve a branch. `pages-url` names the URL it does, and the action derives this pull request's
+prefix under it and passes `--report-url` to `comment`, so the "Open the full report" call to action
+opens the interactive page. Visibility is the repository's Pages setting — private to the
+organisation on Enterprise Cloud, public otherwise — which is the honest answer to "who can see it":
+the same people who can see the branch. No deploy action is used, because `actions/deploy-pages`
+replaces the whole site per run and would leave one pull request's report standing at a time.
+
+**The comment wears the mark.** Its heading now carries the product logo (served from this
+repository's `main`) and the name, so a pull request with several bots on it says whose comment this
+is before a number is read. The bundle's own `comment.md` is the one place an external URL now
+appears; the page and the images remain fully in-bundle, and the test that guarded that was made
+precise rather than removed.

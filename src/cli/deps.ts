@@ -47,6 +47,8 @@ import type {
   CommentInput,
   ExportReport,
   ExportRequest,
+  ReviewRequest,
+  ReviewResponse,
 } from '../ci/index.js';
 
 import { runFailure } from './error.js';
@@ -221,6 +223,8 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
     exportDir: (pair) => module.paths.exportBundleDir(root, pair.flow, pair.base, pair.head),
     readDiff: (pair) => store.readDiff(pair),
     writeDiff: (_pair, result) => store.writeDiff(result),
+    readReview: (pair, engineVersion) => store.readReview(pair, engineVersion),
+    writeReview: (_pair, review) => store.writeReview(review),
     pinRun: async (flow, runId) => {
       await store.pin(flow, runId, true);
       return summaryOf(flow, runId);
@@ -376,6 +380,16 @@ export function createPorts(): Ports {
       const fn = await loadExport<(request: ExportRequest) => Promise<ExportReport>>(
         MODULE_SPECIFIERS.ci,
         'exportBundle',
+      );
+      return await fn(request);
+    },
+
+    // The one edge that talks to a network (CI spec D39): the model API the caller's key belongs
+    // to. Behind the same lazy import, so a `vdiff comment` never loads the HTTP client code.
+    async requestReview(request: ReviewRequest): Promise<ReviewResponse> {
+      const fn = await loadExport<(request: ReviewRequest) => Promise<ReviewResponse>>(
+        MODULE_SPECIFIERS.ci,
+        'requestReview',
       );
       return await fn(request);
     },

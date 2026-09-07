@@ -9,11 +9,13 @@ import {
   makeViewportDiff,
 } from '../report/ui/test-fixtures.js';
 import {
+  LOGO_URL,
   MAX_COMMENT_BYTES,
   markerFor,
   renderComment,
   renderCommentWithGate,
 } from './comment.js';
+import { fakeReview } from '../cli/testing.js';
 
 function diffWithFindings(count: number, patch: Partial<DiffResult> = {}): DiffResult {
   const findings = Array.from({ length: count }, (_, index) =>
@@ -63,7 +65,10 @@ describe('renderComment', () => {
     const doc = renderComment({ result: diffWithFindings(3), version: '0.6.0' });
     const lines = doc.markdown.split('\n');
     expect(lines[0]).toBe(doc.marker);
-    expect(lines[1]).toBe('### visual-diff — `checkout` `0003..0007`');
+    // The heading carries the mark and the name, so a reader knows whose comment it is at a glance.
+    expect(lines[1]).toBe(
+      `### <img src="${LOGO_URL}" width="22" alt="" align="absmiddle"> visual-diff — \`checkout\` \`0003..0007\``,
+    );
     expect(doc.markdown).toContain('**3 findings** — 1 high, 1 med, 1 low');
     expect(doc.markdown).toContain('max pixel change 3.4%');
     expect(doc.markdown).toContain('1/2 steps changed');
@@ -230,5 +235,66 @@ describe('renderComment', () => {
       artifactName: 'visual-diff',
     });
     expect(doc.markdown).toContain('artifact `visual-diff`');
+  });
+});
+
+describe('renderComment with a review (D39)', () => {
+  it('renders the headline, the ranked changes and the attribution between the verdict and the images', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2),
+      version: '0.9.0',
+      imageBase: 'https://raw.githubusercontent.com/o/r/vdiff-reports/pr-7/',
+      review: fakeReview({
+        headline: 'The Pay button now reads "Pay now".',
+        changes: [
+          {
+            step: 'pay-form',
+            viewport: '1280x800',
+            description: 'The primary button label changed and the button grew 26px.',
+            assessment: 'expected',
+          },
+          {
+            step: 'cart',
+            viewport: null,
+            description: 'The order total wraps onto two lines.',
+            assessment: 'regression',
+          },
+        ],
+        concerns: ['The cart total wrapping looks like collateral from the wider button.'],
+      }),
+    });
+    const lines = doc.markdown.split('\n');
+    const verdict = lines.findIndex((l) => l.startsWith('**2 findings**'));
+    const review = lines.indexOf('#### Review');
+    const images = lines.indexOf('#### What changed');
+    expect(verdict).toBeGreaterThan(-1);
+    expect(review).toBeGreaterThan(verdict);
+    expect(images).toBeGreaterThan(review);
+
+    expect(doc.markdown).toContain('**The Pay button now reads "Pay now".**');
+    // One flagged change: the warning names the count and the change carries the mark.
+    expect(doc.markdown).toContain('> ⚠️ **1 change is not accounted for by this pull request or looks like a regression**');
+    expect(doc.markdown).toContain('- ✅ `pay-form` @ 1280x800 — The primary button label changed');
+    expect(doc.markdown).toContain('- 🔴 `cart` — The order total wraps onto two lines. _(looks like a regression)_');
+    expect(doc.markdown).toContain('**Look before merging:**');
+    expect(doc.markdown).toContain('- ⚠️ The cart total wrapping looks like collateral');
+    expect(doc.markdown).toContain('Review by claude-opus-5 (Anthropic) from findings.json and 3 screenshots');
+  });
+
+  it('says plainly when the model raised nothing, and never renders a review it was not given', () => {
+    const quiet = renderComment({ result: diffWithFindings(1), version: '0.9.0', review: fakeReview() });
+    expect(quiet.markdown).toContain('_Nothing to raise beyond the changes listed._');
+    expect(quiet.markdown).not.toContain('> ⚠️ **');
+
+    const without = renderComment({ result: diffWithFindings(1), version: '0.9.0' });
+    expect(without.markdown).not.toContain('#### Review');
+  });
+
+  it('is never shrunk away when the body is over budget — the tables go first', () => {
+    const input = { result: diffWithFindings(3), version: '0.9.0', review: fakeReview() };
+    const full = renderComment(input);
+    const doc = renderComment({ ...input, maxBytes: full.bytes - 1 });
+    expect(doc.markdown).toContain('#### Review');
+    expect(doc.truncated.steps).toBe(true);
   });
 });
