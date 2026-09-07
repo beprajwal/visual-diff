@@ -1,0 +1,161 @@
+src/cli/ci.ts
+  s_d518fde157222a::t_708b561843f2ab 19-26,29
+  s_d518fde157222a::t_470f8a68543884 27-28
+src/cli/ports.ts
+  s_d518fde157222a::t_1a50d093219f83 28
+  s_d518fde157222a::t_926ba190734a6f 53-54
+  s_d518fde157222a::t_b0db0763d964ad 143-149
+  s_d518fde157222a::t_c21da1e934c617 333-338
+src/cli/commands/comment.ts
+  s_d518fde157222a::t_7c19267050f8ba 37,53-55
+tests/packaging/action.test.ts
+  s_d518fde157222a::t_e737e5f8dd72a9 133-143
+  s_d518fde157222a::t_3ce737ee7bffa8 94,109-110,112
+  s_d518fde157222a::t_3e5f6fa3d3d50a 306-350
+src/adapters/github-actions/templates.ts
+  s_d518fde157222a::t_f3f1cd8baef0cf 93-105
+src/cli/args.ts
+  s_d518fde157222a::t_c2bb40df522be1 18,22,37
+  s_d518fde157222a::t_390ce7eac60edc 132-154,1110
+  s_d518fde157222a::t_7f7a88bd2faa92 341-356
+  s_d518fde157222a::t_87f2361294a7f9 1112-1154
+  s_d518fde157222a::t_80a8908c5231f0 130-131
+  s_d518fde157222a::t_82d58e3f951fb2 1111
+src/ci/review.test.ts
+  s_d518fde157222a::t_8e4a8ad4328cda 1-430
+src/ci/index.ts
+  s_d518fde157222a::t_7bba508e303a7c 62-70
+  s_d518fde157222a::t_da3e1ab7c935cf 50-61,71-79
+src/ci/review-render.ts
+  s_d518fde157222a::t_52492a6b0b56c9 1-122
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_372ba435130a90 303-360
+  s_d518fde157222a::t_6895df0094dbbf 254-257
+  s_d518fde157222a::t_b4aabc9b290971 219-220,224-227
+  s_d518fde157222a::t_925b66f9e4accd 228
+src/cli/main.ts
+  s_d518fde157222a::t_85cbc696fb0ad8 47
+  s_d518fde157222a::t_817a120a4ebeb8 95-96
+src/cli/args.test.ts
+  s_d518fde157222a::t_c6526bc6649844 183
+src/store/diff-store.ts
+  s_d518fde157222a::t_f901b5119d42ed 21-30
+  s_d518fde157222a::t_83e90d5c65c162 80-106
+src/ci/review.ts
+  s_d518fde157222a::t_100f5b156dfbb1 1-668
+skills/visual-diff-report/SKILL.md
+  s_d518fde157222a::t_a514422dc97b89 106-111
+  s_d518fde157222a::t_60519cb5b67d02 70-74
+src/store/index.ts
+  s_d518fde157222a::t_993965d1b0ac63 166-168
+  s_d518fde157222a::t_005aaae5196f4d 40
+  s_d518fde157222a::t_c3e5cb53a485d8 101-104
+  s_d518fde157222a::t_419d9d4f9c2e01 363,368
+src/cli/deps.test.ts
+  s_d518fde157222a::t_672e3da2c66069 165
+src/ci/export.test.ts
+  s_d518fde157222a::t_994b0a396d8acc 17
+  s_d518fde157222a::t_d9c473616f0073 16
+  s_d518fde157222a::t_0f00028687546a 221-229
+  s_d518fde157222a::t_3daac7b7329f59 318-374
+src/ci/comment.ts
+  s_d518fde157222a::t_6398a16858ab17 165-171
+  s_d518fde157222a::t_31ec29b4671f93 365-368,380
+  s_d518fde157222a::t_d39df1befc12b2 28
+  s_d518fde157222a::t_be42df66a88b01 20,34-41
+  s_d518fde157222a::t_e0bcc0183e1811 66-71
+  s_d518fde157222a::t_754ea62399b2ae 42
+src/cli/commands/review.test.ts
+  s_d518fde157222a::t_f793c24aaad092 1-248
+src/types.ts
+  s_d518fde157222a::t_e23940ba1dfb43 944-950,960,962-988,995,997,1003-1007
+  s_d518fde157222a::t_4c0708268ff040 951-959,961
+  s_d518fde157222a::t_62edbe76b83a33 989-994,996,998-1002
+src/ci/layout.ts
+  s_d518fde157222a::t_2cb9dd47b5a754 22-23
+src/report/ui/static-main.tsx
+  s_d518fde157222a::t_3fa417b90bb111 14
+  s_d518fde157222a::t_0a2671fe84988c 27-31,34-88,105
+src/cli/commands/pair.ts
+  s_d518fde157222a::t_a97cd3fa2a6217 52-57
+  s_d518fde157222a::t_34631754036744 116,126-136
+  s_d518fde157222a::t_7885fa524b6d86 24
+src/cli/deps.ts
+  s_d518fde157222a::t_9282099caf6fa7 50-51
+  s_d518fde157222a::t_a25a3ca1927385 387-396
+  s_d518fde157222a::t_b2783670f3c560 226-227
+action.yml
+  s_d518fde157222a::t_7e42dd600a9e64 190-191,197-201
+  s_d518fde157222a::t_fc21cd0b42d4a1 552
+  s_d518fde157222a::t_ef7fb1414701f8 163-170
+  s_d518fde157222a::t_539936e38a4374 508-514
+  s_d518fde157222a::t_3c15a9eb3bfccb 83-109
+  s_d518fde157222a::t_1e10ba67e24094 607
+  s_d518fde157222a::t_47389684824bd9 539
+  s_d518fde157222a::t_93cd4e6e200b62 559-563
+  s_d518fde157222a::t_dd3e6d943e99be 390-396,407-413,417-424,429-440,449
+  s_d518fde157222a::t_a8f3a48a70e981 469
+src/cli/command.ts
+  s_d518fde157222a::t_4b38999946b362 36-41
+src/cli/commands/export.ts
+  s_d518fde157222a::t_bcb1c19d2abe51 64-66
+  s_d518fde157222a::t_a5de8f6aaa4848 36
+src/cli/shapes.ts
+  s_d518fde157222a::t_413e59f1e1b9a2 192-216
+  s_d518fde157222a::t_899d65805adf7b 17-18
+src/ci/comment.test.ts
+  s_d518fde157222a::t_40f6e42f98127e 68-71
+  s_d518fde157222a::t_933f65cd77f365 12,18
+  s_d518fde157222a::t_4bde954ba668e0 294-296
+  s_d518fde157222a::t_3daac7b7329f59 240-293,297-300
+src/store/paths.ts
+  s_d518fde157222a::t_a0b0c276deca8e 264-268
+  s_d518fde157222a::t_adf914c1604e59 52
+src/report/ui/snapshot.ts
+  s_d518fde157222a::t_af5766ad5016f6 15
+  s_d518fde157222a::t_45700860747259 44-45
+src/ci/review-provider.ts
+  s_d518fde157222a::t_983818b4513ea9 1-104
+src/ci/export.ts
+  s_d518fde157222a::t_d0abbb4a74c12b 274,279-288
+  s_d518fde157222a::t_ea000098a0e6d6 305
+  s_d518fde157222a::t_5cb5ea867dc94c 357
+  s_d518fde157222a::t_872c0f34ea256a 18
+  s_d518fde157222a::t_c43efa6b22425b 43-44
+  s_d518fde157222a::t_7871ff564b4797 94-99
+  s_d518fde157222a::t_ffe35c0957df33 289
+skills/visual-diff/SKILL.md
+  s_d518fde157222a::t_8aa841350a310f 81-85
+src/cli/commands/review.ts
+  s_d518fde157222a::t_1e8b6ead45ec64 1-149
+README.md
+  s_d518fde157222a::t_9c8b6c41389f1a 130
+  s_d518fde157222a::t_fb3824bd76169e 136-137,141-182
+  s_d518fde157222a::t_50e2da2c303675 110-112
+  s_d518fde157222a::t_10c6060dcc87aa 209-211
+  s_d518fde157222a::t_2aeab067005d38 183
+src/cli/testing.ts
+  s_d518fde157222a::t_184f96ead1ebc2 23,33
+  s_d518fde157222a::t_96804ce2ea966b 436-444,446-460
+  s_d518fde157222a::t_23c56bb3098023 445
+  s_d518fde157222a::t_a6deb469b124a3 761-773
+  s_d518fde157222a::t_927e8b184b9b26 652
+  s_d518fde157222a::t_1568fe918ef948 498-499
+  s_d518fde157222a::t_6e6b13df0b24a1 686-698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "35816b7589c55b401f60583db6ca7602593ef565",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
