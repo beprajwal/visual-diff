@@ -474,3 +474,13 @@ and `app-private-key`, mints an installation token scoped to the repository
 (`actions/create-github-app-token`), and the two steps that talk to GitHub prefer it over
 `github-token`. Nothing is minted unless an app is named, and only in `pr` mode. The heading grew
 with it: a 32px mark on an h2 and the product name, with the flow and the pair on the line below.
+
+**D50 — On a private repository, Pages serves the comment's images.**
+The first publish against a private repository failed at the clone: the token rode only on the
+push, and an anonymous clone of a private repository is a username prompt, which is exit 128 on a
+runner. The token now rides on both. The second half is quieter: raw.githubusercontent.com answers a
+private repository's files only to a signed-in fetch, which an `<img>` in a comment is not, so the
+inline screenshots (D31) would render as broken images there. When `pages-url` is set the images
+come from the Pages site, which serves the same branch under the visibility the user chose when
+they set the URL (the organisation on Enterprise Cloud). Without Pages the raw URLs stay, which is
+right for a public repository and the documented limit for a private one.

@@ -219,7 +219,9 @@ serves; the comment's **Open the full report** then opens the interactive page f
 
 Who can open it is the repository's Pages visibility — private to the organisation on GitHub
 Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a minute, so the link can
-404 briefly after the first push of a new pull request.
+404 briefly after the first push of a new pull request. With `pages-url` set, the screenshots in the
+comment are served from the site as well, which is what makes them render on a private repository
+(raw file URLs there need a signed-in fetch, and an `<img>` in a comment is not one).
 
 ### When CI serves the app on another origin
 
