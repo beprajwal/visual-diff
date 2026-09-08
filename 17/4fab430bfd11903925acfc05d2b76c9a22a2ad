@@ -1,0 +1,14 @@
+README.md
+  h_d568a51a780fb5 130,169,190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "174fab430bfd11903925acfc05d2b76c9a22a2ad",
+  "prompts": {},
+  "humans": {
+    "h_d568a51a780fb5": {
+      "author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
