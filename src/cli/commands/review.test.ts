@@ -238,6 +238,7 @@ describe('comment and export pick up a stored review', () => {
       e2e: false,
       images: 'none',
       html: 'linked',
+      preview: false,
       failOn: 'none',
       out,
       json: false,

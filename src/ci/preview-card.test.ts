@@ -14,8 +14,8 @@ function fixture() {
     flowDiff: [
       { id: 'cart', status: 'matched', baseIndex: 0, headIndex: 0 },
       { id: 'pay-form', status: 'matched', baseIndex: 1, headIndex: 1 },
-      { id: 'receipt', status: 'added', headIndex: 2 },
-      { id: 'legacy', status: 'removed', baseIndex: 2 },
+      { id: 'receipt', status: 'added', baseIndex: null, headIndex: 2 },
+      { id: 'legacy', status: 'removed', baseIndex: 2, headIndex: null },
     ],
     steps: [
       makeStepDiff('cart', 'matched', {
