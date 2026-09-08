@@ -66,9 +66,11 @@ describe('renderComment', () => {
     const lines = doc.markdown.split('\n');
     expect(lines[0]).toBe(doc.marker);
     // The heading carries the mark and the name, so a reader knows whose comment it is at a glance.
-    expect(lines[1]).toBe(
-      `### <img src="${LOGO_URL}" width="22" alt="" align="absmiddle"> visual-diff — \`checkout\` \`0003..0007\``,
-    );
+    expect(lines.slice(1, 4)).toEqual([
+      `## <img src="${LOGO_URL}" width="32" alt="" align="absmiddle"> Visual Diff`,
+      '',
+      '`checkout` · `0003..0007`',
+    ]);
     expect(doc.markdown).toContain('**3 findings** — 1 high, 1 med, 1 low');
     expect(doc.markdown).toContain('max pixel change 3.4%');
     expect(doc.markdown).toContain('1/2 steps changed');
