@@ -1,0 +1,25 @@
+action.yml
+  s_d518fde157222a::t_fbc552b64140c5 635-639,641,668,674-679,682-684
+tests/packaging/action.test.ts
+  s_d518fde157222a::t_fbc552b64140c5 456-471
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_fbc552b64140c5 477-486
+README.md
+  s_d518fde157222a::t_5e9547ddf7e0b2 222-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "2f6335edf6c1bf7682fc4b860437020e884aaba1",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
