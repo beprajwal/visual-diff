@@ -509,3 +509,10 @@ still show github-actions (or the person whose token an earlier run used). So wh
 app's and the comment found by its marker was posted by anyone else, it is deleted and posted again,
 once; from then on it is edited in place as before (D33). The card (D51) also lists a step once, at
 its widest viewport: the first real card spent its six entries on three steps twice over.
+
+**D49, amended again — the app signs the comment and nothing else.** The first run with the app
+configured minted its token and then failed the publish: the branch push used the app's token, and
+an app with only *pull requests* permission is told the repository does not exist. Giving the app
+*contents: write* would fix it and widen the blast radius of a leaked key for no visible gain — the
+reports branch does not care who its committer is. So the publish step keeps `github-token`, whose
+`contents: write` the workflow already grants, and the app's token reaches the comment step alone.

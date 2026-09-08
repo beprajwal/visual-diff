@@ -440,12 +440,11 @@ describe('the comment can be signed by a GitHub App (D49)', () => {
     expect(mint?.with?.['private-key']).toBe('${{ inputs.app-private-key }}');
   });
 
-  it('is preferred over github-token by both steps that talk to GitHub', () => {
+  it('signs the comment, and only the comment — the publish keeps the workflow token', () => {
     const publish = action.runs.steps.find((s) => s.id === 'publish');
     const comment = action.runs.steps.find((s) => s.name === 'Post the comment');
-    const expected = '${{ steps.app.outputs.token || inputs.github-token }}';
-    expect(publish?.env?.['GH_TOKEN']).toBe(expected);
-    expect(comment?.with?.['github-token']).toBe(expected);
+    expect(comment?.with?.['github-token']).toBe('${{ steps.app.outputs.token || inputs.github-token }}');
+    expect(publish?.env?.['GH_TOKEN']).toBe('${{ inputs.github-token }}');
   });
 
   it('defaults both app inputs to empty so nothing changes for a workflow that names no app', () => {

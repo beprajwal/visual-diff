@@ -174,9 +174,9 @@ inputs:
   app-id:
     description: >-
       Id of a GitHub App to comment as (D49). Create one named "Visual Diff" in the organization,
-      give it the logo, grant it pull requests: write (and contents: write when `publish-branch` is
-      set), install it on the repository, and the comment carries the app's name and avatar instead
-      of github-actions. Requires `app-private-key`.
+      give it the logo, grant it pull requests: read and write (nothing else — the publish step uses
+      `github-token`), install it on the repository, and the comment carries the app's name and
+      avatar instead of github-actions. Requires `app-private-key`.
     required: false
     default: ''
   app-private-key:
@@ -607,7 +607,7 @@ runs:
     # The comment is signed by whoever holds the token. A GitHub App gives the pull request a
     # comment from "Visual Diff" with its mark, rather than one from github-actions or from the
     # person whose token the workflow happened to use (D49). The installation token is minted
-    # here, scoped to this repository, and used by the two steps that talk to GitHub.
+    # here, scoped to this repository, and used by the comment step alone.
     - name: Sign in as the Visual Diff app
       id: app
       if: inputs.mode == 'pr' && inputs.app-id != ''
@@ -625,7 +625,9 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BRANCH: ${{ inputs.publish-branch }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ steps.app.outputs.token || inputs.github-token }}
+        # The workflow's own token, not the app's: pushing the branch is the workflow's `contents:
+        # write`, and the app then needs no repository permission beyond pull requests (D49).
+        GH_TOKEN: ${{ inputs.github-token }}
         REPO: ${{ github.repository }}
         SERVER: ${{ github.server_url }}
         SHA: ${{ github.event.pull_request.head.sha || github.sha }}
