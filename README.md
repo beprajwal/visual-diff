@@ -209,13 +209,18 @@ vdiff comment checkout                                       # picks the stored 
 ### The report as a site
 
 `publish-branch` already pushes each pull request's `report.html` and images to a branch. Point
-GitHub Pages at that branch (Settings → Pages → Deploy from a branch) and tell the action the URL it
-serves; the comment's **Open the full report** then opens the interactive page for that pull request:
+GitHub Pages at that branch (Settings → Pages → Deploy from a branch) and grant the workflow
+`pages: read`; the action asks the Pages API where the site is served, and the comment's **Open the
+full report** opens the interactive page for that pull request:
 
 ```yaml
+permissions:
+  pages: read        # to find the site; contents: write is what publish-branch needs
+…
     publish-branch: visual-diff-reports
-    pages-url: https://<owner>.github.io/<repo>
 ```
+
+`pages-url` overrides the lookup — a custom domain, or a site the token may not read.
 
 Who can open it is the repository's Pages visibility — private to the organisation on GitHub
 Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a minute, so the link can

@@ -151,13 +151,14 @@ describe('action.yml', () => {
     );
   });
 
-  it('takes the token in exactly the two steps that talk to GitHub (D29)', () => {
+  it('takes the token in exactly the three steps that talk to GitHub (D29, D52)', () => {
     const withToken = action.runs.steps.filter((step) => {
       // A `with:`/`env:` value can be a boolean or a number in YAML, so stringify before matching.
       const values = [...Object.values(step.with ?? {}), ...Object.values(step.env ?? {})];
       return values.some((value) => String(value).includes('inputs.github-token'));
     });
     expect(withToken.map((step) => step.name ?? step.uses)).toEqual([
+      'Find the Pages site',
       'Publish diff images',
       'Post the comment',
     ]);
@@ -344,7 +345,7 @@ describe('the review and the hosted report (D39, D40)', () => {
 
   it('links the hosted report only when both publish-branch and pages-url are set', () => {
     const publish = action.runs.steps.find((s) => s.name === 'Publish diff images');
-    expect(publish?.env?.['PAGES_URL']).toBe('${{ inputs.pages-url }}');
+    expect(publish?.env?.['PAGES_URL']).toBe('${{ inputs.pages-url || steps.pages.outputs.url }}');
     expect(publish?.run).toContain('report_base=');
     const render = action.runs.steps.find((s) => s.name === 'Render the comment');
     expect(render?.env?.['REPORT_BASE']).toBe('${{ steps.publish.outputs.report_base }}');
@@ -493,5 +494,32 @@ describe('the app owns the comment (D49, amended)', () => {
     expect(step?.env?.['APP_SLUG']).toBe('${{ steps.app.outputs.app-slug }}');
     expect(script).toContain("previous.user?.login !== appLogin");
     expect(script).toContain('github.rest.issues.deleteComment');
+  });
+});
+
+describe('the Pages site is asked for, not configured (D52)', () => {
+  const find = () => action.runs.steps.find((s) => s.id === 'pages');
+
+  it('runs only when there is a publish branch and no pages-url was given, in pr mode', () => {
+    const step = find();
+    expect(step?.uses).toMatch(/^actions\/github-script@v\d+$/);
+    expect(step?.if).toContain("inputs.mode == 'pr'");
+    expect(step?.if).toContain("inputs.publish-branch != ''");
+    expect(step?.if).toContain("inputs.pages-url == ''");
+    expect(step?.with?.['github-token']).toBe('${{ inputs.github-token }}');
+  });
+
+  it('uses the site only when it deploys from the publish branch, and never fails the job', () => {
+    const script = String(find()?.with?.['script']);
+    expect(script).toContain('github.rest.repos.getPages');
+    expect(script).toContain("site.source?.branch !== process.env.BRANCH");
+    expect(script).toContain("core.setOutput('url', '')");
+    expect(script).not.toContain('core.setFailed(');
+    expect(script.match(/core\.warning\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it('feeds the publish step, with an explicit pages-url taking precedence', () => {
+    const publish = action.runs.steps.find((s) => s.id === 'publish');
+    expect(publish?.env?.['PAGES_URL']).toBe('${{ inputs.pages-url || steps.pages.outputs.url }}');
   });
 });

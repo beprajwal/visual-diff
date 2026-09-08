@@ -91,11 +91,12 @@ inputs:
     default: ''
   pages-url:
     description: >-
-      URL GitHub Pages serves `publish-branch` at, e.g. `https://<owner>.github.io/<repo>` (Settings →
-      Pages → Deploy from a branch, pointed at that branch). Set both and the comment's "Open the
-      full report" call to action opens this pull request's report.html as a page (D40). Who can see
-      it is the repository's Pages visibility: private Pages on GitHub Enterprise Cloud, public
-      otherwise. Ignored without `publish-branch`.
+      URL GitHub Pages serves `publish-branch` at. Usually left empty: with `publish-branch` set the
+      action asks the Pages API for the site's URL and uses it when the site deploys from that branch
+      (D52; grant the workflow `pages: read`). Set it to override — a custom domain, a site the token
+      may not read. Either way the comment's "Open the full report" opens this pull request's
+      report.html as a page (D40). Who can see it is the repository's Pages visibility: private on
+      GitHub Enterprise Cloud, public otherwise. Ignored without `publish-branch`.
     required: false
     default: ''
   anthropic-api-key:
@@ -604,6 +605,43 @@ runs:
     # Only when a branch was nominated. Pushing images into someone's repository on every pull request
     # is not a default anybody should get by surprise, so the artifact is the default and this is the
     # opt-in that makes inline images possible at all.
+    # Where Pages serves the publish branch, asked rather than configured (D52): a private site on
+    # Enterprise Cloud has a random subdomain nobody should have to copy into a workflow, and a
+    # public one is derivable but easy to get wrong. The site is used only when it deploys from the
+    # publish branch; anything else — no site, a site on another branch, a token without
+    # `pages: read` — leaves the comment without a report link, and says why in the log.
+    - name: Find the Pages site
+      id: pages
+      if: inputs.mode == 'pr' && inputs.publish-branch != '' && inputs.pages-url == ''
+      uses: actions/github-script@v7
+      env:
+        BRANCH: ${{ inputs.publish-branch }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          core.setOutput('url', '');
+          const { owner, repo } = context.repo;
+          let site;
+          try {
+            ({ data: site } = await github.rest.repos.getPages({ owner, repo }));
+          } catch (error) {
+            if (error.status === 404) {
+              core.info('no GitHub Pages site on this repository; the comment links the artifact instead of a report page (set pages-url, or enable Pages from the publish branch)');
+            } else if (error.status === 403) {
+              core.warning('the token may not read the Pages site (grant the workflow `pages: read`, or set pages-url); the comment links the artifact instead of a report page');
+            } else {
+              core.warning(`Pages lookup answered ${error.status ?? ''} ${error.message}; the comment links the artifact instead of a report page`);
+            }
+            return;
+          }
+          if (site.build_type !== 'legacy' || site.source?.branch !== process.env.BRANCH) {
+            core.warning(`the Pages site deploys from ${site.build_type === 'legacy' ? `branch ${site.source?.branch}` : 'a workflow'}, not from ${process.env.BRANCH}; point it at the publish branch (Settings → Pages → Deploy from a branch) or set pages-url`);
+            return;
+          }
+          const url = String(site.html_url ?? '').replace(/\/+$/, '');
+          core.setOutput('url', url);
+          core.info(`Pages serves ${process.env.BRANCH} at ${url}${site.public === false ? ' (private)' : ''}`);
+
     # The comment is signed by whoever holds the token. A GitHub App gives the pull request a
     # comment from "Visual Diff" with its mark, rather than one from github-actions or from the
     # person whose token the workflow happened to use (D49). The installation token is minted
@@ -631,7 +669,7 @@ runs:
         REPO: ${{ github.repository }}
         SERVER: ${{ github.server_url }}
         SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        PAGES_URL: ${{ inputs.pages-url }}
+        PAGES_URL: ${{ inputs.pages-url || steps.pages.outputs.url }}
       run: |
         set -euo pipefail
         # `vdiff` sits between the pull request and the commit so the branch can hold other things
