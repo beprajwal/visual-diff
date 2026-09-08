@@ -4,6 +4,7 @@ import { shotCells } from './layout.js';
 import {
   DEFAULT_MAX_CHANGES,
   changeKind,
+  onePerStep,
   rankChanges,
   renderPreviewCard,
 } from './preview-card.js';
@@ -71,6 +72,23 @@ describe('the card the picture is taken of (D51)', () => {
     // Nothing on the card needs a network or runs code.
     expect(html).not.toContain('<script');
     expect(html).not.toMatch(/src="https?:/);
+  });
+
+  it('lists a step once, at its widest viewport', () => {
+    const { result, available } = fixture();
+    const wide = makeViewportDiff('1280x800', { pixelChangedRatio: 0.2, findings: [makeFinding('f9')] });
+    const narrow = makeViewportDiff('390x844', { pixelChangedRatio: 0.4, findings: [makeFinding('f8')] });
+    const twoViewports = shotCells(
+      makeDiff({
+        ...result,
+        steps: [makeStepDiff('pay-form', 'matched', { viewports: { '390x844': narrow, '1280x800': wide } })],
+      }),
+    );
+    expect(onePerStep(twoViewports).map((cell) => cell.viewport)).toEqual(['1280x800']);
+    const html = renderPreviewCard({ result, cells: twoViewports, available, version: '0.15.1' });
+    expect(html).toContain('<span class="n">1</span><code>pay-form</code> <span class="vp">@ 1280x800</span>');
+    expect(html).not.toContain('@ 390x844');
+    expect(html).toContain('1 of 1 change<');
   });
 
   it('says when a capture the change needs is not in the bundle', () => {

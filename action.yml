@@ -793,6 +793,8 @@ runs:
       env:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
+        # The app's login, `<slug>[bot]`, when the comment is signed by one (D49). Empty otherwise.
+        APP_SLUG: ${{ steps.app.outputs.app-slug }}
       with:
         github-token: ${{ steps.app.outputs.token || inputs.github-token }}
         script: |
@@ -819,7 +821,16 @@ runs:
             }
 
             const previous = existing.find((comment) => comment.body?.includes(marker));
-            if (previous) {
+            // An edit keeps the original author. When the comment is signed by an app (D49) and the
+            // one on the thread was posted by someone else — github-actions, or a person, from before
+            // the app was set up — it is replaced, once, so the thread shows the app's name and mark.
+            const appLogin = process.env.APP_SLUG ? `${process.env.APP_SLUG}[bot]` : '';
+            if (previous && appLogin && previous.user?.login !== appLogin) {
+              await github.rest.issues.deleteComment({ owner, repo, comment_id: previous.id });
+              core.info(`replaced comment ${previous.id} by ${previous.user?.login} for flow ${flow}: now signed by ${appLogin}`);
+              const created = await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              core.info(`created comment ${created.data.id} for flow ${flow}`);
+            } else if (previous) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
               core.info(`updated comment ${previous.id} for flow ${flow}`);
             } else {

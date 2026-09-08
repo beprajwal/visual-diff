@@ -485,3 +485,13 @@ describe('the picture of the report (D51)', () => {
     expect(run).toContain('--image-base "$IMAGE_BASE/$flow" --bundle "$BUNDLE_ROOT/$flow"');
   });
 });
+
+describe('the app owns the comment (D49, amended)', () => {
+  it('replaces a comment posted by another identity instead of editing it', () => {
+    const step = action.runs.steps.find((s) => s.name === 'Post the comment');
+    const script = String(step?.with?.['script']);
+    expect(step?.env?.['APP_SLUG']).toBe('${{ steps.app.outputs.app-slug }}');
+    expect(script).toContain("previous.user?.login !== appLogin");
+    expect(script).toContain('github.rest.issues.deleteComment');
+  });
+});
