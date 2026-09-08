@@ -127,7 +127,7 @@ the file you just installed, so a fix reaches you on the next version bump. The 
 are yours — edit them, and a re-install preserves your edits and says so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.14.0
+- uses: beprajwal/visual-diff@v0.14.1
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
@@ -166,7 +166,7 @@ judges against, so a PR that says "rename the Pay button" and also moves the hea
 so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.14.0
+- uses: beprajwal/visual-diff@v0.14.1
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
@@ -187,7 +187,7 @@ minutes, and nothing is stored or rotated:
 permissions:
   id-token: write
   # …
-- uses: beprajwal/visual-diff@v0.14.0
+- uses: beprajwal/visual-diff@v0.14.1
   with:
     anthropic-federation-rule-id: fdrl_…
     anthropic-organization-id: 00000000-0000-0000-0000-000000000000
