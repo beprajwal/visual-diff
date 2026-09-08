@@ -524,3 +524,13 @@ a login page. The `/markdown` API shows the one form GitHub leaves alone:
 `https://github.com/<owner>/<repo>/raw/<branch>/<path>`. The reader's own signed-in browser fetches
 that, and GitHub signs the file for a private repository; on a public one it redirects to raw. So
 `image_base` is that form regardless of Pages, and Pages serves the report page alone (D40).
+
+**D52 — The Pages URL is asked for, not configured.**
+A private Pages site on Enterprise Cloud lives at a random subdomain (`<words>.pages.github.io`),
+and the first private deployment committed that string into a workflow file, where a reviewer
+rightly asked why. It is stable only for the life of the site — disable and re-enable Pages and it
+changes — and it is nothing a person should have to copy. The Pages API answers the question, so
+with `publish-branch` set and `pages-url` empty the action asks for the site and uses its URL when
+the site deploys from the publish branch. Anything else (no site, a site on another branch or built
+by a workflow, a token without `pages: read`) leaves the comment linking the artifact and says why in
+the log; nothing fails. `pages-url` stays as the override for a custom domain or an unreadable site.
