@@ -27,7 +27,7 @@ export const PREVIEW_CARD_WIDTH = 1200;
 
 export interface PreviewCardInput {
   result: DiffResult;
-  /** The changed cells, in the order the comment shows them. The card ranks them itself. */
+  /** The changed cells, every viewport, in the order the comment shows them. The card picks and ranks. */
   cells: readonly ShotCell[];
   /** Bundle-relative image paths that were actually written; a cell whose capture is absent says so. */
   available: ReadonlySet<string>;
@@ -56,6 +56,28 @@ function topSeverity(findings: readonly Finding[]): number {
     (best, finding) => Math.min(best, SEVERITY_ORDER[finding.severity]),
     Number.POSITIVE_INFINITY,
   );
+}
+
+/** Width of a viewport id like `1280x800`; 0 for anything else, so an unparseable id sorts last. */
+function viewportWidth(viewport: string): number {
+  const match = /^(\d+)x\d+$/.exec(viewport);
+  return match === null ? 0 : Number(match[1]);
+}
+
+/**
+ * One entry per step: the widest viewport's cell, which is the one a reviewer recognises. A step
+ * that changed at two viewports is one change, not two, and a card of six entries that spends
+ * three of them on the phone renderings of the first three steps has told the reader less.
+ */
+export function onePerStep(cells: readonly ShotCell[]): ShotCell[] {
+  const chosen = new Map<string, ShotCell>();
+  for (const cell of cells) {
+    const current = chosen.get(cell.step);
+    if (current === undefined || viewportWidth(cell.viewport) > viewportWidth(current.viewport)) {
+      chosen.set(cell.step, cell);
+    }
+  }
+  return [...chosen.values()];
 }
 
 /**
@@ -143,7 +165,7 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; display: flex; 
 export function renderPreviewCard(input: PreviewCardInput): string {
   const { result } = input;
   const summary = result.summary;
-  const ranked = rankChanges(input.cells);
+  const ranked = rankChanges(onePerStep(input.cells));
   const max = Math.max(0, input.maxChanges ?? DEFAULT_MAX_CHANGES);
   const shown = ranked.slice(0, max);
   const hidden = ranked.length - shown.length;

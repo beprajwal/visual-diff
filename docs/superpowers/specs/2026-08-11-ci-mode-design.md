@@ -502,3 +502,10 @@ two files and, under the same `--image-base` rule as every other picture (D31), 
 `<a href=report><picture><source dark><img light></picture></a>` right under the verdict, before
 the review and the step images. A machine without Chromium exports without a picture and says so;
 the action asks for one only when `publish-branch` gives it somewhere to be seen.
+
+**D49, amended — the app owns the comment.** The first run with the app configured would have
+edited the comment already on the thread, and an edit keeps its original author: the thread would
+still show github-actions (or the person whose token an earlier run used). So when the token is an
+app's and the comment found by its marker was posted by anyone else, it is deleted and posted again,
+once; from then on it is edited in place as before (D33). The card (D51) also lists a step once, at
+its widest viewport: the first real card spent its six entries on three steps twice over.

@@ -85,6 +85,7 @@ export {
   PREVIEW_CARD_WIDTH,
   PREVIEW_PAGE,
   changeKind,
+  onePerStep,
   rankChanges,
   renderPreviewCard,
 } from './preview-card.js';
