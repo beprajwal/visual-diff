@@ -1,0 +1,25 @@
+README.md
+  s_d518fde157222a::t_4bc9862849784d 222-225
+action.yml
+  s_d518fde157222a::t_bffb625c27de7e 686-692
+docs/superpowers/specs/2026-08-11-ci-mode-design.md
+  s_d518fde157222a::t_6d85bf8d249149 519-526
+tests/packaging/action.test.ts
+  s_d518fde157222a::t_cc0d5f1c9f1979 465,467-469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1d9854a4b6e3b0d49a54c228201494db9f1ad8a0",
+  "prompts": {},
+  "sessions": {
+    "s_d518fde157222a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f2e30ea-91c5-4df2-b928-3d7d98ddc14f",
+        "model": "unknown"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
