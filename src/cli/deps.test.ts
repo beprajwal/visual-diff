@@ -147,6 +147,7 @@ describe('module edges', () => {
     expect(Object.keys(ports).sort()).toEqual([
       'adapterFiles',
       'adapterTargets',
+      'capturePreview',
       'computeDiff',
       'exportBundle',
       'ingestE2eTraces',
