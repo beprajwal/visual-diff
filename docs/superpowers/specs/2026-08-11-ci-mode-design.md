@@ -516,3 +516,11 @@ an app with only *pull requests* permission is told the repository does not exis
 *contents: write* would fix it and widen the blast radius of a leaked key for no visible gain — the
 reports branch does not care who its committer is. So the publish step keeps `github-token`, whose
 `contents: write` the workflow already grants, and the app's token reaches the comment step alone.
+
+**D50, amended — the images go through github.com, not Pages.** Serving the comment's images
+from the private Pages site did not render them either: GitHub rewrites every third-party image in
+a comment to its camo proxy, which fetches anonymously, and a private Pages site answers camo with
+a login page. The `/markdown` API shows the one form GitHub leaves alone:
+`https://github.com/<owner>/<repo>/raw/<branch>/<path>`. The reader's own signed-in browser fetches
+that, and GitHub signs the file for a private repository; on a public one it redirects to raw. So
+`image_base` is that form regardless of Pages, and Pages serves the report page alone (D40).

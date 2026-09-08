@@ -680,17 +680,16 @@ runs:
         # per-pull-request prefix under it. Pages deploys a pushed branch in about a minute, so the
         # link may 404 briefly after the first push of a new prefix.
         #
-        # When Pages is there, the comment's images come from it too (D50): raw.githubusercontent.com
-        # answers a private repository's files only to a signed-in fetch, which an <img> in a comment
-        # is not, so on a private repository the raw URLs render as broken images. Pages serves the
-        # same files under the site's own visibility — the organisation on Enterprise Cloud, everyone
-        # otherwise — which is what the user chose when they set the URL.
         if [ -n "$PAGES_URL" ]; then
           echo "report_base=${PAGES_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
-          echo "image_base=${PAGES_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
-        else
-          echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
         fi
+        # The comment's images are addressed through github.com itself (D50, amended):
+        # <server>/<repo>/raw/<branch>/<path>. GitHub leaves that form alone when it renders the
+        # comment, so the reader's own signed-in browser fetches it and GitHub signs the file for a
+        # private repository. Every other host — raw.githubusercontent.com, a Pages site — is
+        # rewritten to the camo proxy, which fetches anonymously and is turned away by anything
+        # private; on a public repository the github.com form simply redirects to raw.
+        echo "image_base=${SERVER}/${REPO}/raw/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
 
     # ---------------------------------------------------------------- artifact, then comment
     #

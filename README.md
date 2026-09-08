@@ -219,9 +219,10 @@ serves; the comment's **Open the full report** then opens the interactive page f
 
 Who can open it is the repository's Pages visibility — private to the organisation on GitHub
 Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a minute, so the link can
-404 briefly after the first push of a new pull request. With `pages-url` set, the screenshots in the
-comment are served from the site as well, which is what makes them render on a private repository
-(raw file URLs there need a signed-in fetch, and an `<img>` in a comment is not one).
+404 briefly after the first push of a new pull request. The screenshots in the
+comment are addressed through `github.com/<owner>/<repo>/raw/<branch>/…`, the one form GitHub
+renders for a private repository (it signs the file for the signed-in reader; every other host goes
+through the anonymous camo proxy and is turned away).
 
 With a publish target the comment also opens with one picture of the changes — a numbered list,
 additions and removals first, each with its base and head capture side by side — photographed light
