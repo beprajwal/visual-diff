@@ -453,3 +453,19 @@ describe('the comment can be signed by a GitHub App (D49)', () => {
     expect(action.inputs['app-private-key']?.default).toBe('');
   });
 });
+
+describe('publishing to a private repository (D50)', () => {
+  const publishRun = () => String(action.runs.steps.find((s) => s.id === 'publish')?.run);
+
+  it('clones with the token, not anonymously', () => {
+    const run = publishRun();
+    expect(run).toContain('remote="https://x-access-token:${GH_TOKEN}@${SERVER#https://}/${REPO}.git"');
+    expect(run).not.toMatch(/git clone[^\n]*"\$\{SERVER\}\/\$\{REPO\}\.git"/);
+  });
+
+  it('serves the comment images from Pages when a Pages URL is given, raw otherwise', () => {
+    const run = publishRun();
+    expect(run).toContain('echo "image_base=${PAGES_URL%/}/${prefix}"');
+    expect(run).toContain('echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}"');
+  });
+});

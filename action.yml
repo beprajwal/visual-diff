@@ -632,10 +632,13 @@ runs:
         prefix="pr-${PR_NUMBER:-manual}/vdiff/${SHA:0:12}"
         work="${RUNNER_TEMP}/vdiff-publish"
         rm -rf "$work"
-        git clone --depth 1 --branch "$BRANCH" \
-          "${SERVER}/${REPO}.git" "$work" 2>/dev/null || {
+        # The token rides on the clone as well as the push: a private repository answers an
+        # anonymous clone with a username prompt, which is exit 128 on a runner. The runner masks
+        # the token in the log.
+        remote="https://x-access-token:${GH_TOKEN}@${SERVER#https://}/${REPO}.git"
+        git clone --depth 1 --branch "$BRANCH" "$remote" "$work" 2>/dev/null || {
           # First publish: an orphan branch, so the image history never touches the code history.
-          git clone --depth 1 "${SERVER}/${REPO}.git" "$work"
+          git clone --depth 1 "$remote" "$work"
           git -C "$work" checkout --orphan "$BRANCH"
           git -C "$work" rm -rf . >/dev/null 2>&1 || true
           printf '%s\n' \
@@ -662,15 +665,23 @@ runs:
           echo "nothing new to publish"
         else
           git commit -m "visual-diff: ${prefix}"
-          git push "https://x-access-token:${GH_TOKEN}@${SERVER#https://}/${REPO}.git" "HEAD:${BRANCH}"
+          git push "$remote" "HEAD:${BRANCH}"
         fi
-        echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
         # The same files as a *site* (D40): raw.githubusercontent.com serves report.html as text, so
         # the page needs Pages in front of the branch. The user names that URL; this derives the
         # per-pull-request prefix under it. Pages deploys a pushed branch in about a minute, so the
         # link may 404 briefly after the first push of a new prefix.
+        #
+        # When Pages is there, the comment's images come from it too (D50): raw.githubusercontent.com
+        # answers a private repository's files only to a signed-in fetch, which an <img> in a comment
+        # is not, so on a private repository the raw URLs render as broken images. Pages serves the
+        # same files under the site's own visibility — the organisation on Enterprise Cloud, everyone
+        # otherwise — which is what the user chose when they set the URL.
         if [ -n "$PAGES_URL" ]; then
           echo "report_base=${PAGES_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
+          echo "image_base=${PAGES_URL%/}/${prefix}" >> "$GITHUB_OUTPUT"
+        else
+          echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}" >> "$GITHUB_OUTPUT"
         fi
 
     # ---------------------------------------------------------------- artifact, then comment
