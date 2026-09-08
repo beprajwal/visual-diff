@@ -10,7 +10,7 @@
  *  - human mode putting the markdown alone on stdout, so `vdiff comment flow > body.md` works.
  */
 
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -155,6 +155,52 @@ describe('vdiff comment', () => {
     expect(result.warnings?.join(' ')).toContain('no --image-base given');
   });
 
+  it('opens with the picture of the report only when the bundle holds it (D51)', async () => {
+    const dir = await tempDir();
+    // No bundle named: no picture, whatever the image base.
+    const bare = await comment(context(diffWith(2), dir), {
+      ...invocation,
+      imageBase: 'https://example.test/base',
+    });
+    expect(bare.data.preview).toBe(false);
+    expect(bare.data.markdown).not.toContain('preview.png');
+
+    // A bundle without the captures: still no picture — the files are checked, not assumed.
+    await mkdir(join(dir, 'bundle', 'images'), { recursive: true });
+    const empty = await comment(context(diffWith(2), dir), {
+      ...invocation,
+      imageBase: 'https://example.test/base',
+      bundle: 'bundle',
+    });
+    expect(empty.data.preview).toBe(false);
+
+    // The light capture alone: a plain <img>, no dark source.
+    await writeFile(join(dir, 'bundle', 'images', 'preview.png'), 'png');
+    const light = await comment(context(diffWith(2), dir), {
+      ...invocation,
+      imageBase: 'https://example.test/base',
+      bundle: 'bundle',
+    });
+    expect(light.data.preview).toBe(true);
+    expect(light.data.markdown).toContain('<img src="https://example.test/base/images/preview.png"');
+    expect(light.data.markdown).not.toContain('prefers-color-scheme');
+
+    // Both captures: the dark one rides as a <source>.
+    await writeFile(join(dir, 'bundle', 'images', 'preview-dark.png'), 'png');
+    const both = await comment(context(diffWith(2), dir), {
+      ...invocation,
+      imageBase: 'https://example.test/base',
+      bundle: 'bundle',
+    });
+    expect(both.data.markdown).toContain(
+      '<source media="(prefers-color-scheme: dark)" srcset="https://example.test/base/images/preview-dark.png">',
+    );
+
+    // Without an image base the bundle is not even consulted (D31).
+    const noBase = await comment(context(diffWith(2), dir), { ...invocation, bundle: 'bundle' });
+    expect(noBase.data.preview).toBe(false);
+  });
+
   it('carries the renderer verdicts through to the JSON payload', async () => {
     const result = await comment(context(diffWith(2)), {
       ...invocation,
@@ -174,6 +220,7 @@ describe('vdiff export', () => {
     failOn: 'none' as const,
     images: 'changed' as const,
     html: 'linked' as const,
+    preview: false,
     json: false,
   };
 
@@ -192,6 +239,49 @@ describe('vdiff export', () => {
     ]);
     expect(result.data.files).toContain('summary.json');
     expect(result.data.comment.path).toBe(join(dir, 'bundle', 'comment.md'));
+  });
+
+  it('asks the preview port for the captures under --preview and lists them (D51)', async () => {
+    const dir = await tempDir();
+    const asked: string[] = [];
+    const ctx = context(diffWith(1), dir);
+    ctx.ports.capturePreview = async (request) => {
+      asked.push(request.outDir, request.page ?? 'report.html');
+      return { files: ['images/preview.png', 'images/preview-dark.png'] };
+    };
+    const result = await exportCommand(ctx, { ...exportInvocation, out: 'bundle', preview: true });
+    expect(asked).toEqual([join(dir, 'bundle'), 'report.html']);
+    expect(result.data.preview).toEqual(['images/preview.png', 'images/preview-dark.png']);
+
+    // Nothing is photographed unless asked.
+    const quiet = await exportCommand(ctx, { ...exportInvocation, out: 'other' });
+    expect(asked).toHaveLength(2);
+    expect(quiet.data.preview).toEqual([]);
+  });
+
+  it('photographs the self-contained page when the bundle was written inline', async () => {
+    const dir = await tempDir();
+    const ctx = context(diffWith(1), dir);
+    let page: string | undefined;
+    ctx.ports.capturePreview = async (request) => {
+      page = request.page;
+      return { files: [] };
+    };
+    await exportCommand(ctx, { ...exportInvocation, out: 'bundle', html: 'inline', preview: true });
+    expect(page).toBe('report.inline.html');
+  });
+
+  it('exports without a picture, and says so, when no browser can be launched', async () => {
+    const dir = await tempDir();
+    const ctx = context(diffWith(1), dir);
+    ctx.ports.capturePreview = async () => {
+      throw new Error("Chromium is not installed; run `vdiff install-browser`");
+    };
+    const result = await exportCommand(ctx, { ...exportInvocation, out: 'bundle', preview: true });
+    expect(result.exitCode).toBe(EXIT.OK);
+    expect(result.data.preview).toEqual([]);
+    expect(result.warnings?.join(' ')).toContain('no preview captured: Chromium is not installed');
+    expect((await readdir(join(dir, 'bundle'))).sort()).toContain('report.html');
   });
 
   it('defaults the bundle directory to the store, per pair', async () => {

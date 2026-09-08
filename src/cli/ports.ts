@@ -52,6 +52,8 @@ import type {
   ExportRequest,
   ReviewRequest,
   ReviewResponse,
+  PreviewReport,
+  PreviewRequest,
 } from '../ci/index.js';
 import type { E2eOrigin, E2eSourceFormat } from './e2e.js';
 import type { VariantName, VariantSpec } from './variant.js';
@@ -330,6 +332,12 @@ export interface Ports {
   renderComment(input: CommentInput): Promise<CommentDocument>;
   /** `ci/index.ts#exportBundle` — the portable evidence bundle (CI spec §5). */
   exportBundle(request: ExportRequest): Promise<ExportReport>;
+  /**
+   * `ci/index.ts#capturePreview` — photograph the bundle's own report page for the comment (CI
+   * spec D51). Launches Chromium, so it sits behind the lazy edge like the runner does; a machine
+   * without a browser gets a warning from `vdiff export`, not a failed export.
+   */
+  capturePreview(request: PreviewRequest): Promise<PreviewReport>;
   /**
    * `ci/index.ts#requestReview` — ask a hosted model to read a stored diff (CI spec D39). The one
    * port in this file that opens a socket, and it says so: it reaches the API the caller's key

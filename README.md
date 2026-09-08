@@ -223,6 +223,10 @@ Enterprise Cloud, public otherwise. Pages deploys a pushed branch in about a min
 comment are served from the site as well, which is what makes them render on a private repository
 (raw file URLs there need a signed-in fetch, and an `<img>` in a comment is not one).
 
+With a publish target the comment also opens with a picture of the report itself — the page
+photographed light and dark, shown in the reader's GitHub theme, linking to the hosted report.
+Locally, `vdiff export --preview` writes the same two captures into the bundle's `images/`.
+
 ### When CI serves the app on another origin
 
 `config.yaml` names the origin your developers use. A runner often cannot: it fronts the dev server

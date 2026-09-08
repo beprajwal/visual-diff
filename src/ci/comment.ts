@@ -64,6 +64,13 @@ export interface CommentInput {
    */
   reportUrl?: string;
   /**
+   * The bundle's own captures of `report.html` (D51), as paths relative to `imageBase`. Rendered
+   * right under the verdict as one picture — the dark capture for a reader whose GitHub is dark —
+   * that links to `reportUrl` when there is one. Needs `imageBase` for the same reason the step
+   * images do: a picture nobody can fetch is a broken image, not a preview.
+   */
+  preview?: { light: string; dark?: string };
+  /**
    * A model's reading of the diff (D39), rendered right after the verdict: the headline, a warning
    * when anything is outside the described change or looks broken, then the ranked changes. Absent
    * renders the comment CI mode always rendered — numbers, tables, links.
@@ -212,6 +219,27 @@ function verdictLines(input: CommentInput): string[] {
   if (gate !== undefined && gate.level !== GATE_NONE) {
     lines.push('');
     lines.push(gate.tripped ? `❌ **Gate failed** — ${gate.reason}` : `✅ Gate passed — ${gate.reason}`);
+  }
+
+  // The picture of the report (D51): what the reader lands on when they click, shown before the
+  // words about it. `<picture>` lets GitHub pick the capture that matches the reader's theme; the
+  // `<img>` inside is the light one, which is also what every renderer without `<picture>` shows.
+  if (input.preview !== undefined && input.imageBase !== undefined) {
+    const light = joinUrl(input.imageBase, input.preview.light);
+    const picture = [
+      '<picture>',
+      ...(input.preview.dark === undefined
+        ? []
+        : [
+            `<source media="(prefers-color-scheme: dark)" srcset="${joinUrl(input.imageBase, input.preview.dark)}">`,
+          ]),
+      `<img src="${light}" alt="The visual-diff report for ${result.flow} ${pair}" width="100%">`,
+      '</picture>',
+    ].join('');
+    lines.push('');
+    lines.push(
+      input.reportUrl === undefined ? picture : `<a href="${input.reportUrl}">${picture}</a>`,
+    );
   }
 
   if (input.reportUrl !== undefined) {

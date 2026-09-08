@@ -78,3 +78,6 @@ export {
 export type { ResolveReviewOutcome, ReviewCredentials } from './review-provider.js';
 
 export { resolveAppScript } from './app-script.js';
+
+export { PREVIEW_FILES, PREVIEW_VIEWPORT, capturePreview } from './preview.js';
+export type { PreviewReport, PreviewRequest, PreviewScheme } from './preview.js';

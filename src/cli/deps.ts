@@ -49,6 +49,8 @@ import type {
   ExportRequest,
   ReviewRequest,
   ReviewResponse,
+  PreviewReport,
+  PreviewRequest,
 } from '../ci/index.js';
 
 import { runFailure } from './error.js';
@@ -380,6 +382,14 @@ export function createPorts(): Ports {
       const fn = await loadExport<(request: ExportRequest) => Promise<ExportReport>>(
         MODULE_SPECIFIERS.ci,
         'exportBundle',
+      );
+      return await fn(request);
+    },
+
+    async capturePreview(request: PreviewRequest): Promise<PreviewReport> {
+      const fn = await loadExport<(request: PreviewRequest) => Promise<PreviewReport>>(
+        MODULE_SPECIFIERS.ci,
+        'capturePreview',
       );
       return await fn(request);
     },

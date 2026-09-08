@@ -152,6 +152,8 @@ export interface CommentData {
   bytes: number;
   /** Image groups rendered. Zero whenever no `--image-base` was given — GitHub cannot serve one (D31). */
   images: number;
+  /** Whether the comment opens with the picture of the report (D51). */
+  preview: boolean;
   /** What did not fit in the body, so a caller can log it rather than discover it (D33). */
   truncated: { images: number; steps: boolean };
   /** Absolute path written by `--out`; null when the markdown went to stdout only. */
@@ -186,6 +188,11 @@ export interface ExportData {
   notices: string[];
   /** The bundle's own `comment.md`, rendered with bundle-relative image paths. */
   comment: { path: string; bytes: number };
+  /**
+   * The captures of the report page (D51), bundle-relative, when `--preview` was asked for and a
+   * browser was there to take them; `[]` otherwise, with the reason among the warnings.
+   */
+  preview: string[];
   result: DiffResult;
 }
 

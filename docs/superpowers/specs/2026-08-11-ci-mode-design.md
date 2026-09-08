@@ -484,3 +484,17 @@ inline screenshots (D31) would render as broken images there. When `pages-url` i
 come from the Pages site, which serves the same branch under the visibility the user chose when
 they set the URL (the organisation on Enterprise Cloud). Without Pages the raw URLs stay, which is
 right for a public repository and the documented limit for a private one.
+
+**D51 — The comment opens with a picture of the report.**
+A comment that opens with a table is skimmed; one that opens with a screenshot is read — the
+recap tools that get read on pull requests all lead with one picture of the thing they made, in
+the reader's colour scheme, the whole picture a link. So `vdiff export --preview` photographs the
+bundle's own `report.html` from the file it just wrote, light and dark, at 1280×800 (the
+filmstrip beside the focus pane, the verdict, the first changed step — not the full page, which
+GitHub would scale to a ribbon), into `images/preview.png` and `images/preview-dark.png`.
+`vdiff comment --bundle <dir>` looks for those two files and, under the same `--image-base` rule
+as every other picture (D31), renders `<a href=report><picture><source dark><img light></picture></a>`
+right under the verdict, before the review and the step images. The bundle's own page is what is
+photographed, not a purpose-built card, so the click lands on what the picture showed. A machine
+without Chromium exports without a picture and says so; the action asks for one only when
+`publish-branch` gives it somewhere to be seen.

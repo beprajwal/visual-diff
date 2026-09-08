@@ -15,14 +15,14 @@
  *     so the check stays green on a changed UI until a repository decides otherwise.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { access, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { EXIT } from '../../types.js';
 import type { Invocation } from '../args.js';
 import { evaluateGate } from '../ci.js';
 import type { CommandContext, CommandResult } from '../command.js';
-import type { CommentInput } from '../../ci/index.js';
+import { PREVIEW_FILES, type CommentInput } from '../../ci/index.js';
 import { percent } from '../output.js';
 import { composePairNotices, pairLabels } from '../pair-notices.js';
 import type { CommentData } from '../shapes.js';
@@ -57,6 +57,21 @@ export async function comment(
   if (invocation.artifactUrl !== undefined) input.artifactUrl = invocation.artifactUrl;
   if (invocation.artifactName !== undefined) input.artifactName = invocation.artifactName;
   if (invocation.reportUrl !== undefined) input.reportUrl = invocation.reportUrl;
+  // The picture of the report (D51) is offered only when the bundle actually holds it: an <img>
+  // that 404s is worse than a comment without one, so the files are checked, not assumed.
+  if (invocation.bundle !== undefined && invocation.imageBase !== undefined) {
+    const bundle = path.resolve(ctx.cwd, invocation.bundle);
+    const present = async (relative: string): Promise<boolean> =>
+      access(path.join(bundle, relative)).then(
+        () => true,
+        () => false,
+      );
+    if (await present(PREVIEW_FILES.light)) {
+      input.preview = (await present(PREVIEW_FILES.dark))
+        ? { light: PREVIEW_FILES.light, dark: PREVIEW_FILES.dark }
+        : { light: PREVIEW_FILES.light };
+    }
+  }
   if (invocation.marker !== undefined) input.marker = invocation.marker;
   if (invocation.maxImages !== undefined) input.maxImages = invocation.maxImages;
 
@@ -95,6 +110,7 @@ export async function comment(
     marker: document.marker,
     bytes: document.bytes,
     images: document.images,
+    preview: input.preview !== undefined,
     truncated: document.truncated,
     path: written,
     gate,
