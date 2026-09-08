@@ -469,3 +469,19 @@ describe('publishing to a private repository (D50)', () => {
     expect(run).toContain('echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}"');
   });
 });
+
+describe('the picture of the report (D51)', () => {
+  it('is taken by the export only when there is somewhere to publish it', () => {
+    const step = action.runs.steps.find((s) => s.id === 'export');
+    const run = String(step?.run);
+    expect(step?.env?.['PUBLISH_BRANCH']).toBe('${{ inputs.publish-branch }}');
+    expect(run).toContain('if [ -n "$PUBLISH_BRANCH" ]; then preview="--preview"; fi');
+    expect(run.match(/\$cli export [^\n]*\$preview/g)?.length).toBe(2);
+  });
+
+  it('is offered to the comment from the bundle, under the same image base', () => {
+    const step = action.runs.steps.find((s) => s.id === 'render');
+    const run = String(step?.run);
+    expect(run).toContain('--image-base "$IMAGE_BASE/$flow" --bundle "$BUNDLE_ROOT/$flow"');
+  });
+});

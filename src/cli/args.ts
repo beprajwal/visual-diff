@@ -183,6 +183,12 @@ export type Invocation =
       artifactName?: string;
       /** Hosted rendering of the full report page; rendered with the verdict, not the footer. */
       reportUrl?: string;
+      /**
+       * The exported bundle directory. Read for one thing: whether `vdiff export --preview` left its
+       * captures there, so the comment can open with the picture of the report (D51). Nothing else
+       * in the comment comes from the bundle — the diff is read from the store as always.
+       */
+      bundle?: string;
       /** Opt-in threshold. `none` — the default — never gates (D30). */
       failOn: GateLevel;
       maxImages?: number;
@@ -210,6 +216,8 @@ export type Invocation =
       failOn: GateLevel;
       artifactUrl?: string;
       artifactName?: string;
+      /** Photograph the bundle's report page, light and dark, for the comment (D51). Needs Chromium. */
+      preview: boolean;
       json: boolean;
     }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
@@ -378,6 +386,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
     summary: 'render a stored diff as pull-request markdown',
     flags: flags({
       'image-base': { type: 'string' },
+      bundle: { type: 'string' },
       'artifact-url': { type: 'string' },
       'artifact-name': { type: 'string' },
       'report-url': { type: 'string' },
@@ -394,10 +403,11 @@ export const COMMANDS: Record<string, CommandSpec> = {
   },
   export: {
     usage:
-      'vdiff export <flow> [base] [head] [--out <dir>] [--images changed|all|none] [--html linked|inline|both]',
+      'vdiff export <flow> [base] [head] [--out <dir>] [--images changed|all|none] [--html linked|inline|both] [--preview]',
     summary: 'write a portable evidence bundle: images, JSON, static HTML',
     flags: flags({
       out: { type: 'string' },
+      preview: { type: 'boolean' },
       images: { type: 'string' },
       html: { type: 'string' },
       'artifact-url': { type: 'string' },
@@ -1226,6 +1236,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
 
       for (const [flag, field] of [
         ['image-base', 'imageBase'],
+        ['bundle', 'bundle'],
         ['artifact-url', 'artifactUrl'],
         ['artifact-name', 'artifactName'],
         ['report-url', 'reportUrl'],
@@ -1289,6 +1300,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
         images: typeof images === 'string' ? images : DEFAULT_IMAGE_SELECTION,
         html: typeof html === 'string' ? html : DEFAULT_HTML_MODE,
         failOn: typeof level === 'string' ? level : GATE_NONE,
+        preview: bool(values, 'preview'),
         json,
       };
       applyPair(invocation, positionals);

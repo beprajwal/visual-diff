@@ -64,14 +64,31 @@ export async function exportCommand(
   // The stored review travels with the bundle (D39): as `review.json`, inside `comment.md`, and in
   // the page's snapshot — so the zip a reviewer downloads says the same thing the comment did.
   if (review !== null) request.review = review;
+  if (invocation.preview) request.preview = true;
 
   const report = await ctx.ports.exportBundle(request);
+
+  // The picture for the comment (D51), taken of the card the writer just put in the bundle. A
+  // machine without Chromium still has its bundle; it just has no picture, and the warning says which.
+  const preview: string[] = [];
+  const previewWarnings: string[] = [];
+  if (invocation.preview) {
+    try {
+      const captured = await ctx.ports.capturePreview({ outDir: report.outDir });
+      preview.push(...captured.files);
+    } catch (error) {
+      previewWarnings.push(
+        `no preview captured: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   const human: string[] = [
     `${pair.flow}  ${pair.base}..${pair.head}  →  ${report.outDir}`,
     `${report.files.length} file(s), ${report.images} image(s), images=${invocation.images}, html=${invocation.html}`,
   ];
   for (const file of report.files) human.push(`  ${file}`);
+  for (const file of preview) human.push(`  ${file}`);
   human.push('');
   human.push(`open ${path.join(report.outDir, 'report.html')} to review it offline`);
   if (invocation.html === 'inline') {
@@ -80,7 +97,7 @@ export async function exportCommand(
     human.push('report.inline.html is the same page with its images embedded — shareable as one file');
   }
 
-  const warnings: string[] = [...composed.warnings];
+  const warnings: string[] = [...composed.warnings, ...previewWarnings];
   if (appScript === null) {
     warnings.push(
       'report UI bundle not found (dist/ui/report-static.js): report.html carries the data but ' +
@@ -113,6 +130,7 @@ export async function exportCommand(
       path: path.join(report.outDir, 'comment.md'),
       bytes: report.comment.bytes,
     },
+      preview,
     result,
   };
 

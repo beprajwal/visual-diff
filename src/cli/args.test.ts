@@ -235,6 +235,16 @@ describe('parseArgs — the documented surface (spec §9)', () => {
     });
   });
 
+  it('parses export --preview and comment --bundle (D51)', () => {
+    expect(ok(['export', 'checkout'])).toMatchObject({ preview: false });
+    expect(ok(['export', 'checkout', '--preview'])).toMatchObject({ preview: true });
+    expect(ok(['comment', 'checkout', '--bundle', 'out/checkout'])).toMatchObject({
+      kind: 'comment',
+      bundle: 'out/checkout',
+    });
+    expect(ok(['comment', 'checkout'])).not.toHaveProperty('bundle');
+  });
+
   it('accepts a comma-separated viewport list and --flag=value form', () => {
     const invocation = ok(['run', 'checkout', '--viewport=1280x800,390x844', '--at=abc123']);
     expect(invocation).toMatchObject({ viewports: ['1280x800', '390x844'], at: 'abc123' });

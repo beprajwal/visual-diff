@@ -300,3 +300,52 @@ describe('renderComment with a review (D39)', () => {
     expect(doc.truncated.steps).toBe(true);
   });
 });
+
+describe('the picture of the report (D51)', () => {
+  const base = 'https://o.github.io/r/pr-7/vdiff/abc/checkout';
+
+  it('opens with the capture, in the reader\'s colour scheme, linking to the report', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2),
+      version: '0.6.0',
+      imageBase: base,
+      reportUrl: `${base}/report.html`,
+      preview: { light: 'images/preview.png', dark: 'images/preview-dark.png' },
+    });
+    const lines = doc.markdown.split('\n');
+    const picture = lines.findIndex((l) => l.startsWith('<a href="' + base + '/report.html"><picture>'));
+    expect(picture).toBeGreaterThan(0);
+    expect(lines[picture]).toContain(
+      `<source media="(prefers-color-scheme: dark)" srcset="${base}/images/preview-dark.png">`,
+    );
+    expect(lines[picture]).toContain(`<img src="${base}/images/preview.png" alt="The visual-diff report for checkout 0003..0007" width="100%">`);
+    // Before the model's review and the step images: the picture is the first thing, after the verdict.
+    const verdict = lines.findIndex((l) => l.includes('**2 findings**'));
+    const images = lines.indexOf('#### What changed');
+    expect(picture).toBeGreaterThan(verdict);
+    expect(picture).toBeLessThan(images);
+  });
+
+  it('is a plain picture without a report URL, and a plain <img> without a dark capture', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2),
+      version: '0.6.0',
+      imageBase: base,
+      preview: { light: 'images/preview.png' },
+    });
+    expect(doc.markdown).toContain(`<picture><img src="${base}/images/preview.png"`);
+    expect(doc.markdown).not.toContain('<a href');
+    expect(doc.markdown).not.toContain('prefers-color-scheme');
+  });
+
+  it('is not rendered without an image base, like every other image (D31)', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2),
+      version: '0.6.0',
+      reportUrl: 'https://example.test/report.html',
+      preview: { light: 'images/preview.png', dark: 'images/preview-dark.png' },
+    });
+    expect(doc.markdown).not.toContain('preview.png');
+    expect(doc.markdown).not.toContain('<picture>');
+  });
+});

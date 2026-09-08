@@ -78,3 +78,15 @@ export {
 export type { ResolveReviewOutcome, ReviewCredentials } from './review-provider.js';
 
 export { resolveAppScript } from './app-script.js';
+
+export { PREVIEW_FILES, PREVIEW_VIEWPORT, capturePreview } from './preview.js';
+export {
+  DEFAULT_MAX_CHANGES,
+  PREVIEW_CARD_WIDTH,
+  PREVIEW_PAGE,
+  changeKind,
+  rankChanges,
+  renderPreviewCard,
+} from './preview-card.js';
+export type { PreviewCardInput } from './preview-card.js';
+export type { PreviewReport, PreviewRequest, PreviewScheme } from './preview.js';

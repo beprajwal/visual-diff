@@ -546,6 +546,7 @@ runs:
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         IMAGES: ${{ inputs.images }}
         HTML: ${{ inputs.html }}
+        PUBLISH_BRANCH: ${{ inputs.publish-branch }}
         CLI: ${{ inputs.cli }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         # The federated bearer minted above (D43); empty when no rule was named or a key was.
@@ -585,10 +586,15 @@ runs:
 
           # `--html` is only passed when it deviates from the default, so a user-pinned `cli:` older
           # than the flag keeps working until they opt in.
+          # The picture of the report (D51) is taken only when there is somewhere to publish it: without
+          # `publish-branch` the comment cannot show an image at all (D31), and a Chromium launch for
+          # a file nobody will see is a minute of the job. Same courtesy to an older pinned `cli:`.
+          preview=""
+          if [ -n "$PUBLISH_BRANCH" ]; then preview="--preview"; fi
           if [ "${HTML:-linked}" = "linked" ]; then
-            $cli export "$flow" --images "$IMAGES" --out "$BUNDLE_ROOT/$flow"
+            $cli export "$flow" --images "$IMAGES" --out "$BUNDLE_ROOT/$flow" $preview
           else
-            $cli export "$flow" --images "$IMAGES" --html "$HTML" --out "$BUNDLE_ROOT/$flow"
+            $cli export "$flow" --images "$IMAGES" --html "$HTML" --out "$BUNDLE_ROOT/$flow" $preview
           fi
         done
         echo "reviewed=$reviewed" >> "$GITHUB_OUTPUT"
@@ -725,7 +731,9 @@ runs:
         for flow in $FLOWS; do
           args=(comment "$flow" --json --fail-on "$FAIL_ON" --artifact-name "$ARTIFACT_NAME"
                 --out "$BUNDLE_ROOT/$flow/comment.md")
-          if [ -n "$IMAGE_BASE" ]; then args+=(--image-base "$IMAGE_BASE/$flow"); fi
+          # The picture of the report (D51) rides with the step images: same publish target, same
+          # rule — no image base, no pictures. `--bundle` is where `vdiff comment` looks for it.
+          if [ -n "$IMAGE_BASE" ]; then args+=(--image-base "$IMAGE_BASE/$flow" --bundle "$BUNDLE_ROOT/$flow"); fi
           if [ -n "$ARTIFACT_URL" ]; then args+=(--artifact-url "$ARTIFACT_URL"); fi
           # The hosted page (D40): the comment's call to action, rendered with the verdict.
           if [ -n "$REPORT_BASE" ]; then

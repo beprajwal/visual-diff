@@ -758,6 +758,9 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
     // test. `exportBundle` writes to whatever directory the test names, which is a temp dir.
     renderComment: async (input) => renderComment(input),
     exportBundle: async (request) => exportBundle(request),
+    // Photographing the page needs a browser, which a command test must not launch; the fake
+    // reports the two files without writing them. A test that wants the failure path overrides it.
+    capturePreview: async () => ({ files: ['images/preview.png', 'images/preview-dark.png'] }),
     // The one port that would open a socket is faked outright: a command test must never reach a
     // model API. The default answers with a canned review shaped by the request it received.
     requestReview: async (request: ReviewRequest): Promise<ReviewResponse> => ({
