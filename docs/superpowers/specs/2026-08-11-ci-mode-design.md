@@ -464,3 +464,13 @@ and the mint step failed the job before the diff, the export and the comment ran
 paragraph a credential buys; the evidence and the comment are what the job promises. So the mint
 step now warns, names the subject to check, and leaves the token empty; the review is skipped and
 the numbers-only comment goes out. Same posture as a failed `vdiff review`.
+
+**D49 — The comment is signed by a Visual Diff GitHub App when one is given.**
+The comment carried the mark and the name in its heading, but its author was whatever identity the
+token had — github-actions, or a person when the workflow was run with a personal token — and a
+reader scanning a pull request with four bots on it reads the avatar column first. GitHub attaches a
+name and an avatar to exactly one kind of automation identity: an App. So the action takes `app-id`
+and `app-private-key`, mints an installation token scoped to the repository
+(`actions/create-github-app-token`), and the two steps that talk to GitHub prefer it over
+`github-token`. Nothing is minted unless an app is named, and only in `pr` mode. The heading grew
+with it: a 32px mark on an h2 and the product name, with the flow and the pair on the line below.

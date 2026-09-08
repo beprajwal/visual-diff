@@ -38,7 +38,7 @@ export const DEFAULT_MAX_IMAGES = 4;
  */
 export const LOGO_URL =
   'https://raw.githubusercontent.com/beprajwal/visual-diff/main/assets/logo-128.png';
-export const PRODUCT_NAME = 'visual-diff';
+export const PRODUCT_NAME = 'Visual Diff';
 
 export interface CommentInput {
   result: DiffResult;
@@ -164,11 +164,13 @@ function verdictLines(input: CommentInput): string[] {
 
   // The mark and the name, so a reader scanning a pull request with four bots on it knows whose
   // comment this is before reading a number. Inline HTML is the only way to put an image in a
-  // GitHub heading; the alt text is empty because the name follows it.
-  lines.push(
-    `### <img src="${LOGO_URL}" width="22" alt="" align="absmiddle"> ${PRODUCT_NAME} — ` +
-      `\`${result.flow}\` \`${pair}\``,
-  );
+  // GitHub heading; the alt text is empty because the name follows it. The comment's author is
+  // whatever identity the token carries (github-actions, or a Visual Diff GitHub App when the
+  // action is given one — D49), so the heading is the one place the product is always named, and
+  // it is sized like a title: a 32px mark on an h2, with the flow and the pair on their own line.
+  lines.push(`## <img src="${LOGO_URL}" width="32" alt="" align="absmiddle"> ${PRODUCT_NAME}`);
+  lines.push('');
+  lines.push(`\`${result.flow}\` · \`${pair}\``);
   lines.push('');
 
   const headline =

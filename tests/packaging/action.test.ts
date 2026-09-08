@@ -105,6 +105,8 @@ describe('action.yml', () => {
         'fail-on',
         'flows',
         'github-token',
+        'app-id',
+        'app-private-key',
         'head-network',
         'html',
         'images',
@@ -423,5 +425,31 @@ describe('a denied token exchange never fails the job (D43)', () => {
     expect(script).not.toContain('core.setFailed(');
     expect(script).toContain("core.setOutput('token', '')");
     expect(script.match(/core\.warning\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('the comment can be signed by a GitHub App (D49)', () => {
+  const mintStep = () => action.runs.steps.find((s) => s.id === 'app');
+
+  it('mints an installation token only in pr mode and only when an app is named', () => {
+    const mint = mintStep();
+    expect(mint?.uses).toMatch(/^actions\/create-github-app-token@v\d+$/);
+    expect(mint?.if).toContain("inputs.mode == 'pr'");
+    expect(mint?.if).toContain("inputs.app-id != ''");
+    expect(mint?.with?.['app-id']).toBe('${{ inputs.app-id }}');
+    expect(mint?.with?.['private-key']).toBe('${{ inputs.app-private-key }}');
+  });
+
+  it('is preferred over github-token by both steps that talk to GitHub', () => {
+    const publish = action.runs.steps.find((s) => s.id === 'publish');
+    const comment = action.runs.steps.find((s) => s.name === 'Post the comment');
+    const expected = '${{ steps.app.outputs.token || inputs.github-token }}';
+    expect(publish?.env?.['GH_TOKEN']).toBe(expected);
+    expect(comment?.with?.['github-token']).toBe(expected);
+  });
+
+  it('defaults both app inputs to empty so nothing changes for a workflow that names no app', () => {
+    expect(action.inputs['app-id']?.default).toBe('');
+    expect(action.inputs['app-private-key']?.default).toBe('');
   });
 });

@@ -166,9 +166,23 @@ inputs:
     required: false
     default: '.'
   github-token:
-    description: 'Token used by the comment and publish steps only.'
+    description: >-
+      Token used by the comment and publish steps only. The comment's author is this token's
+      identity: github-actions by default. Ignored when `app-id` is set.
     required: false
     default: ${{ github.token }}
+  app-id:
+    description: >-
+      Id of a GitHub App to comment as (D49). Create one named "Visual Diff" in the organization,
+      give it the logo, grant it pull requests: write (and contents: write when `publish-branch` is
+      set), install it on the repository, and the comment carries the app's name and avatar instead
+      of github-actions. Requires `app-private-key`.
+    required: false
+    default: ''
+  app-private-key:
+    description: 'Private key of the GitHub App named by `app-id`. Pass it from a secret.'
+    required: false
+    default: ''
 
 outputs:
   findings:
@@ -584,6 +598,18 @@ runs:
     # Only when a branch was nominated. Pushing images into someone's repository on every pull request
     # is not a default anybody should get by surprise, so the artifact is the default and this is the
     # opt-in that makes inline images possible at all.
+    # The comment is signed by whoever holds the token. A GitHub App gives the pull request a
+    # comment from "Visual Diff" with its mark, rather than one from github-actions or from the
+    # person whose token the workflow happened to use (D49). The installation token is minted
+    # here, scoped to this repository, and used by the two steps that talk to GitHub.
+    - name: Sign in as the Visual Diff app
+      id: app
+      if: inputs.mode == 'pr' && inputs.app-id != ''
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+
     - name: Publish diff images
       id: publish
       if: inputs.mode == 'pr' && inputs.publish-branch != ''
@@ -593,7 +619,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BRANCH: ${{ inputs.publish-branch }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ steps.app.outputs.token || inputs.github-token }}
         REPO: ${{ github.repository }}
         SERVER: ${{ github.server_url }}
         SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -749,7 +775,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
       with:
-        github-token: ${{ inputs.github-token }}
+        github-token: ${{ steps.app.outputs.token || inputs.github-token }}
         script: |
           const fs = require('node:fs');
           const path = require('node:path');

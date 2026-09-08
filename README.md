@@ -135,8 +135,25 @@ are yours — edit them, and a re-install preserves your edits and says so.
     publish-branch: ''           # set it to embed screenshots in the comment
     pages-url: ''                # Pages URL serving that branch: the comment links report.html as a page
     anthropic-api-key: ''        # or openai-api-key — a model writes the review the comment opens with
+    app-id: ''                   # with app-private-key: the comment is posted as your "Visual Diff" GitHub App
     cli: ''                      # e.g. `npx vdiff` to use the version pinned in package.json
 ```
+
+### The comment, signed
+
+The comment's author is whoever holds the token: github-actions by default. To have it come from
+**Visual Diff** with its mark, create a GitHub App of that name in your organisation (Settings →
+Developer settings → GitHub Apps), upload `assets/logo-128.png` as its logo, grant it *Pull
+requests: read and write* (and *Contents: read and write* if you set `publish-branch`), install it
+on the repository, generate a private key, and hand both to the action:
+
+```yaml
+    app-id: ${{ vars.VISUAL_DIFF_APP_ID }}
+    app-private-key: ${{ secrets.VISUAL_DIFF_APP_PRIVATE_KEY }}
+```
+
+The action mints a token scoped to the repository for the comment and publish steps and touches
+nothing else with it.
 
 ### A model reads the diff
 
