@@ -144,8 +144,8 @@ are yours — edit them, and a re-install preserves your edits and says so.
 The comment's author is whoever holds the token: github-actions by default. To have it come from
 **Visual Diff** with its mark, create a GitHub App of that name in your organisation (Settings →
 Developer settings → GitHub Apps), upload `assets/logo-128.png` as its logo, grant it *Pull
-requests: read and write* (and *Contents: read and write* if you set `publish-branch`), install it
-on the repository, generate a private key, and hand both to the action:
+requests: read and write* and nothing else, install it on the repository, generate a private key,
+and hand both to the action:
 
 ```yaml
     app-id: ${{ vars.VISUAL_DIFF_APP_ID }}
