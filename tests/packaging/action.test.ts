@@ -462,10 +462,11 @@ describe('publishing to a private repository (D50)', () => {
     expect(run).not.toMatch(/git clone[^\n]*"\$\{SERVER\}\/\$\{REPO\}\.git"/);
   });
 
-  it('serves the comment images from Pages when a Pages URL is given, raw otherwise', () => {
+  it('addresses the comment images through github.com, the one form a private repository renders', () => {
     const run = publishRun();
-    expect(run).toContain('echo "image_base=${PAGES_URL%/}/${prefix}"');
-    expect(run).toContain('echo "image_base=https://raw.githubusercontent.com/${REPO}/${BRANCH}/${prefix}"');
+    expect(run).toContain('echo "image_base=${SERVER}/${REPO}/raw/${BRANCH}/${prefix}"');
+    expect(run).not.toContain('image_base=${PAGES_URL');
+    expect(run).not.toContain('image_base=https://raw.githubusercontent.com');
   });
 });
 
