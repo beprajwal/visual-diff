@@ -246,29 +246,22 @@ describe('vdiff export', () => {
     const asked: string[] = [];
     const ctx = context(diffWith(1), dir);
     ctx.ports.capturePreview = async (request) => {
-      asked.push(request.outDir, request.page ?? 'report.html');
+      asked.push(request.outDir);
       return { files: ['images/preview.png', 'images/preview-dark.png'] };
     };
     const result = await exportCommand(ctx, { ...exportInvocation, out: 'bundle', preview: true });
-    expect(asked).toEqual([join(dir, 'bundle'), 'report.html']);
+    expect(asked).toEqual([join(dir, 'bundle')]);
     expect(result.data.preview).toEqual(['images/preview.png', 'images/preview-dark.png']);
+    // The card the picture is taken of was written first, into the bundle.
+    expect(result.data.files).toContain('preview.html');
+    const card = await readFile(join(dir, 'bundle', 'preview.html'), 'utf8');
+    expect(card).toContain('class="preview-card"');
 
-    // Nothing is photographed unless asked.
+    // Nothing is written or photographed unless asked.
     const quiet = await exportCommand(ctx, { ...exportInvocation, out: 'other' });
-    expect(asked).toHaveLength(2);
+    expect(asked).toHaveLength(1);
     expect(quiet.data.preview).toEqual([]);
-  });
-
-  it('photographs the self-contained page when the bundle was written inline', async () => {
-    const dir = await tempDir();
-    const ctx = context(diffWith(1), dir);
-    let page: string | undefined;
-    ctx.ports.capturePreview = async (request) => {
-      page = request.page;
-      return { files: [] };
-    };
-    await exportCommand(ctx, { ...exportInvocation, out: 'bundle', html: 'inline', preview: true });
-    expect(page).toBe('report.inline.html');
+    expect(quiet.data.files).not.toContain('preview.html');
   });
 
   it('exports without a picture, and says so, when no browser can be launched', async () => {

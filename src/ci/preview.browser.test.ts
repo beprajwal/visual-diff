@@ -12,6 +12,7 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { PREVIEW_PAGE } from './preview-card.js';
 import { PREVIEW_FILES, PREVIEW_VIEWPORT, capturePreview } from './preview.js';
 
 const require_ = createRequire(import.meta.url);
@@ -36,16 +37,17 @@ let out: string;
 
 beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), 'vdiff-preview-'));
-  // A stand-in for the exported page: the class the capture waits for, and a colour that follows
-  // the scheme, so the two captures can be told apart by their pixels.
+  // A stand-in for the card: the class the capture waits for, a colour that follows the scheme so
+  // the two captures can be told apart by their pixels, and more height than the viewport so the
+  // full-page capture is proven to be one.
   await writeFile(
-    join(out, 'report.html'),
-    `<!doctype html><meta charset="utf-8"><title>report</title>
+    join(out, PREVIEW_PAGE),
+    `<!doctype html><meta charset="utf-8"><title>card</title>
 <style>
-  body { margin: 0; background: #ffffff; }
+  body { margin: 0; height: 1400px; background: #ffffff; }
   @media (prefers-color-scheme: dark) { body { background: #000000; } }
 </style>
-<div class="filmstrip">pay-form</div>`,
+<body class="preview-card">pay-form</body>`,
   );
 });
 
@@ -54,14 +56,14 @@ afterAll(async () => {
 });
 
 describeIfBrowser('capturePreview', () => {
-  it('writes a light and a dark capture of the page at the preview viewport', async () => {
+  it('writes a light and a dark full-page capture of the card at its width', async () => {
     const report = await capturePreview({ outDir: out, timeoutMs: 5_000 });
     expect(report.files).toEqual([PREVIEW_FILES.light, PREVIEW_FILES.dark]);
 
     const light = await readFile(join(out, PREVIEW_FILES.light));
     const dark = await readFile(join(out, PREVIEW_FILES.dark));
-    expect(pngSize(light)).toEqual({ ...PREVIEW_VIEWPORT });
-    expect(pngSize(dark)).toEqual({ ...PREVIEW_VIEWPORT });
+    expect(pngSize(light)).toEqual({ width: PREVIEW_VIEWPORT.width, height: 1400 });
+    expect(pngSize(dark)).toEqual({ width: PREVIEW_VIEWPORT.width, height: 1400 });
     // Different schemes, different pictures.
     expect(light.equals(dark)).toBe(false);
   });

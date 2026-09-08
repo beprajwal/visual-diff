@@ -30,6 +30,7 @@ import {
   type ImageSelection,
   type ShotCell,
 } from './layout.js';
+import { PREVIEW_PAGE, renderPreviewCard } from './preview-card.js';
 import { renderReportPage } from './report-html.js';
 
 /** `summary.json` — the bundle's own header, for a consumer that will not parse a whole DiffResult. */
@@ -101,6 +102,12 @@ export interface ExportRequest {
   artifactUrl?: string;
   artifactName?: string;
   repro?: readonly string[];
+  /**
+   * Write `preview.html`, the card the comment's picture is taken of (D51): the changed cells,
+   * ranked, with base and head side by side. The capture itself is the command layer's job — it
+   * needs a browser, and this writer must not.
+   */
+  preview?: boolean;
 }
 
 export interface ExportReport {
@@ -275,6 +282,16 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
   const comment = renderComment(commentInput);
   await writeFile(path.join(outDir, BUNDLE_FILES.comment), comment.markdown, 'utf8');
   files.push(BUNDLE_FILES.comment);
+
+  if (request.preview === true) {
+    const available = new Set(Array.from(shotSources.values(), (source) => source.to));
+    await writeFile(
+      path.join(outDir, PREVIEW_PAGE),
+      renderPreviewCard({ result, cells: selected, available, version: request.version }),
+      'utf8',
+    );
+    files.push(PREVIEW_PAGE);
+  }
 
   // The review verbatim, like findings.json: a consumer reading the bundle gets the same object the
   // store holds, attribution included, rather than only the rendering of it (D39).

@@ -64,19 +64,17 @@ export async function exportCommand(
   // The stored review travels with the bundle (D39): as `review.json`, inside `comment.md`, and in
   // the page's snapshot — so the zip a reviewer downloads says the same thing the comment did.
   if (review !== null) request.review = review;
+  if (invocation.preview) request.preview = true;
 
   const report = await ctx.ports.exportBundle(request);
 
-  // The picture for the comment (D51), taken of the page just written. A machine without Chromium
-  // still has its bundle; it just has no picture, and the warning says which.
+  // The picture for the comment (D51), taken of the card the writer just put in the bundle. A
+  // machine without Chromium still has its bundle; it just has no picture, and the warning says which.
   const preview: string[] = [];
   const previewWarnings: string[] = [];
   if (invocation.preview) {
     try {
-      const captured = await ctx.ports.capturePreview({
-        outDir: report.outDir,
-        ...(invocation.html === 'inline' ? { page: 'report.inline.html' } : {}),
-      });
+      const captured = await ctx.ports.capturePreview({ outDir: report.outDir });
       preview.push(...captured.files);
     } catch (error) {
       previewWarnings.push(

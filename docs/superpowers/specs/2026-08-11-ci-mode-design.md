@@ -485,16 +485,20 @@ come from the Pages site, which serves the same branch under the visibility the 
 they set the URL (the organisation on Enterprise Cloud). Without Pages the raw URLs stay, which is
 right for a public repository and the documented limit for a private one.
 
-**D51 — The comment opens with a picture of the report.**
+**D51 — The comment opens with a picture of the changes.**
 A comment that opens with a table is skimmed; one that opens with a screenshot is read — the
-recap tools that get read on pull requests all lead with one picture of the thing they made, in
-the reader's colour scheme, the whole picture a link. So `vdiff export --preview` photographs the
-bundle's own `report.html` from the file it just wrote, light and dark, at 1280×800 (the
-filmstrip beside the focus pane, the verdict, the first changed step — not the full page, which
-GitHub would scale to a ribbon), into `images/preview.png` and `images/preview-dark.png`.
-`vdiff comment --bundle <dir>` looks for those two files and, under the same `--image-base` rule
-as every other picture (D31), renders `<a href=report><picture><source dark><img light></picture></a>`
-right under the verdict, before the review and the step images. The bundle's own page is what is
-photographed, not a purpose-built card, so the click lands on what the picture showed. A machine
-without Chromium exports without a picture and says so; the action asks for one only when
-`publish-branch` gives it somewhere to be seen.
+recap tools that get read on pull requests all lead with one picture, in the reader's colour
+scheme, the whole picture a link. The first cut photographed the report page itself; the reviewer
+who asked for the picture did not want the tool in it — no filmstrip, no key bindings — but the
+changes: a numbered list, each with base and head side by side. So `vdiff export --preview` writes
+`preview.html`, a self-contained card (inline CSS, no script, images addressed relative to the
+bundle) listing the changed cells ranked additions and removals first, then by worst finding, then
+by pixels moved, capped at six with "and N more"; each entry names the step, the viewport, the kind
+of change, how much moved and the first finding, and shows the base and head captures beside each
+other — an added step's base pane says it is new, a removed step's head pane says it is gone. The
+command then photographs the card from the file, light and dark, full-page at 1200px wide, into
+`images/preview.png` and `images/preview-dark.png`. `vdiff comment --bundle <dir>` looks for those
+two files and, under the same `--image-base` rule as every other picture (D31), renders
+`<a href=report><picture><source dark><img light></picture></a>` right under the verdict, before
+the review and the step images. A machine without Chromium exports without a picture and says so;
+the action asks for one only when `publish-branch` gives it somewhere to be seen.
