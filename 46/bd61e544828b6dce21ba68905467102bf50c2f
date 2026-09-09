@@ -1,0 +1,95 @@
+src/cli/commands/pair.ts
+  s_be3e4dc401a6ca::t_69227b45046953 21,41-44,83-93,101-102,106-126,141,143-146
+src/diff/viewportDiff.test.ts
+  s_be3e4dc401a6ca::t_fee840514d6533 159-160,162-165
+  s_be3e4dc401a6ca::t_737d39c9d16d4c 6-9,133-136,138,142-154,205,208-210
+  s_be3e4dc401a6ca::t_be78922c3d3a16 367-422
+src/diff/engine.test.ts
+  s_be3e4dc401a6ca::t_a78f2c17e3a031 10
+  s_be3e4dc401a6ca::t_2258965919a890 513-612
+skills/visual-diff/SKILL.md
+  s_be3e4dc401a6ca::t_286265478d9e53 79-86
+src/diff/engine.ts
+  s_be3e4dc401a6ca::t_6bb6ec129e120b 78-79,157,167-184,228-231,270-276,402-404,406-410
+src/cli/args.ts
+  s_be3e4dc401a6ca::t_31544f192af322 141-148,174-181,216-223,246-253
+  s_be3e4dc401a6ca::t_78d17d9258451c 394-395,412-413,437-438,458-459
+  s_be3e4dc401a6ca::t_53505739ec8b99 387-388,804-809,811-816
+src/store/config.ts
+  s_be3e4dc401a6ca::t_0c69e0debf1b11 15-16,31-34,95-99,241-242
+src/diff/e2e-noise.ts
+  s_be3e4dc401a6ca::t_5068fbb51daa5b 261-262
+docs/superpowers/specs/2026-08-08-visual-diff-design.md
+  s_be3e4dc401a6ca::t_1f21f90636618f 125-155,293-294,446-447
+  s_be3e4dc401a6ca::t_d646f420f7552d 448
+src/report/server/diff-service.ts
+  s_be3e4dc401a6ca::t_5068fbb51daa5b 71-74
+src/ci/comment.ts
+  s_be3e4dc401a6ca::t_0e491face28e44 197-206
+src/store/config.test.ts
+  s_be3e4dc401a6ca::t_c47e1635b37169 99-100,111-128
+  s_be3e4dc401a6ca::t_bcd07adcb3242d 76-78
+  s_be3e4dc401a6ca::t_dece5eb3b928d9 129
+src/cli/commands/pair.test.ts
+  s_be3e4dc401a6ca::t_9a4daaa40d557f 1-65
+src/diff/viewportDiff.ts
+  s_be3e4dc401a6ca::t_26fa32aeb40ffc 8-11,245,247,263-293,314-333
+  s_be3e4dc401a6ca::t_051f171d86baad 334
+src/diff/cache.test.ts
+  s_be3e4dc401a6ca::t_323ddd86b33920 101-121
+src/cli/testing.ts
+  s_be3e4dc401a6ca::t_d8baf422e3890b 222-223
+src/types.test.ts
+  s_be3e4dc401a6ca::t_bcd07adcb3242d 207-209
+src/report/ui/derive.ts
+  s_be3e4dc401a6ca::t_3b57cf26b1657a 191-200,213,250-252
+  s_be3e4dc401a6ca::t_5068fbb51daa5b 774-782
+src/cli/commands/comment.ts
+  s_be3e4dc401a6ca::t_87d4d19befe9e3 23,29,104-110
+  s_be3e4dc401a6ca::t_4859e3964fffd9 111-112
+src/report/server/variant-api.test.ts
+  s_be3e4dc401a6ca::t_1ac389a433e2e2 290
+src/ci/comment.test.ts
+  s_be3e4dc401a6ca::t_d78792ca537bb1 192-205
+src/types.ts
+  s_be3e4dc401a6ca::t_b749f01da3c171 362-369,970-984,1061-1067,1416,1435-1437
+README.md
+  s_be3e4dc401a6ca::t_48372cada276a4 318-344
+src/report/ui/derive.test.ts
+  s_be3e4dc401a6ca::t_bcd07adcb3242d 259,269-270,272-293
+  s_be3e4dc401a6ca::t_4b5e45be7f0d49 294,297-304
+  s_be3e4dc401a6ca::t_3c95f024a5d4c7 295-296
+src/cli/args.test.ts
+  s_be3e4dc401a6ca::t_af920fba087e62 60-81
+src/cli/commands/comment.test.ts
+  s_be3e4dc401a6ca::t_d68bce035f3ae5 179
+  s_be3e4dc401a6ca::t_6ec1016cc50b8d 21-27
+  s_be3e4dc401a6ca::t_e02cf564afae09 153-154,170,172-176,180-181
+  s_be3e4dc401a6ca::t_c4530c74445d74 152,155-169,171,177-178
+tests/integration/report-api.test.ts
+  s_be3e4dc401a6ca::t_1ac389a433e2e2 48
+src/diff/cache.ts
+  s_be3e4dc401a6ca::t_18229870adb9b0 16-19,82-85,134-138
+src/cli/main.test.ts
+  s_be3e4dc401a6ca::t_9fcc8c258af51b 17
+  s_be3e4dc401a6ca::t_0a310d0dd5cf26 541-617
+src/cli/commands/diff.ts
+  s_be3e4dc401a6ca::t_3d97499043c5cd 31,64-70,82-87
+  s_be3e4dc401a6ca::t_4215d3ae70d517 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "46bd61e544828b6dce21ba68905467102bf50c2f",
+  "prompts": {},
+  "sessions": {
+    "s_be3e4dc401a6ca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6c68d0f-f2fa-4beb-99da-cee51b12e21a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
