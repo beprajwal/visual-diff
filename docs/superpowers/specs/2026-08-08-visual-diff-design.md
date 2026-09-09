@@ -122,6 +122,37 @@ Rejected: attach-only (cannot serve an old SHA, killing D3) and spawn with a liv
 diff polluted by current backend data). HAR freezes the network so diffs isolate code change. This
 layer is also the foundation of subsystem 2, so slice 1 pays for slice 2.
 
+**D53 — No pixel change, no findings.**
+A `(step, viewport)` pair whose two screenshots are identical reports nothing, and `stepsChanged`
+counts pixel movement rather than findings. Two paths could otherwise put a finding in front of a
+reader with no pixels behind it: the pixel-free a11y pass, and the page-size finding. A report that
+says "3 findings" beside two frames the reader can see are the same is a report that teaches them
+to distrust the count — the same cry-wolf failure §8's noise control exists to prevent, one layer
+up. A dimension change counts as pixel change: the image is a different size.
+
+Step-scoped findings — a new console error, a new request, a step that failed — are *not*
+suppressed by this rule. They are not claims about pixels, and losing a new console error because
+the frame looked the same would be the noise control eating the signal. What changes is the verdict
+attached to them: the step reads `identical` in the filmstrip and is not counted as changed, with
+the finding still listed and still counted.
+
+**D54 — Findings and warnings can be turned off; the pixel diff cannot.**
+`diff.findings: false` and `diff.warnings: false` in config.yaml, or `--no-findings` /
+`--no-warnings` on any command that resolves a pair, suppress the two report channels at the point
+they are emitted. The pixel diff, the regions, the overlays and the crops are computed and stored
+either way — a project that wants the pictures and not the list gets the pictures, and turning the
+list off is not a way to make the tool cheaper. Booleans, not levels: "which findings" is what
+`ignore`, `minRegionArea` and severity ordering are for, and a second, coarser filter over the same
+question is how two settings come to disagree about what the user asked for.
+
+The flag turns a channel off; there is no flag that turns one back on. A project that wrote
+`diff.findings: false` decided that for every invocation.
+
+Suppression is recorded in `findings.json` (`emit`), because an empty findings list has two causes
+that must never be confused: nothing was found, or nothing was looked for. The stored diff is not
+reused across that difference, `vdiff diff` says which channel is off, and the pull-request comment
+says so where it would otherwise print "No findings."
+
 ## 5. Architecture
 
 One npm package, `@beprajwal/visual-diff`, one binary, `vdiff`, with hard internal module seams
@@ -259,6 +290,8 @@ diff:
   maxRegions: 40
   antialiasTolerance: 0.1
   ignore: ["[data-test=session-id]"]
+  findings: true          # D54 — false emits the pixel diff and no findings
+  warnings: true          # D54 — false stores an empty warnings list
 network:
   redact: ["x-api-key"]
 retention:
@@ -409,6 +442,9 @@ orders the list and colors badges — it never hides anything.**
 A first-class feature, not a config afterthought: minimum region area, antialias tolerance, flow
 `mask`, and a config `ignore` selector list. A tool that cries wolf on every run gets turned off
 within a week.
+
+Two switches sit in front of all of it: a pair that rendered identically produces no findings at
+all (D53), and either report channel can be turned off outright (D54).
 
 ### Prose summaries belong to the agent
 

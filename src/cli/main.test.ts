@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   EXIT,
   type CliEnvelope,
+  type DiffEngineOptions,
   type DiffResult,
   type Finding,
   type StepDiff,
@@ -535,6 +536,83 @@ describe('vdiff diff', () => {
 
     await runCli(['diff', 'checkout', '--json'], h);
     expect(computed).toBe(1);
+  });
+
+  it('passes --no-findings and --no-warnings to the engine and says so (D54)', async () => {
+    const seen: DiffEngineOptions[] = [];
+    const ports = createTestPorts({
+      computeDiff: async (_base, _head, options) => {
+        seen.push(options);
+        return fakeDiffResult({ emit: { findings: false, warnings: false } });
+      },
+    });
+    const h = harness({ ports });
+
+    expect(
+      await runCli(['diff', 'checkout', '0003', '0007', '--no-findings', '--no-warnings'], h),
+    ).toBe(EXIT.OK);
+    expect(seen[0]?.emitFindings).toBe(false);
+    expect(seen[0]?.emitWarnings).toBe(false);
+    // "0 findings" without this line reads as "nothing changed".
+    expect(h.writer.stdout()).toContain('findings and warnings turned off for this diff');
+  });
+
+  it('emits both channels when neither switch is given', async () => {
+    const seen: DiffEngineOptions[] = [];
+    const ports = createTestPorts({
+      computeDiff: async (_base, _head, options) => {
+        seen.push(options);
+        return diffWithFindings();
+      },
+    });
+    const h = harness({ ports });
+
+    await runCli(['diff', 'checkout', '0003', '0007'], h);
+    expect(seen[0]?.emitFindings).toBe(true);
+    expect(seen[0]?.emitWarnings).toBe(true);
+    expect(h.writer.stdout()).not.toContain('turned off for this diff');
+  });
+
+  it('does not reuse a diff computed with findings off for a caller that wants findings', async () => {
+    const suppressed = fakeDiffResult({ emit: { findings: false, warnings: true } });
+    const store = createTestStore({
+      runs: { checkout: [fakeRunSummary({ runId: '0003' }), fakeRunSummary({ runId: '0007' })] },
+      diffs: { 'checkout/0003..0007': suppressed },
+    });
+    let computed = 0;
+    const ports = createTestPorts({
+      openStore: async () => store,
+      computeDiff: async () => {
+        computed += 1;
+        return diffWithFindings();
+      },
+    });
+    const h = harness({ ports });
+
+    // Serving it would answer "no findings" for a pair nobody has looked at.
+    await runCli(['diff', 'checkout', '--json'], h);
+    expect(computed).toBe(1);
+  });
+
+  it('reuses a diff computed with findings off when findings are off again', async () => {
+    const suppressed = fakeDiffResult({ emit: { findings: false, warnings: true } });
+    const store = createTestStore({
+      runs: { checkout: [fakeRunSummary({ runId: '0003' }), fakeRunSummary({ runId: '0007' })] },
+      diffs: { 'checkout/0003..0007': suppressed },
+    });
+    let computed = 0;
+    const ports = createTestPorts({
+      openStore: async () => store,
+      computeDiff: async () => {
+        computed += 1;
+        return diffWithFindings();
+      },
+    });
+    const h = harness({ ports });
+
+    expect(await runCli(['diff', 'checkout', '--no-findings', '--json'], h)).toBe(EXIT.OK);
+    expect(computed).toBe(0);
+    expect(envelope<{ cached: boolean }>(h).data?.cached).toBe(true);
   });
 
   it('prints the finding table in human mode', async () => {

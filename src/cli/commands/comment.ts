@@ -20,13 +20,13 @@ import * as path from 'node:path';
 
 import { EXIT } from '../../types.js';
 import type { Invocation } from '../args.js';
-import { evaluateGate } from '../ci.js';
+import { evaluateGate, GATE_NONE } from '../ci.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { PREVIEW_FILES, type CommentInput } from '../../ci/index.js';
 import { percent } from '../output.js';
 import { composePairNotices, pairLabels } from '../pair-notices.js';
 import type { CommentData } from '../shapes.js';
-import { reproCommands, resolveDiff } from './pair.js';
+import { emitChannelsOf, reproCommands, resolveDiff } from './pair.js';
 
 type CommentInvocation = Extract<Invocation, { kind: 'comment' }>;
 
@@ -99,6 +99,15 @@ export async function comment(
       `no --image-base given, so this comment shows no screenshots (max pixel change ` +
         `${percent(result.summary.maxPixelChangedRatio)}); publish the bundle's images and pass ` +
         'their URL prefix to embed them',
+    );
+  }
+  // A gate that counts findings, on a diff that emits none, is a green check that means nothing
+  // (D54). Said on stderr even with `diff.warnings: false`: it is a fact about this invocation's
+  // configuration, not one of the diff's own warnings.
+  if (invocation.failOn !== GATE_NONE && !emitChannelsOf(result).findings) {
+    warnings.push(
+      `--fail-on ${invocation.failOn} cannot trip: findings are off for this diff, so the gate ` +
+        'has nothing to count',
     );
   }
   if (gate.tripped) warnings.push(`gate failed: ${gate.reason}`);

@@ -98,6 +98,27 @@ describe('diffCacheKey', () => {
     expect(diffCacheKey(BASE, HEAD, a)).toBe(diffCacheKey(BASE, HEAD, b));
   });
 
+  it('keys a diff computed with a channel off apart from one computed with both on', () => {
+    const both = options();
+    expect(diffCacheKey(BASE, HEAD, { ...both, emitFindings: false })).not.toBe(
+      diffCacheKey(BASE, HEAD, both),
+    );
+    expect(diffCacheKey(BASE, HEAD, { ...both, emitWarnings: false })).not.toBe(
+      diffCacheKey(BASE, HEAD, both),
+    );
+    expect(diffCacheKey(BASE, HEAD, { ...both, emitFindings: false })).not.toBe(
+      diffCacheKey(BASE, HEAD, { ...both, emitWarnings: false }),
+    );
+  });
+
+  it('keys both channels on exactly as it did before the switches existed', () => {
+    // Adding an off switch nobody uses must not invalidate a single stored diff (D54).
+    const both = options();
+    expect(diffCacheKey(BASE, HEAD, { ...both, emitFindings: true, emitWarnings: true })).toBe(
+      diffCacheKey(BASE, HEAD, both),
+    );
+  });
+
   it('ignores `force`, which selects whether the cache is consulted, not what is computed', () => {
     const withForce = { ...options(), force: true };
     expect(diffCacheKey(BASE, HEAD, withForce)).toBe(diffCacheKey(BASE, HEAD, options()));

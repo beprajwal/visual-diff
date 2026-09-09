@@ -13,6 +13,10 @@
  * would otherwise return the pre-change findings forever, under an unchanged engine version. The key
  * therefore covers everything the engine consumes that can move its output.
  *
+ * The two emit switches (D54) go in on the same argument, and only when they are off: a diff
+ * computed with `diff.findings: false` carries no findings, and serving that to a caller that asked
+ * for findings would report "no findings" for a pair nobody ever looked at.
+ *
  * The bias is deliberate and one-directional: a false miss costs one recompute, a false hit ships
  * wrong findings. So the configuration is fingerprinted *verbatim* — `ignore` is not sorted or
  * de-duplicated, because its order and multiplicity are visible in the emitted warnings — and a
@@ -75,6 +79,10 @@ export interface DiffCacheOptions {
   maxRegions: number;
   antialiasTolerance: number;
   deviceScaleFactor: number;
+  /** Whether findings were emitted at all (D54). Absent means yes. */
+  emitFindings?: boolean;
+  /** Whether warnings were emitted (D54). Absent means yes. */
+  emitWarnings?: boolean;
 }
 
 /**
@@ -123,6 +131,11 @@ export function diffConfigFingerprint(
   const canonical = JSON.stringify({
     antialiasTolerance: options.antialiasTolerance,
     deviceScaleFactor: options.deviceScaleFactor,
+    // Written only when a channel is *off* (D54). A diff computed with both channels on — every
+    // diff before the switches existed, and every diff of a project that never touches them — must
+    // key exactly as it did, or adding an off switch nobody uses would invalidate every cache.
+    ...(options.emitFindings === false ? { emitFindings: false } : {}),
+    ...(options.emitWarnings === false ? { emitWarnings: false } : {}),
     ignore: [...options.ignore],
     maxRegions: options.maxRegions,
     minRegionArea: options.minRegionArea,

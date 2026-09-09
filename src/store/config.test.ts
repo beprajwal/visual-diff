@@ -73,6 +73,9 @@ describe('parseConfigSource', () => {
       maxRegions: 40,
       antialiasTolerance: 0.1,
       ignore: ['[data-test=session-id]'],
+      // Both report channels default on; the §6 example does not name them (D54).
+      findings: true,
+      warnings: true,
     });
     expect(result.value.network).toEqual({ redact: ['x-api-key'], scrub: true });
     // The §6 example names only `keepRuns`; the variant and e2e buckets default beside it
@@ -93,6 +96,8 @@ describe('parseConfigSource', () => {
     expect(result.value.diff.maxRegions).toBe(DEFAULTS.diff.maxRegions);
     expect(result.value.diff.antialiasTolerance).toBe(DEFAULTS.diff.antialiasTolerance);
     expect(result.value.diff.ignore).toEqual([]);
+    expect(result.value.diff.findings).toBe(true);
+    expect(result.value.diff.warnings).toBe(true);
     expect(result.value.retention.keepRuns).toBe(DEFAULTS.retention.keepRuns);
     expect(result.value.retention.keepRuns).toBe(20);
     expect(keepVariantRunsOf(result.value.retention)).toBe(DEFAULT_KEEP_VARIANT_RUNS);
@@ -101,6 +106,25 @@ describe('parseConfigSource', () => {
     expect(result.value.app.readyTimeoutMs).toBe(DEFAULTS.readyTimeoutMs);
     expect(result.value.app.install).toBeUndefined();
     expect(result.value.baseUrl).toBeUndefined();
+  });
+
+  it('reads the two report channels off the file (D54)', () => {
+    const result = parse(
+      [MINIMAL, 'diff:', '  findings: false', '  warnings: false'].join('\n'),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.diff.findings).toBe(false);
+    expect(result.value.diff.warnings).toBe(false);
+    // The noise controls are untouched by them: what is emitted and what is compared are two
+    // different questions.
+    expect(result.value.diff.minRegionArea).toBe(DEFAULTS.diff.minRegionArea);
+  });
+
+  it('refuses a report channel that is not a boolean', () => {
+    const result = parse([MINIMAL, 'diff:', '  findings: sometimes'].join('\n'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('diff.findings');
   });
 
   it('does not let the file disable HAR scrubbing — only --no-scrub can (spec §6)', () => {

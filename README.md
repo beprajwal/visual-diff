@@ -315,6 +315,33 @@ exist on every machine.
 Step `id`s are stable and load-bearing: diffs align runs by `id`, never by index. `.visual-diff/flows/`
 and `.visual-diff/config.yaml` must be committed; runs, diffs, cache and feedback are ignored.
 
+### Turning the noise down
+
+Findings are claims about a change you can be shown, so a step whose two screenshots are identical
+reports none: the pixel-free accessibility pass and the page-size check are gated on the pixels
+moving, and `steps changed` counts pixel movement rather than findings. A new console error on an
+otherwise identical step is still reported — it just does not make the frame read as changed.
+
+Both report channels can be turned off, per project or per invocation. The pixel diff, the regions
+and the overlays are computed either way, so you keep the pictures:
+
+```yaml
+# .visual-diff/config.yaml
+diff:
+  minRegionArea: 64                     # regions smaller than this are dropped
+  antialiasTolerance: 0.1
+  ignore: ["[data-test=session-id]"]    # no region, no finding, no page-size claim
+  findings: false                       # emit the pixel diff and no findings at all
+  warnings: false                       # store an empty warnings list
+```
+
+```sh
+vdiff diff checkout --no-findings --no-warnings   # the same switches for one invocation
+```
+
+`vdiff diff` says which channel is off, and so does the pull-request comment — an empty findings
+list means "nothing was found" or "nothing was looked for", and those must not read alike.
+
 ### Flows behind a login
 
 Every replay runs in a clean browser context. Two ways to get past a login screen, neither of which

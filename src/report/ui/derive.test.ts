@@ -256,7 +256,7 @@ describe('buildFilmstrip', () => {
     expect(cells[3]?.thumbSide).toBe('head');
   });
 
-  it('treats a matched step with zero pixel change but a console finding as changed', () => {
+  it('reads a matched step with zero pixel change and a console finding as identical', () => {
     const withConsole = makeDiff({
       flowDiff: [entry('cart', 0, 0, 'matched')],
       steps: [
@@ -266,9 +266,42 @@ describe('buildFilmstrip', () => {
         }),
       ],
     });
+    // The badge answers "did this render differently?" and the answer is no (D53). The console
+    // finding is still counted on the cell and still shown in the panel.
     const cell = buildFilmstrip(withConsole, '1280x800')[0];
-    expect(cell?.variant).toBe('changed');
-    expect(cell?.badge).toBe('1');
+    expect(cell?.variant).toBe('identical');
+    expect(cell?.badge).toBe('=');
+    expect(cell?.findingsCount).toBe(1);
+    expect(cell?.topSeverity).toBe('high');
+  });
+
+  it('reads a matched step whose dimensions changed as changed, at zero pixel ratio', () => {
+    const resized = makeDiff({
+      flowDiff: [entry('cart', 0, 0, 'matched')],
+      steps: [
+        makeStepDiff('cart', 'matched', {
+          viewports: {
+            '1280x800': makeViewportDiff('1280x800', {
+              pixelChangedRatio: 0,
+              dimensionsChanged: true,
+            }),
+          },
+          findings: [],
+        }),
+      ],
+    });
+    expect(buildFilmstrip(resized, '1280x800')[0]?.variant).toBe('changed');
+  });
+});
+
+describe('degradedLayerNotes and the emit switches', () => {
+  it('says the findings channel is off, so an empty rail is not read as a clean review', () => {
+    const off = makeDiff({ emit: { findings: false, warnings: true } });
+    expect(degradedLayerNotes(off)[0]).toContain('turned off for this diff');
+  });
+
+  it('says nothing for a diff computed with both channels on', () => {
+    expect(degradedLayerNotes(makeDiff({}))).toEqual([]);
   });
 });
 

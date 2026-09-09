@@ -204,7 +204,9 @@ describe('defaults (spec §6, §7, §12)', () => {
   });
 
   it('exposes a diff engine version usable as part of the cache key', () => {
-    expect(DIFF_ENGINE_VERSION).toBe('1');
+    // '2': the pixel gate (D53) changed what the engine emits, so every diff computed under '1'
+    // has to stop being reused.
+    expect(DIFF_ENGINE_VERSION).toBe('2');
     expect(typeof DIFF_ENGINE_VERSION).toBe('string');
   });
 });

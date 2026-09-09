@@ -188,7 +188,16 @@ export function topSeverity(findings: readonly Finding[]): Severity | null {
   return best;
 }
 
-function variantFor(status: FlowDiffStatus, findingsCount: number, ratio: number): CellVariant {
+/**
+ * The cell's variant.
+ *
+ * A matched step is `identical` when its pixels are: the badge answers "did this render
+ * differently?", and a step with a new console error and two indistinguishable frames renders
+ * identically (D53). The finding is still in the panel and still counted on the cell — it is simply
+ * not what makes the frame read as changed. Every other status has its own variant already, so a
+ * structural finding never loses its badge to this rule.
+ */
+function variantFor(status: FlowDiffStatus, pixelMoved: boolean): CellVariant {
   switch (status) {
     case 'failed':
       return 'failed';
@@ -201,7 +210,7 @@ function variantFor(status: FlowDiffStatus, findingsCount: number, ratio: number
     case 'spec-changed':
       return 'spec-changed';
     case 'matched':
-      return findingsCount === 0 && ratio === 0 ? 'identical' : 'changed';
+      return pixelMoved ? 'changed' : 'identical';
     default:
       return 'changed';
   }
@@ -238,7 +247,9 @@ export function buildFilmstrip(diff: DiffResult, viewport: ViewportId | null): F
     const vd = viewportDiffOf(step, viewport);
     const ratio = vd ? vd.pixelChangedRatio : 0;
     const status = step?.status ?? entry.status;
-    const variant = variantFor(status, findings.length, ratio);
+    // A dimension change counts: the image is a different size, which is a visual change even when
+    // every pixel of the common area matched.
+    const variant = variantFor(status, ratio > 0 || (vd?.dimensionsChanged ?? false));
     return {
       id: entry.id,
       status,
@@ -760,6 +771,15 @@ export function unavailableKindNote(diff: DiffResult | null, kind: string): stri
  */
 export function degradedLayerNotes(diff: DiffResult | null): string[] {
   const notes: string[] = [];
+  // A channel the project turned off is the same hazard as a layer the capture could not run
+  // (D54): the rail is where a reader decides the tool found nothing, and "no findings" must not
+  // stand in for "nobody looked". First, because it applies to every step at once.
+  if (diff !== null && diff.emit !== undefined && !diff.emit.findings) {
+    notes.push(
+      'findings: turned off for this diff (diff.findings: false), so this report shows the pixel' +
+        ' diff and nothing else',
+    );
+  }
   if (isPixelsOnlyPair(diff)) notes.push(PIXELS_ONLY_ATTRIBUTION_NOTE);
   for (const [kind, entry] of [...DEGRADED_KIND_NOTES, ...PIXELS_ONLY_KIND_NOTES]) {
     const note = unavailableKindNote(diff, kind);

@@ -18,6 +18,7 @@ import {
   DEFAULTS,
   DIFF_ENGINE_VERSION,
   type Config,
+  type DiffEmitChannels,
   type DiffEngineOptions,
   type DiffResult,
   type PairRef,
@@ -37,6 +38,10 @@ export interface PairSelection {
   scenario?: ScenarioName;
   variant?: VariantName;
   e2e: boolean;
+  /** `--no-findings`: compute the pixel diff and emit no findings (D54). */
+  noFindings?: boolean;
+  /** `--no-warnings`: store an empty warnings list (D54). */
+  noWarnings?: boolean;
 }
 
 export interface ResolvedPair {
@@ -75,8 +80,17 @@ export function pairFilter(selection: PairSelection): RunFilter {
   return filter;
 }
 
-/** The engine options, taken from config exactly as `vdiff diff` takes them. */
-export function diffOptions(config: Config): DiffEngineOptions {
+/**
+ * The engine options, taken from config exactly as `vdiff diff` takes them.
+ *
+ * The flag wins over the file, in one direction only: `--no-findings` turns a channel off that
+ * config left on, and there is no flag that turns one back on. A project that wrote
+ * `diff.findings: false` decided that for every invocation, and a switch that could be undone per
+ * command is a switch whose effect nobody can predict from the config.
+ */
+export function diffOptions(config: Config, selection?: PairSelection): DiffEngineOptions {
+  const emitFindings = config.diff.findings !== false && selection?.noFindings !== true;
+  const emitWarnings = config.diff.warnings !== false && selection?.noWarnings !== true;
   return {
     minRegionArea: config.diff.minRegionArea,
     maxRegions: config.diff.maxRegions,
@@ -84,7 +98,30 @@ export function diffOptions(config: Config): DiffEngineOptions {
     ignore: config.diff.ignore,
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,
+    emitFindings,
+    emitWarnings,
   };
+}
+
+/** What a stored diff was computed with (D54). No `emit` block means both channels were on. */
+export function emitChannelsOf(result: DiffResult): DiffEmitChannels {
+  return result.emit ?? { findings: true, warnings: true };
+}
+
+/**
+ * Whether a stored diff answers the question this invocation is asking.
+ *
+ * The engine version is not enough on its own. A diff computed under `--no-findings` carries an
+ * empty findings list, and reusing it for a caller that wants findings would report "no findings"
+ * for a pair nobody has looked at — the one wrong answer this cache must never give. The reverse
+ * costs one recompute.
+ */
+function answersThisRequest(stored: DiffResult, options: DiffEngineOptions): boolean {
+  const emitted = emitChannelsOf(stored);
+  return (
+    emitted.findings === (options.emitFindings !== false) &&
+    emitted.warnings === (options.emitWarnings !== false)
+  );
 }
 
 /** Resolve the pair and produce its diff, reusing the stored one when the engine still matches. */
@@ -101,9 +138,12 @@ export async function resolveDiff(
     pairFilter(selection),
   );
 
-  const options = diffOptions(config);
+  const options = diffOptions(config, selection);
   const stored = await store.readDiff(pair);
-  const reusable = stored !== null && stored.engineVersion === options.engineVersion;
+  const reusable =
+    stored !== null &&
+    stored.engineVersion === options.engineVersion &&
+    answersThisRequest(stored, options);
 
   if (reusable && stored !== null) {
     return {

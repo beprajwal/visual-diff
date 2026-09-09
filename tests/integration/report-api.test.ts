@@ -45,8 +45,7 @@ function configFor(projectRoot: string): Config {
       minRegionArea: DEFAULTS.diff.minRegionArea,
       maxRegions: DEFAULTS.diff.maxRegions,
       antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
-      ignore: [],
-    },
+      ignore: [], findings: true, warnings: true },
     network: { redact: [], scrub: true },
     retention: { keepRuns: DEFAULTS.retention.keepRuns },
   };

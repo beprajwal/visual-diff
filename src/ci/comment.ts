@@ -194,6 +194,16 @@ function verdictLines(input: CommentInput): string[] {
     (summary.stepsBlocked > 0 ? `, ${summary.stepsBlocked} blocked` : '');
   lines.push(`${headline} · max pixel change ${percent(summary.maxPixelChangedRatio)} · ${steps}`);
 
+  // "No findings" has two causes, and on a pull request the wrong one reads as a clean bill of
+  // health: this diff was computed with the findings channel off (D54), so it never looked.
+  if (result.emit !== undefined && !result.emit.findings) {
+    lines.push('');
+    lines.push(
+      '> **Findings are off for this diff** (`diff.findings: false`), so this comment reports ' +
+        'pixel change and nothing else.',
+    );
+  }
+
   // A failed or blocked step is not a finding, and a summary that only counted findings would let a
   // run that never reached checkout read as "no findings" — the most misleading green in the tool.
   if (summary.stepsFailed > 0 || summary.stepsBlocked > 0) {

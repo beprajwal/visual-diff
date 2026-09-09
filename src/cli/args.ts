@@ -138,6 +138,14 @@ export type Invocation =
        */
       e2e: boolean;
       json: boolean;
+      /**
+       * `--no-findings` / `--no-warnings`: the two report channels, off for this invocation
+       * (D54). The pixel diff, the regions and the overlays are computed either way. Both
+       * override `diff.findings` / `diff.warnings` in config.yaml, and — like `--no-net` and
+       * `--no-scrub` — they are flags in their own right, not negations of flags that exist.
+       */
+      noFindings?: boolean;
+      noWarnings?: boolean;
     }
   | {
       /**
@@ -163,6 +171,14 @@ export type Invocation =
       /** Also write the review to this file. It is stored beside findings.json regardless. */
       out?: string;
       json: boolean;
+      /**
+       * `--no-findings` / `--no-warnings`: the two report channels, off for this invocation
+       * (D54). The pixel diff, the regions and the overlays are computed either way. Both
+       * override `diff.findings` / `diff.warnings` in config.yaml, and — like `--no-net` and
+       * `--no-scrub` — they are flags in their own right, not negations of flags that exist.
+       */
+      noFindings?: boolean;
+      noWarnings?: boolean;
     }
   | {
       /**
@@ -197,6 +213,14 @@ export type Invocation =
       /** Overrides the marker an upserting transport searches for (D33). */
       marker?: string;
       json: boolean;
+      /**
+       * `--no-findings` / `--no-warnings`: the two report channels, off for this invocation
+       * (D54). The pixel diff, the regions and the overlays are computed either way. Both
+       * override `diff.findings` / `diff.warnings` in config.yaml, and — like `--no-net` and
+       * `--no-scrub` — they are flags in their own right, not negations of flags that exist.
+       */
+      noFindings?: boolean;
+      noWarnings?: boolean;
     }
   | {
       /** `vdiff export <flow> [base] [head]` — write the portable evidence bundle (CI spec §5). */
@@ -219,6 +243,14 @@ export type Invocation =
       /** Photograph the bundle's report page, light and dark, for the comment (D51). Needs Chromium. */
       preview: boolean;
       json: boolean;
+      /**
+       * `--no-findings` / `--no-warnings`: the two report channels, off for this invocation
+       * (D54). The pixel diff, the regions and the overlays are computed either way. Both
+       * override `diff.findings` / `diff.warnings` in config.yaml, and — like `--no-net` and
+       * `--no-scrub` — they are flags in their own right, not negations of flags that exist.
+       */
+      noFindings?: boolean;
+      noWarnings?: boolean;
     }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
   | { kind: 'feedback'; ack: boolean; json: boolean }
@@ -352,12 +384,15 @@ export const COMMANDS: Record<string, CommandSpec> = {
     maxPositionals: 1,
   },
   diff: {
-    usage: 'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>] [--e2e]',
+    usage:
+      'vdiff diff <flow> [base] [head] [--scenario <name>] [--variant <name>] [--e2e] [--no-findings] [--no-warnings]',
     summary: 'compute and print summary (defaults: N-1 vs N)',
     flags: flags({
       scenario: { type: 'string' },
       variant: { type: 'string' },
       e2e: { type: 'boolean' },
+      'no-findings': { type: 'boolean' },
+      'no-warnings': { type: 'boolean' },
     }),
     minPositionals: 1,
     maxPositionals: 3,
@@ -374,6 +409,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
       scenario: { type: 'string' },
       variant: { type: 'string' },
       e2e: { type: 'boolean' },
+      'no-findings': { type: 'boolean' },
+      'no-warnings': { type: 'boolean' },
     }),
     minPositionals: 1,
     maxPositionals: 3,
@@ -397,6 +434,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
       scenario: { type: 'string' },
       variant: { type: 'string' },
       e2e: { type: 'boolean' },
+      'no-findings': { type: 'boolean' },
+      'no-warnings': { type: 'boolean' },
     }),
     minPositionals: 1,
     maxPositionals: 3,
@@ -416,6 +455,8 @@ export const COMMANDS: Record<string, CommandSpec> = {
       scenario: { type: 'string' },
       variant: { type: 'string' },
       e2e: { type: 'boolean' },
+      'no-findings': { type: 'boolean' },
+      'no-warnings': { type: 'boolean' },
     }),
     minPositionals: 1,
     maxPositionals: 3,
@@ -760,8 +801,19 @@ function applyPairFilters(
   spec: CommandSpec,
   values: Record<string, unknown>,
   wantsE2e: boolean,
-  target: { scenario?: ScenarioName; variant?: VariantName },
+  target: {
+    scenario?: ScenarioName;
+    variant?: VariantName;
+    noFindings?: boolean;
+    noWarnings?: boolean;
+  },
 ): ParseOutcome | null {
+  // The two emit switches ride along here rather than in each of the four `case` blocks: every
+  // command that resolves a pair also computes it when the store has none, so a switch one of them
+  // lacked would be a command that quietly reports the channel the others suppressed (D54).
+  if (bool(values, 'no-findings')) target.noFindings = true;
+  if (bool(values, 'no-warnings')) target.noWarnings = true;
+
   const scenario = values['scenario'];
   if (typeof scenario === 'string') {
     const invalid = checkScenarioName(command, scenario, 'filter');
