@@ -308,11 +308,21 @@ steps:
 ```
 
 A `mask` paints a solid rectangle over its selectors before the shot is taken, so a clock or an
-order id cannot make every run differ. The paint is magenta, because a redaction bar should not be
-mistakable for the UI — set `browser.maskColor` in `config.yaml` (any hex colour, or `white` /
-`black`) when the screenshots are read as pictures of the product and your page background would
-hide the box better. Both sides of a diff paint the same colour, whichever it is; change it and
-recapture the baseline, or every masked rectangle reads as a change once.
+order id cannot make every run differ. Two settings in `config.yaml` decide how that looks:
+
+```yaml
+browser:
+  maskColor: '#ffffff'   # the paint; magenta by default, your page background hides it
+  # mask: false          # or paint nothing at all, and keep the shots as the page renders
+```
+
+Magenta is the default because a redaction bar should not be mistakable for the UI. `mask: false`
+turns the painting off entirely — the masked selectors still keep their content out of the pixel
+count, the regions and the findings, which is the job that actually matters, so the screenshots read
+as pictures of the product and a ticking clock still says nothing. (The two cannot be combined:
+there is no colour for a mask that paints nothing.)
+
+Either way, change it and recapture the baseline, or every masked rectangle reads as a change once.
 
 A flow can also `upload` committed fixture files (`upload: { "input[type=file]": fixtures/spec.pdf }`,
 paths relative to `.visual-diff/`; the selector may be the input or the button that opens the file
@@ -338,9 +348,26 @@ diff:
   minRegionArea: 64                     # regions smaller than this are dropped
   antialiasTolerance: 0.1
   ignore: ["[data-test=session-id]"]    # no region, no finding, no page-size claim
-  findings: false                       # emit the pixel diff and no findings at all
+  kinds: [content, style, layout, a11y] # which kinds to report; every kind by default
+  findings: false                       # or drop the channel entirely: pixels only
   warnings: false                       # store an empty warnings list
+
+capture:
+  a11y: false                           # skip the accessibility snapshot (nothing reads the file)
+  console: false                        # stop recording console output
+  network: false                        # ...and the per-request diagnostics
 ```
+
+Reach for `kinds` before `findings: false`. The usual complaint is one channel — two replays against
+a shared backend differ in their console and network traffic for reasons that have nothing to do with
+the change under review — and dropping those two keeps the layout, style, content and accessibility
+findings that no backend noise can manufacture. `capture:` is the same decision one step earlier: do
+not even record it. Turning `console` or `network` off leaves HAR record/replay and the hit/miss
+accounting untouched.
+
+A run stamps what it did not collect, and the diff folds an uncaptured channel into the same "not
+looked for" list, so a run that recorded its console is never compared against one that did not and
+reported as a page of resolved errors.
 
 ```sh
 vdiff diff checkout --no-findings --no-warnings   # the same switches for one invocation

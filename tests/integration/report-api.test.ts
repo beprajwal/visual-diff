@@ -21,7 +21,7 @@ import type {
   FlowsResponse,
   RunsResponse,
 } from '../../src/types.js';
-import { DEFAULTS, DIFF_ENGINE_VERSION } from '../../src/types.js';
+import { DEFAULTS, DIFF_ENGINE_VERSION, FINDING_KINDS } from '../../src/types.js';
 import { openStore, paths } from '../../src/store/index.js';
 import { writeFixtureRun } from '../../src/store/fixtures.js';
 import { serveReport } from '../../src/report/index.js';
@@ -45,7 +45,7 @@ function configFor(projectRoot: string): Config {
       minRegionArea: DEFAULTS.diff.minRegionArea,
       maxRegions: DEFAULTS.diff.maxRegions,
       antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
-      ignore: [], findings: true, warnings: true },
+      ignore: [], findings: true, warnings: true, kinds: [...FINDING_KINDS] },
     network: { redact: [], scrub: true },
     retention: { keepRuns: DEFAULTS.retention.keepRuns },
   };

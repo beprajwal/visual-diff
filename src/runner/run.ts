@@ -595,6 +595,10 @@ export async function runFlow(
       options.viewports ?? (spec.viewports.length > 0 ? spec.viewports : DEFAULTS.viewports),
     );
 
+    // What this run collects (D58). Read defensively: a `Config` built before the block existed
+    // carries none, and everything is collected by default.
+    const capture = { ...DEFAULTS.capture, ...(store.config.capture ?? {}) };
+
     // The scenario is resolved before the network is planned, because it is the scenario that says
     // whether this run needs a recording at all (D13). On the slow path it is read out of git
     // history at the target SHA, exactly as the flow spec was (D4).
@@ -805,6 +809,12 @@ export async function runFlow(
           ...(store.config.browser?.maskColor === undefined
             ? {}
             : { maskColor: store.config.browser.maskColor }),
+          ...(store.config.browser?.mask === undefined
+            ? {}
+            : { paintMasks: store.config.browser.mask }),
+          // The one capture switch the replayer itself has to know about: the other two are files
+          // this function decides whether to write (D58).
+          captureA11y: capture.a11y,
           // `upload` paths resolve inside the working tree's `.visual-diff/`, like the session file:
           // a historical replay reads its flow from git and its fixtures from the machine.
           fixturesDir: paths.vdiffDir(root),
@@ -955,8 +965,10 @@ export async function runFlow(
         );
       }
 
-      await draft.writeStepConsole(step.id, consoleByStep.get(step.id) ?? []);
-      await draft.writeStepNetwork(step.id, networkByStep.get(step.id) ?? []);
+      // Collected either way — the hit/miss accounting and the miss warning are computed from the
+      // same traffic — and written only when the project wants them (D58).
+      if (capture.console) await draft.writeStepConsole(step.id, consoleByStep.get(step.id) ?? []);
+      if (capture.network) await draft.writeStepNetwork(step.id, networkByStep.get(step.id) ?? []);
       await draft.writeStepResult(merged);
       steps.push(merged);
     }
@@ -1104,6 +1116,17 @@ export async function runFlow(
       status: statusOf(steps),
       failedSteps,
       ...(storageState === undefined ? {} : { authenticated: true }),
+      // Stamped only when something was off, so a run of a project that never touches the switches
+      // writes the meta.json it always wrote (D58).
+      ...(capture.a11y && capture.console && capture.network
+        ? {}
+        : {
+            captured: {
+              ...(capture.a11y ? {} : { a11y: false }),
+              ...(capture.console ? {} : { console: false }),
+              ...(capture.network ? {} : { network: false }),
+            },
+          }),
       env,
       startedAt,
       finishedAt: isoNow(),

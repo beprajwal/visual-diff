@@ -42,7 +42,7 @@ import type { NodeChange } from '../types.js';
 import { classifyNodeChange, LAYOUT_SHIFT_PX } from './severity.js';
 import type { ContrastContext, Verdict } from './severity.js';
 import { withoutUnbackedChanges } from './fidelity.js';
-import { pixelDiff, renderPixelOverlay } from './pixel.js';
+import { changedOutside, pixelDiff, renderPixelOverlay } from './pixel.js';
 import { ignoreSelectorWarnings, matchesAny, selectorFor } from './selector.js';
 
 export interface ShotSide {
@@ -243,6 +243,9 @@ function emptyDiff(
 export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const { step, viewport, base, head, options } = input;
   const emitFindings = options.emitFindings !== false;
+  // Absent means every kind (D57).
+  const kinds = options.kinds === undefined ? undefined : new Set(options.kinds);
+  const wantedKind = (finding: Finding): boolean => kinds === undefined || kinds.has(finding.kind);
   // An ignore rule that cannot be evaluated must never pass for a rule that matched nothing.
   const warnings = options.emitWarnings === false ? [] : ignoreSelectorWarnings(options.ignore);
 
@@ -260,6 +263,29 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     antialiasTolerance: options.antialiasTolerance,
   });
 
+  const headScale = scaleFor(head.shot, options.deviceScaleFactor);
+
+  // `ignore` is a findings contract, not just a region filter (spec §8, noise control): an ignored
+  // node contributes no region, no node change, and no page-size finding of its own.
+  //
+  // Computed before the pixel gate rather than after it, because the *number* the gate reads is
+  // the one with these rects taken out (D56): an unpainted mask over a clock, or an ignored session
+  // badge, would otherwise carry a step past the gate and be reported as "0.3% of pixels changed"
+  // with no finding to explain it — a percentage the reviewer cannot act on and cannot dismiss.
+  const ignoredBase = ignoredNodes(base.shot.dom.nodes, options.ignore);
+  const ignoredHead = ignoredNodes(head.shot.dom.nodes, options.ignore);
+  const isIgnored = (node: DomNode | null): boolean =>
+    node !== null && (ignoredHead.has(node) || ignoredBase.has(node));
+
+  const exclude = [
+    ...exclusionRects(base, options.ignore, options.deviceScaleFactor, ignoredBase),
+    ...exclusionRects(head, options.ignore, options.deviceScaleFactor, ignoredHead),
+  ];
+
+  // What the report prints and what the gate reads: changed pixels the flow and the config did not
+  // already say to disregard.
+  const outside = changedOutside(pixels, exclude);
+
   // ---- the pixel gate (D53). Not one finding is emitted for a pair that rendered identically:
   // the pixel-free a11y pass and the page-size finding are the two paths that could reach a reader
   // without a single pixel behind them, and a report that says "3 findings" for two screenshots
@@ -268,16 +294,16 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   //
   // The whole of stage 5 is skipped with it, which is also why this returns rather than filtering
   // at the end: matching two 5,000-node trees to emit nothing is work done for no one.
-  if (pixels.changedRatio === 0 && !pixels.dimensionsChanged) {
+  if (outside.changedRatio === 0 && !pixels.dimensionsChanged) {
     const quietRegions = clusterRegions(pixels.mask, pixels.compared.w, pixels.compared.h, {
       minRegionArea: options.minRegionArea,
       maxRegions: options.maxRegions,
-      exclude: [],
+      exclude,
     });
     return {
       diff: {
         viewport,
-        pixelChangedRatio: pixels.changedRatio,
+        pixelChangedRatio: outside.changedRatio,
         baseSize: pixels.base,
         headSize: pixels.head,
         dimensionsChanged: false,
@@ -290,20 +316,6 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
       warnings,
     };
   }
-
-  const headScale = scaleFor(head.shot, options.deviceScaleFactor);
-
-  // `ignore` is a findings contract, not just a region filter (spec §8, noise control): an ignored
-  // node contributes no region, no node change, and no page-size finding of its own.
-  const ignoredBase = ignoredNodes(base.shot.dom.nodes, options.ignore);
-  const ignoredHead = ignoredNodes(head.shot.dom.nodes, options.ignore);
-  const isIgnored = (node: DomNode | null): boolean =>
-    node !== null && (ignoredHead.has(node) || ignoredBase.has(node));
-
-  const exclude = [
-    ...exclusionRects(base, options.ignore, options.deviceScaleFactor, ignoredBase),
-    ...exclusionRects(head, options.ignore, options.deviceScaleFactor, ignoredHead),
-  ];
 
   const regionSet = clusterRegions(pixels.mask, pixels.compared.w, pixels.compared.h, {
     minRegionArea: options.minRegionArea,
@@ -318,7 +330,7 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     return {
       diff: {
         viewport,
-        pixelChangedRatio: pixels.changedRatio,
+        pixelChangedRatio: outside.changedRatio,
         baseSize: pixels.base,
         headSize: pixels.head,
         dimensionsChanged: pixels.dimensionsChanged,
@@ -509,12 +521,15 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const regions: Region[] = regionSet.regions;
   const diff: ViewportDiff = {
     viewport,
-    pixelChangedRatio: pixels.changedRatio,
+    pixelChangedRatio: outside.changedRatio,
     baseSize: pixels.base,
     headSize: pixels.head,
     dimensionsChanged: pixels.dimensionsChanged,
     regions,
-    findings: sortFindings(findings),
+    // Filtered here, at the end, rather than at each of the four places a finding is pushed: the
+    // stages upstream decide *what changed*, and which kinds a project wants to read about is not
+    // their business (D57). Attribution, dedupe and the collapsed remainder are unaffected.
+    findings: sortFindings(findings.filter(wantedKind)),
   };
 
   return {

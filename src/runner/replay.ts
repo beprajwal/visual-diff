@@ -49,7 +49,8 @@ import { CLONE_ATTR, clearVariantClonesInPage, type VariantCapture, type Variant
 export interface ShotBytes {
   screenshot: Uint8Array;
   dom: DomSnapshot;
-  a11y: A11ySnapshot;
+  /** Null when `capture.a11y` is off (D58); the store then writes the empty snapshot in its place. */
+  a11y: A11ySnapshot | null;
   width: number;
   height: number;
   /** Set only when the settle gate gave up before this shot — see `StepResult.unsettled`. */
@@ -114,6 +115,20 @@ export interface ReplayOptions {
    * repainted between two runs is a rectangle of pixel change in every masked place.
    */
   maskColor?: string;
+  /**
+   * Whether a step's `mask` selectors are painted at all (`browser.mask`, D56). Absent means yes.
+   * False still records them in `dom.json`, because the rects are what keep the masked content out
+   * of the changed-pixel count and the findings — painting is presentation, excluding is the
+   * contract.
+   */
+  paintMasks?: boolean;
+  /**
+   * Whether to take the accessibility snapshot (`capture.a11y`, D58). Absent means yes. It is a
+   * round trip per shot and nothing in the diff reads the file — the accessibility findings come
+   * from the roles and names already in `dom.json` — so a project that never opens `a11y.json` can
+   * stop paying for it.
+   */
+  captureA11y?: boolean;
   /** The `.visual-diff/` directory an `upload` step's file paths are relative to. */
   fixturesDir?: string;
   maxDomNodes?: number;
@@ -430,7 +445,10 @@ async function captureShot(
     animations: 'disabled',
     caret: 'hide',
     scale: 'device',
-    mask: masks.map((selector) => page.locator(selector)),
+    // Painting is skipped, never the masks themselves: `collectDom` below records the same
+    // selectors either way, and the diff excludes their rects from the count, the regions and the
+    // findings (D56). A capture with `browser.mask: false` is the page as it renders.
+    mask: options.paintMasks === false ? [] : masks.map((selector) => page.locator(selector)),
     maskColor: options.maskColor ?? DEFAULTS.maskColor,
   });
 
@@ -446,7 +464,7 @@ async function captureShot(
   return {
     screenshot,
     dom,
-    a11y: await captureA11ySnapshot(page, step.id, viewport),
+    a11y: options.captureA11y === false ? null : await captureA11ySnapshot(page, step.id, viewport),
     width: size.width,
     height: size.height,
     // Only an unsettled gate is recorded: a settled one is the contract, not news.

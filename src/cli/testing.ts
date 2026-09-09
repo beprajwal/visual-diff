@@ -214,6 +214,7 @@ export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): 
       readyOn: 'http://localhost:$PORT/',
       readyTimeoutMs: DEFAULTS.readyTimeoutMs,
     },
+    capture: { ...DEFAULTS.capture },
     diff: {
       minRegionArea: DEFAULTS.diff.minRegionArea,
       maxRegions: DEFAULTS.diff.maxRegions,
@@ -221,6 +222,7 @@ export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): 
       ignore: [...DEFAULTS.diff.ignore],
       findings: DEFAULTS.diff.findings,
       warnings: DEFAULTS.diff.warnings,
+      kinds: [...DEFAULTS.diff.kinds],
     },
     network: { redact: [...DEFAULTS.network.redact], scrub: DEFAULTS.network.scrub },
     retention: { keepRuns: DEFAULTS.retention.keepRuns },

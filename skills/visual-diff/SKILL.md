@@ -79,10 +79,14 @@ result is the normal case after a UI change — it does not mean something is br
 A step whose two screenshots are identical reports no findings at all, and `steps changed` counts
 pixel movement, so an unchanged frame never arrives with a finding attached to it. A step-scoped
 finding — a new console error, a new request — is still reported on such a step; it is a fact about
-the run, not about the pixels. If a project turned a channel off (`diff.findings` /
-`diff.warnings` in `config.yaml`, or `--no-findings` / `--no-warnings`), the output says so and
-`findings.json` carries an `emit` block: an empty list then means nothing was looked for, not that
-nothing changed.
+the run, not about the pixels.
+
+Read the `emit` block in `findings.json` before you read the absence of a finding kind. A project
+can narrow which kinds are emitted (`diff.kinds`), turn a channel off entirely (`diff.findings` /
+`diff.warnings`, or `--no-findings` / `--no-warnings`), or stop collecting console and network
+output at capture (`capture:`). `emit.kinds` lists what this diff was allowed to report; a kind
+missing from it was never looked for, which is not the same as clean — say so in your summary
+rather than reporting a quiet console you never saw.
 
 ## Step 4 — summarize
 

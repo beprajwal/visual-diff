@@ -367,6 +367,35 @@ export interface DiffConfig {
   findings: boolean;
   /** Emit `DiffResult.warnings` (D54). False stores an empty list. */
   warnings: boolean;
+  /**
+   * The finding kinds this project wants (D57). Every kind by default; a written list is an
+   * allowlist, and a kind left out is never emitted.
+   *
+   * This is the scalpel next to `findings: false`. The usual reason to reach for the blunt switch
+   * is one channel: two replays against a shared backend differ in their console and their network
+   * traffic for reasons that have nothing to do with the change under review. Dropping *those two*
+   * keeps the layout, style, content and accessibility findings, which no amount of backend noise
+   * can manufacture.
+   */
+  kinds: FindingKind[];
+}
+
+/**
+ * What every run collects (D58). All three default to true.
+ *
+ * Two different reasons to turn one off. `a11y` is cost: an accessibility snapshot is a round trip
+ * per shot per viewport, and *nothing reads the file* — the accessibility findings come from the
+ * roles and names in `dom.json`, so the snapshot is an archive for a human, not an input to the
+ * diff. `console` and `network` are noise at the source: a project whose replays talk to a shared
+ * backend can stop recording traffic it has already decided not to compare.
+ *
+ * Turning `console` or `network` off does **not** touch HAR record/replay or the hit/miss
+ * accounting: those are how a replay is served, not a diagnostic written beside it.
+ */
+export interface CaptureConfig {
+  a11y: boolean;
+  console: boolean;
+  network: boolean;
 }
 
 export interface NetworkConfigFile {
@@ -409,6 +438,16 @@ export interface BrowserConfig {
    * disappears into it — what matters to the diff is only that both sides paint the same colour.
    */
   maskColor?: string;
+  /**
+   * Whether a flow `mask` paints anything at all (D56). True by default. False captures the page
+   * as it renders — no rectangle, no colour to choose — and the masked selectors keep doing the
+   * one job that cannot be given up: their rects are excluded from the changed-pixel count, the
+   * regions and the findings, so a clock that ticks between two runs still says nothing.
+   *
+   * `maskColor` means nothing when this is false, and the config refuses the pair rather than
+   * letting one of them look effective.
+   */
+  mask?: boolean;
 }
 
 export interface Config {
@@ -420,6 +459,7 @@ export interface Config {
   baseUrl?: string;
   app: AppConfig;
   browser?: BrowserConfig;
+  capture: CaptureConfig;
   diff: DiffConfig;
   network: NetworkConfigFile;
   retention: RetentionConfig;
@@ -540,6 +580,15 @@ export interface RunMeta {
    * `meta.json` files read back unchanged; absent means an anonymous run.
    */
   authenticated?: boolean;
+  /**
+   * What this run did *not* collect (D58), written only when something was off; an absent field
+   * means it was collected, which is what every run before the switches existed did.
+   *
+   * On the run rather than only in config, because the diff reads two runs and neither one's
+   * configuration is a fact about the other: comparing a run that recorded its console against one
+   * that did not would otherwise report every console line as resolved.
+   */
+  captured?: { a11y?: boolean; console?: boolean; network?: boolean };
   env: RunEnv;
   startedAt: IsoDate;
   finishedAt: IsoDate;
@@ -986,10 +1035,15 @@ export interface DiffResult {
   emit?: DiffEmitChannels;
 }
 
-/** Which of the diff's two report channels were emitted (D54). */
+/** Which of the diff's report channels were emitted (D54), and which kinds of finding (D57). */
 export interface DiffEmitChannels {
   findings: boolean;
   warnings: boolean;
+  /**
+   * The kinds this diff was allowed to emit. Absent means every kind — the default, and what a
+   * diff stored before the allowlist existed was computed under.
+   */
+  kinds?: FindingKind[];
 }
 
 /* ------------------------------------------------------------------ model-written review (CI spec D39) */
@@ -1073,6 +1127,8 @@ export interface DiffEngineOptions {
   emitFindings?: boolean;
   /** Emit warnings (D54). Absent means yes, for the same reason. */
   emitWarnings?: boolean;
+  /** The kinds to emit (D57). Absent means every kind, for the same reason. */
+  kinds?: readonly FindingKind[];
 }
 
 /* ------------------------------------------------------------------ store (§6) */
@@ -1421,7 +1477,7 @@ export interface Adapter {
 /* ------------------------------------------------------------------ defaults (§6, §12) */
 
 /** Bumped whenever diff output could change; part of the diff cache key (spec §8). */
-export const DIFF_ENGINE_VERSION = '2';
+export const DIFF_ENGINE_VERSION = '3';
 
 /**
  * Single source of truth for every default named in the spec. config/defaults.ts re-exports these
@@ -1445,8 +1501,12 @@ export const DEFAULTS = {
     /** Both channels are on: turning one off is a choice a project makes explicitly (D54). */
     findings: true,
     warnings: true,
+    /** Every kind (D57). Narrowing is the project's decision, never a default. */
+    kinds: [...FINDING_KINDS] as FindingKind[],
   },
   retention: { keepRuns: 20 },
+  /** Everything is collected (D58); not collecting is the project's decision. */
+  capture: { a11y: true, console: true, network: true },
   network: { redact: [] as string[], scrub: true },
   /** mocking spec §5 — a scenario file that omits `mode:` is an overlay. */
   scenarioMode: 'overlay' as ScenarioMode,

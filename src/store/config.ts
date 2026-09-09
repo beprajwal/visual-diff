@@ -14,6 +14,11 @@
  *   ignore: ["[data-test=session-id]"]
  *   findings: true
  *   warnings: true
+ *   kinds: [content, style, layout, structural, a11y, console, network]
+ * capture:
+ *   a11y: true
+ *   console: true
+ *   network: true
  * network:
  *   redact: ["x-api-key"]
  * retention:
@@ -29,7 +34,8 @@
  * noise controls "don't work".
  *
  * `diff.findings` and `diff.warnings` turn the two report channels off for every pair (D54); the
- * pixel diff, the regions and the overlays are computed either way. `vdiff diff --no-findings` and
+ * pixel diff, the regions and the overlays are computed either way. `diff.kinds` narrows *which*
+ * findings are emitted rather than whether any are (D57) — the scalpel next to that blunt switch. `vdiff diff --no-findings` and
  * `--no-warnings` are the same switches for one invocation, and the flag wins over the file.
  *
  * `network.scrub` is deliberately **not** readable from the file: HAR scrubbing is disabled only
@@ -68,6 +74,7 @@ import * as paths from './paths.js';
 import type { E2eNoiseOverrides } from '../diff/e2e-noise.js';
 import {
   DEFAULTS,
+  FINDING_KINDS,
   type BrowserConfig,
   type ValidationIssue,
   type ValidationResult,
@@ -92,11 +99,17 @@ const diffSchema = z
     maxRegions: z.number().int().positive().optional(),
     antialiasTolerance: z.number().min(0).max(1).optional(),
     ignore: z.array(z.string()).optional(),
-    // The two report channels (D54). Booleans, not levels: "which findings" is what `ignore`,
-    // `minRegionArea` and the severity order are for, and a second, coarser filter over the same
-    // question is how two settings come to disagree about what the user asked for.
+    // The two report channels (D54). Booleans, not levels: *how much* to report is what `ignore`,
+    // `minRegionArea` and the severity order are for.
     findings: z.boolean().optional(),
     warnings: z.boolean().optional(),
+    // *Which* kinds to report is a different question, and this is it (D57). An allowlist of the
+    // closed vocabulary, so a typo is an error naming the eight legal values rather than a kind
+    // that silently never appears.
+    kinds: z
+      .array(z.enum(FINDING_KINDS))
+      .min(1, 'kinds cannot be empty — write `findings: false` to turn the channel off instead')
+      .optional(),
   })
   .strict();
 
@@ -145,7 +158,8 @@ const e2eSchema = z
  * `browser:` — the context every replay starts from (auth spec §2). The path of a Playwright
  * storage-state file, relative to the project root — it is a session, so it stays under the part of
  * `.visual-diff/` that `vdiff init`'s gitignore block leaves untracked — plus the certificate
- * escape hatch and `maskColor`, the paint a flow `mask` covers its selectors with (D55).
+ * escape hatch, `maskColor` — the paint a flow `mask` covers its selectors with (D55) — and
+ * `mask: false`, which paints nothing at all and keeps only the exclusions (D56).
  */
 /**
  * A CSS colour Playwright will accept as `maskColor`: a hex literal, or one of the two keywords a
@@ -168,6 +182,29 @@ const browserSchema = z
     ignoreHTTPSErrors: z.boolean().optional(),
     /** What a flow `mask` paints over its selectors (D55). Magenta unless a project says otherwise. */
     maskColor: cssColour.optional(),
+    /** Whether a flow `mask` paints at all (D56). The exclusions survive either way. */
+    mask: z.boolean().optional(),
+  })
+  .strict()
+  // A colour for a mask that paints nothing is a setting the user believes is in force. Refused
+  // here, with both keys named, rather than silently preferring one of them (D56).
+  .refine((browser) => !(browser.mask === false && browser.maskColor !== undefined), {
+    message:
+      'browser.maskColor cannot combine with browser.mask: false — nothing is painted, so there ' +
+      'is no colour to choose; remove one of them',
+    path: ['maskColor'],
+  });
+
+/**
+ * `capture:` — what a run collects (D58). Every key optional and true by default, and validated
+ * strictly like the rest: `capture.a11yTree: false` must be an error naming the key, not a setting
+ * that quietly collects everything anyway.
+ */
+const captureSchema = z
+  .object({
+    a11y: z.boolean().optional(),
+    console: z.boolean().optional(),
+    network: z.boolean().optional(),
   })
   .strict();
 
@@ -176,6 +213,7 @@ const configSchema = z
     baseUrl: z.string().min(1).optional(),
     app: appSchema,
     browser: browserSchema.optional(),
+    capture: captureSchema.optional(),
     diff: diffSchema.optional(),
     network: networkSchema.optional(),
     retention: retentionSchema.optional(),
@@ -257,6 +295,18 @@ export function buildConfig(
       ignore: [...(file.diff?.ignore ?? DEFAULTS.diff.ignore)],
       findings: file.diff?.findings ?? DEFAULTS.diff.findings,
       warnings: file.diff?.warnings ?? DEFAULTS.diff.warnings,
+      // De-duplicated, and in the vocabulary's own order rather than the order they were written:
+      // this list is fingerprinted into the diff cache key, and two spellings of one choice must
+      // not key as two configurations.
+      kinds:
+        file.diff?.kinds === undefined
+          ? [...DEFAULTS.diff.kinds]
+          : FINDING_KINDS.filter((kind) => file.diff?.kinds?.includes(kind)),
+    },
+    capture: {
+      a11y: file.capture?.a11y ?? DEFAULTS.capture.a11y,
+      console: file.capture?.console ?? DEFAULTS.capture.console,
+      network: file.capture?.network ?? DEFAULTS.capture.network,
     },
     network: {
       redact: [...(file.network?.redact ?? DEFAULTS.network.redact)],
@@ -285,6 +335,7 @@ export function buildConfig(
       browser.ignoreHTTPSErrors = file.browser.ignoreHTTPSErrors;
     }
     if (file.browser.maskColor !== undefined) browser.maskColor = file.browser.maskColor;
+    if (file.browser.mask !== undefined) browser.mask = file.browser.mask;
     if (Object.keys(browser).length > 0) config.browser = browser;
   }
 

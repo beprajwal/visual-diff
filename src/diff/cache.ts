@@ -74,6 +74,8 @@ import type {
  */
 export interface DiffCacheOptions {
   engineVersion: string;
+  /** The finding kinds emitted (D57). Absent means every kind. */
+  kinds?: readonly string[];
   ignore: readonly string[];
   minRegionArea: number;
   maxRegions: number;
@@ -136,6 +138,9 @@ export function diffConfigFingerprint(
     // key exactly as it did, or adding an off switch nobody uses would invalidate every cache.
     ...(options.emitFindings === false ? { emitFindings: false } : {}),
     ...(options.emitWarnings === false ? { emitWarnings: false } : {}),
+    // Same rule as the two switches: written only when the project narrowed the vocabulary, so an
+    // unnarrowed diff keys as it always did (D57). Sorted, because the choice is a set.
+    ...(options.kinds === undefined ? {} : { kinds: [...options.kinds].sort() }),
     ignore: [...options.ignore],
     maxRegions: options.maxRegions,
     minRegionArea: options.minRegionArea,

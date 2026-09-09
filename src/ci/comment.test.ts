@@ -198,6 +198,17 @@ describe('renderComment', () => {
     expect(doc.markdown).toContain('`diff.findings: false`');
   });
 
+  it('names the kinds it never looked for (D57)', () => {
+    const doc = renderComment({
+      result: diffWithFindings(2, {
+        emit: { findings: true, warnings: true, kinds: ['content', 'style', 'layout', 'a11y'] },
+      }),
+      version: '0.6.0',
+    });
+    expect(doc.markdown).toContain('**Not looked for in this diff**');
+    expect(doc.markdown).toContain('structural, console, network');
+  });
+
   it('says nothing about the channels when both were on', () => {
     const doc = renderComment({ result: diffWithFindings(0), version: '0.6.0' });
     expect(doc.markdown).not.toContain('Findings are off');

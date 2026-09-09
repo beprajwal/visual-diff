@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { DEFAULTS, SCENARIO_NONE, type Config, type RunMeta } from '../../types.js';
+import { DEFAULTS, FINDING_KINDS, SCENARIO_NONE, type Config, type RunMeta } from '../../types.js';
 import { VARIANT_NONE, type RunVariantAttribution, type VariantReportFile } from '../variant.js';
 import { handleRuns, handleVariantAttribution } from './api.js';
 import { HttpError } from './http.js';
@@ -287,7 +287,7 @@ describe('GET /api/variant over the wire', () => {
         minRegionArea: DEFAULTS.diff.minRegionArea,
         maxRegions: DEFAULTS.diff.maxRegions,
         antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
-        ignore: [...DEFAULTS.diff.ignore], findings: true, warnings: true },
+        ignore: [...DEFAULTS.diff.ignore], findings: true, warnings: true, kinds: [...FINDING_KINDS] },
       network: { redact: [...DEFAULTS.network.redact], scrub: DEFAULTS.network.scrub },
       retention: { keepRuns: DEFAULTS.retention.keepRuns },
     };

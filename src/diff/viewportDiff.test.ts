@@ -233,7 +233,10 @@ describe('ignore and regions', () => {
     expect(reported.diff.findings.length).toBeGreaterThan(0);
 
     const ignored = run(base, head, ['[data-test=session-id]']);
-    expect(ignored.diff.pixelChangedRatio).toBeGreaterThan(0);
+    // Down to the reported number too (D56). It used to stay above zero — the regions and the
+    // findings were suppressed while the percentage still said the shot had changed, which under
+    // the pixel gate would carry the step past it as "changed, and here is no reason why".
+    expect(ignored.diff.pixelChangedRatio).toBe(0);
     expect(ignored.diff.regions).toEqual([]);
     expect(ignored.diff.findings).toEqual([]);
   });
@@ -418,5 +421,53 @@ describe('the emit switches (D54)', () => {
     expect(out.warnings).toEqual([]);
     expect(out.diff.findings.length).toBeGreaterThan(0);
     expect(withOptions({}).warnings).toHaveLength(1);
+  });
+});
+
+describe('the mask rects, with nothing painted over them (D56)', () => {
+  // What a `browser.mask: false` capture looks like to the engine: the shots differ where the
+  // clock ticked, and `dom.masks` still carries its rect.
+  const clockRect: Rect = { x: 10, y: 10, w: 60, h: 20 };
+
+  function ticking(text: string): DomNode[] {
+    return [
+      body(),
+      domNode({
+        path: 'html>body>time',
+        parent: 'html>body',
+        tag: 'time',
+        rect: clockRect,
+        text,
+      }),
+    ];
+  }
+
+  const before = (): ShotSide =>
+    side(solidImage(100, 100, WHITE), ticking('12:00:01'), [clockRect]);
+  const after = (): ShotSide =>
+    side(paintRect(solidImage(100, 100, WHITE), clockRect, RED), ticking('12:00:02'), [clockRect]);
+
+  it('keeps an unpainted mask out of the reported pixel change, and out of the findings', () => {
+    const out = run(before(), after());
+    expect(out.diff.pixelChangedRatio).toBe(0);
+    expect(out.diff.regions).toEqual([]);
+    expect(out.diff.findings).toEqual([]);
+  });
+
+  it('still reports a change beside it', () => {
+    const head = side(
+      paintRect(
+        paintRect(solidImage(100, 100, WHITE), clockRect, RED),
+        { x: 10, y: 60, w: 60, h: 20 },
+        RED,
+      ),
+      ticking('12:00:02'),
+      [clockRect],
+    );
+
+    const out = run(before(), head);
+    expect(out.diff.pixelChangedRatio).toBeGreaterThan(0);
+    expect(out.diff.regions.length).toBe(1);
+    expect(out.diff.regions[0]?.rect.y).toBeGreaterThanOrEqual(60);
   });
 });

@@ -168,6 +168,56 @@ read from the working tree on both sides of a pair, like the session file is, so
 repaints both sides at once. Changing it *between* a stored baseline and a new run does not: the
 old run keeps the old paint, and every masked rectangle is a change until the baseline is recaptured.
 
+**D56 — The mask can paint nothing, and the rects still hold.**
+`browser.mask: false` captures the page as it renders: no rectangle, no colour. What the masked
+selectors keep doing is the part that cannot be given up — their rects are excluded from the
+changed-pixel count, from the regions and from the findings — so a clock that ticks between two
+runs still says nothing about the change under review. Painting is presentation; excluding is the
+contract. `maskColor` together with `mask: false` is a config error rather than a preference
+quietly ignored.
+
+This is what forced `pixelChangedRatio` to become the count *outside* the exclusion rects. Until
+now a masked or ignored region was kept out of the clustering but left in the percentage — which
+nobody noticed, because a painted mask never differs. Unpainted, it differs on every run, and with
+D53 reading that number the step would be reported as "changed, 0.3% of pixels" with no region and
+no finding: a change the reviewer can neither act on nor dismiss. The same correction closes the
+hole for `ignore`, where the churn was always real.
+
+The denominator stays the whole compared area. "0.4% of pixels changed" is read against the shot in
+front of the reviewer, and a percentage whose denominator shrank as you masked more would climb
+while the page got quieter.
+
+**D57 — `diff.kinds` narrows which findings are emitted.**
+An allowlist over the closed kind vocabulary, every kind by default. This is the scalpel next to
+D54's blunt switch, and it exists because of how the blunt switch actually got used: the reason a
+project turns findings off is almost always *one channel*. Two replays of a pull request against a
+shared backend differ in their console output and their network traffic for reasons that have
+nothing to do with the change under review, and `findings: false` throws away the layout, style,
+content and accessibility findings — the ones no amount of backend noise can manufacture — to be
+rid of them.
+
+Kinds are filtered where findings are emitted, not where they are computed: attribution, node
+matching, the dedupe and the collapsed remainder are the stages that decide *what changed*, and
+which kinds a reader wants is not their business. An empty list is a config error naming
+`findings: false`, because "emit none of the kinds" already has a spelling.
+
+**D58 — `capture:` decides what a run collects at all.**
+`a11y`, `console` and `network`, each true by default, for two different reasons. The accessibility
+snapshot is *cost*: a round trip per shot per viewport, and nothing in the diff reads the file — the
+accessibility findings come from the roles and names already in `dom.json`, so `a11y.json` is an
+archive for a human, not an input. The other two are noise at its source: a project that has
+decided not to compare console output can stop recording it.
+
+Turning `console` or `network` off does not touch HAR record/replay or the hit/miss accounting.
+Those are how a replay is *served*; the JSON beside it is a diagnostic.
+
+What a run did not collect is stamped on the run (`meta.captured`), not merely implied by the
+config, because a diff reads two runs and neither one's configuration is a fact about the other:
+comparing a run that recorded its console against one that did not would report every line the base
+logged as `console error resolved` — a finding about the configuration, dressed as a fix. The engine
+folds an uncaptured channel into the same allowlist D57 stamps, so every sentence that already
+explains an absent kind explains this one too.
+
 ## 5. Architecture
 
 One npm package, `@beprajwal/visual-diff`, one binary, `vdiff`, with hard internal module seams

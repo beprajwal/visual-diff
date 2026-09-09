@@ -28,7 +28,7 @@ import { percent, table } from '../output.js';
 import { describeLabel, pairLabels, showScenario } from '../pair-notices.js';
 import type { DiffData } from '../shapes.js';
 import { classifyVariantPair, describeVariantPair, VARIANT_NONE } from '../variant.js';
-import { emitChannelsOf, resolveDiff } from './pair.js';
+import { emitChannelsOf, omittedKindsOf, resolveDiff } from './pair.js';
 
 type DiffInvocation = Extract<Invocation, { kind: 'diff' }>;
 
@@ -84,6 +84,14 @@ export async function diff(
     human.push(
       `! ${suppressed.join(' and ')} turned off for this diff: the pixel change below is all it reports`,
     );
+  }
+
+  // A narrowed vocabulary is the same hazard in a smaller frame (D57): "0 console findings" reads
+  // as a quiet console whether or not the console was ever compared.
+  const omitted = omittedKindsOf(result);
+  if (omitted.length > 0) {
+    human.push('');
+    human.push(`! not looked for in this diff (diff.kinds): ${omitted.join(', ')}`);
   }
 
   // Labels go above the step table, not below it: a reader who stops at the summary must still

@@ -17,6 +17,7 @@
  *     exists to prevent (D33).
  */
 
+import { FINDING_KINDS } from '../types.js';
 import type { DiffResult, Finding, Review } from '../types.js';
 import { evaluateGate, GATE_NONE, type GateLevel, type GateVerdict } from './gate.js';
 import {
@@ -201,6 +202,20 @@ function verdictLines(input: CommentInput): string[] {
     lines.push(
       '> **Findings are off for this diff** (`diff.findings: false`), so this comment reports ' +
         'pixel change and nothing else.',
+    );
+  }
+
+  // Same reasoning one notch finer (D57): this diff reported only some kinds, and a reader counting
+  // the ones that are missing would count them as clean.
+  const omittedKinds =
+    result.emit?.kinds === undefined
+      ? []
+      : FINDING_KINDS.filter((kind) => !result.emit?.kinds?.includes(kind));
+  if (omittedKinds.length > 0) {
+    lines.push('');
+    lines.push(
+      `> **Not looked for in this diff** (\`diff.kinds\`): ${omittedKinds.join(', ')}. Their ` +
+        'absence below is not a clean bill of health.',
     );
   }
 

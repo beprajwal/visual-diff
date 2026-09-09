@@ -111,6 +111,17 @@ describe('diffCacheKey', () => {
     );
   });
 
+  it('keys a narrowed vocabulary apart, and an unnarrowed one as before', () => {
+    const all = options();
+    expect(diffCacheKey(BASE, HEAD, { ...all, kinds: ['content', 'style'] })).not.toBe(
+      diffCacheKey(BASE, HEAD, all),
+    );
+    // A set, not a list: the same choice written in another order is the same key.
+    expect(diffCacheKey(BASE, HEAD, { ...all, kinds: ['style', 'content'] })).toBe(
+      diffCacheKey(BASE, HEAD, { ...all, kinds: ['content', 'style'] }),
+    );
+  });
+
   it('keys both channels on exactly as it did before the switches existed', () => {
     // Adding an off switch nobody uses must not invalidate a single stored diff (D54).
     const both = options();

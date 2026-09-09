@@ -229,6 +229,25 @@ export async function diffRuns(
   // is unaffected by the switches existing (D54).
   const emitFindings = options.emitFindings !== false;
   const emitWarnings = options.emitWarnings !== false;
+  // Absent means every kind (D57). Narrowed, it is an allowlist: a kind left out never reaches a
+  // reader, and the result says which list it ran with so an absent kind is not read as a clean
+  // one.
+  //
+  // A channel one of the two runs never recorded (D58) narrows it further, and has to: comparing a
+  // run that recorded its console against one that did not would report every line the base logged
+  // as "console error resolved" — a finding about the configuration, dressed as a fix. Folded into
+  // the same list rather than handled apart, so every sentence that explains an absent kind
+  // already explains this one.
+  const bothCaptured = (channel: 'console' | 'network'): boolean =>
+    base.meta.captured?.[channel] !== false && head.meta.captured?.[channel] !== false;
+  const effectiveKinds = (options.kinds ?? FINDING_KINDS).filter(
+    (kind) =>
+      (kind !== 'console' || bothCaptured('console')) &&
+      (kind !== 'network' || bothCaptured('network')),
+  );
+  const kindsNarrowed = effectiveKinds.length !== FINDING_KINDS.length;
+  const kinds = new Set<FindingKind>(effectiveKinds);
+  const wanted = (finding: Finding): boolean => kinds.has(finding.kind);
   warnings.push(...resolved.warnings);
 
   if (base.meta.flow !== head.meta.flow) {
@@ -272,7 +291,7 @@ export async function diffRuns(
           ...structuralFindings(entry),
           ...consoleFindings(entry.id, baseStep?.console ?? [], headStep?.console ?? []),
           ...networkFindings(entry.id, baseStep?.network ?? [], headStep?.network ?? []),
-        ]
+        ].filter(wanted)
       : [];
 
     const viewports: Record<ViewportId, ViewportDiff> = {};
@@ -405,8 +424,12 @@ export async function diffRuns(
   };
   // Stamped only when something was off, so a diff of a project that never touches the switches
   // stores exactly the JSON it stored before they existed.
-  if (!emitFindings || !emitWarnings) {
-    result.emit = { findings: emitFindings, warnings: emitWarnings };
+  if (!emitFindings || !emitWarnings || kindsNarrowed) {
+    result.emit = {
+      findings: emitFindings,
+      warnings: emitWarnings,
+      ...(kindsNarrowed ? { kinds: [...effectiveKinds] } : {}),
+    };
   }
 
   return { result, artifacts };

@@ -17,10 +17,12 @@
 import {
   DEFAULTS,
   DIFF_ENGINE_VERSION,
+  FINDING_KINDS,
   type Config,
   type DiffEmitChannels,
   type DiffEngineOptions,
   type DiffResult,
+  type FindingKind,
   type PairRef,
   type Review,
   type RunId,
@@ -100,7 +102,30 @@ export function diffOptions(config: Config, selection?: PairSelection): DiffEngi
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,
     emitFindings,
     emitWarnings,
+    // Only when the project narrowed it: absent means every kind, which is what the engine and the
+    // cache key both already mean by "no list" (D57).
+    ...(sameKinds(config.diff.kinds, FINDING_KINDS) ? {} : { kinds: [...config.diff.kinds] }),
   };
+}
+
+/**
+ * The kinds this diff was not allowed to emit, in the vocabulary's order, or empty.
+ *
+ * Named here so the CLI, the comment and the report rail say the same thing about the same diff: an
+ * absent `console` finding means "none happened" or "nobody looked", and those must not read alike
+ * (D57).
+ */
+export function omittedKindsOf(result: DiffResult): FindingKind[] {
+  const allowed = emitChannelsOf(result).kinds;
+  if (allowed === undefined) return [];
+  return FINDING_KINDS.filter((kind) => !allowed.includes(kind));
+}
+
+/** Whether two kind lists say the same thing. Order and duplicates are not the choice. */
+function sameKinds(a: readonly FindingKind[], b: readonly FindingKind[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((kind) => right.has(kind));
 }
 
 /** What a stored diff was computed with (D54). No `emit` block means both channels were on. */
@@ -120,7 +145,8 @@ function answersThisRequest(stored: DiffResult, options: DiffEngineOptions): boo
   const emitted = emitChannelsOf(stored);
   return (
     emitted.findings === (options.emitFindings !== false) &&
-    emitted.warnings === (options.emitWarnings !== false)
+    emitted.warnings === (options.emitWarnings !== false) &&
+    sameKinds(emitted.kinds ?? FINDING_KINDS, options.kinds ?? FINDING_KINDS)
   );
 }
 

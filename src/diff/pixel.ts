@@ -115,6 +115,51 @@ export function pixelDiff(
 }
 
 /**
+ * The changed pixels that lie outside every exclusion rect, and their share of the compared area.
+ *
+ * `pixelChangedRatio` is the number the report prints, the gate on "did this step change" (D53) and
+ * the only thing left when findings are off (D54) — so it has to mean what a reader takes it to
+ * mean: *the picture is different here*. A flow `mask` and a config `ignore` both say the opposite
+ * about their rects, and until this existed they said it only to the region clusterer: an ignored
+ * clock still moved the percentage, and with the pixel gate it would still make the step read as
+ * changed. That is the same cry-wolf failure the noise controls exist to prevent, one number over.
+ *
+ * The denominator stays the whole compared area rather than the area minus the exclusions. "0.4% of
+ * pixels changed" is read against the shot the reviewer is looking at, and a percentage whose
+ * denominator shrinks as you mask more would climb while the page got quieter.
+ *
+ * Unpainted masks (D56) are the case that makes this load-bearing rather than tidy: with nothing
+ * painted over the clock, its rect is the *only* thing keeping it out of the number.
+ */
+export function changedOutside(
+  diff: PixelDiffResult,
+  exclude: readonly Rect[],
+): { changedPixels: number; changedRatio: number } {
+  const area = diff.compared.w * diff.compared.h;
+  if (area <= 0) return { changedPixels: 0, changedRatio: 0 };
+  if (exclude.length === 0) {
+    return { changedPixels: diff.changedPixels, changedRatio: diff.changedRatio };
+  }
+
+  // One pass over the exclusion rects per row-range rather than a per-pixel rect test: a 5,000-node
+  // ignore list against a 1280x4000 shot is 5 million pixels times the rect count otherwise.
+  const covered = new Uint8Array(area);
+  for (const rect of exclude) {
+    const clipped = clampRect(roundRect(rect), diff.compared.w, diff.compared.h);
+    if (clipped === null) continue;
+    for (let y = clipped.y; y < clipped.y + clipped.h; y += 1) {
+      covered.fill(1, y * diff.compared.w + clipped.x, y * diff.compared.w + clipped.x + clipped.w);
+    }
+  }
+
+  let changedPixels = 0;
+  for (let i = 0; i < diff.mask.length; i += 1) {
+    if (diff.mask[i] === 1 && covered[i] !== 1) changedPixels += 1;
+  }
+  return { changedPixels, changedRatio: changedPixels / area };
+}
+
+/**
  * `pixel.png`: the head shot faded toward white with changed pixels painted red, so a reviewer can
  * read the change in place. Pixels outside the compared area (present on one side only) are faded
  * and tinted so "not compared" never reads as "unchanged".

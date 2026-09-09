@@ -18,7 +18,7 @@ import type {
   RunId,
   RunMeta,
 } from '../../types.js';
-import { DEFAULTS, DIFF_ENGINE_VERSION } from '../../types.js';
+import { DEFAULTS, DIFF_ENGINE_VERSION, FINDING_KINDS } from '../../types.js';
 import type { ComputeDiffFn, ReportStore } from './deps.js';
 import { HttpError } from './http.js';
 
@@ -72,6 +72,9 @@ export function createDiffService(options: DiffServiceOptions): DiffService {
     // channel off would find it back on the moment a pair was diffed by the server instead.
     emitFindings: config.diff.findings !== false,
     emitWarnings: config.diff.warnings !== false,
+    ...(config.diff.kinds === undefined || config.diff.kinds.length === FINDING_KINDS.length
+      ? {}
+      : { kinds: [...config.diff.kinds] }),
   });
 
   async function resolve(flow: string, base: RunId, head: RunId): Promise<DiffResponse> {
