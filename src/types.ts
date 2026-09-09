@@ -401,6 +401,14 @@ export interface BrowserConfig {
    * too, because a probe that refuses the certificate never sees the server it is waiting for.
    */
   ignoreHTTPSErrors?: boolean;
+  /**
+   * The solid colour a flow `mask` paints over its selectors before capture (D55). Any CSS colour
+   * Playwright accepts; magenta by default, because a redaction bar should be impossible to
+   * mistake for the UI. A project whose reviewers read these screenshots as pictures of the
+   * product rather than as evidence can set the page's own background instead, and the masked box
+   * disappears into it — what matters to the diff is only that both sides paint the same colour.
+   */
+  maskColor?: string;
 }
 
 export interface Config {
@@ -1422,6 +1430,8 @@ export const DIFF_ENGINE_VERSION = '2';
 export const DEFAULTS = {
   /** spec §7 */
   deviceScaleFactor: 2,
+  /** The mask paint (D55). Playwright's own default, and unmistakably not part of any UI. */
+  maskColor: '#ff00ff',
   /** spec §12 */
   maxDomNodes: 5000,
   /** spec §6 */

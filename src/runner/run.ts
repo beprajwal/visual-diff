@@ -799,6 +799,12 @@ export async function runFlow(
           ...((options.ignoreHTTPSErrors ?? store.config.browser?.ignoreHTTPSErrors) === true
             ? { ignoreHTTPSErrors: true }
             : {}),
+          // Read from the working tree's config on both sides of a diff, like the session file is:
+          // a historical replay takes its flow from git and its capture settings from the machine,
+          // so changing the paint repaints both sides at once rather than one of them (D55).
+          ...(store.config.browser?.maskColor === undefined
+            ? {}
+            : { maskColor: store.config.browser.maskColor }),
           // `upload` paths resolve inside the working tree's `.visual-diff/`, like the session file:
           // a historical replay reads its flow from git and its fixtures from the machine.
           fixturesDir: paths.vdiffDir(root),

@@ -108,6 +108,12 @@ export interface ReplayOptions {
   storageState?: string;
   /** Accept a certificate the browser would reject (`browser.ignoreHTTPSErrors`). */
   ignoreHTTPSErrors?: boolean;
+  /**
+   * The solid colour a step's `mask` selectors are painted with (`browser.maskColor`, D55).
+   * Defaults to magenta. Whatever it is, both sides of a diff must use the same one — a mask
+   * repainted between two runs is a rectangle of pixel change in every masked place.
+   */
+  maskColor?: string;
   /** The `.visual-diff/` directory an `upload` step's file paths are relative to. */
   fixturesDir?: string;
   maxDomNodes?: number;
@@ -425,7 +431,7 @@ async function captureShot(
     caret: 'hide',
     scale: 'device',
     mask: masks.map((selector) => page.locator(selector)),
-    maskColor: '#ff00ff',
+    maskColor: options.maskColor ?? DEFAULTS.maskColor,
   });
 
   const raw = await page.evaluate(collectDom, collectArgs(masks, options.maxDomNodes));

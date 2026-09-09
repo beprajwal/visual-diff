@@ -420,6 +420,34 @@ describe('browser.ignoreHTTPSErrors', () => {
   });
 });
 
+describe('browser.maskColor', () => {
+  it('carries a hex colour through, and the keywords a project reaches for', () => {
+    const hex = parse(`${MINIMAL}\nbrowser:\n  maskColor: "#ffffff"`);
+    if (!hex.ok) throw new Error(JSON.stringify(hex.issues));
+    expect(hex.value.browser).toEqual({ maskColor: '#ffffff' });
+
+    for (const keyword of ['white', 'black', 'transparent']) {
+      const result = parse(`${MINIMAL}\nbrowser:\n  maskColor: ${keyword}`);
+      if (!result.ok) throw new Error(JSON.stringify(result.issues));
+      expect(result.value.browser).toEqual({ maskColor: keyword });
+    }
+  });
+
+  it('stays absent when the file does not set it, so the default is the only magenta', () => {
+    const result = parse(`${MINIMAL}\nbrowser:\n  ignoreHTTPSErrors: true`);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.browser?.maskColor).toBeUndefined();
+    expect(DEFAULTS.maskColor).toBe('#ff00ff');
+  });
+
+  it('refuses a colour Playwright would not use, instead of falling back to magenta in silence', () => {
+    const result = parse(`${MINIMAL}\nbrowser:\n  maskColor: nearly-white`);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues[0]?.at.key).toBe('browser.maskColor');
+  });
+});
+
 describe('app.stepTimeout', () => {
   it('is parsed as a duration and absent when not written', () => {
     const set = parse(`${MINIMAL}\n  stepTimeout: 90s`);

@@ -142,15 +142,32 @@ const e2eSchema = z
   .strict();
 
 /**
- * `browser:` — the context every replay starts from (auth spec §2). One key today: the path of a
- * Playwright storage-state file, relative to the project root. It is a session, so it stays under
- * the part of `.visual-diff/` that `vdiff init`'s gitignore block leaves untracked.
+ * `browser:` — the context every replay starts from (auth spec §2). The path of a Playwright
+ * storage-state file, relative to the project root — it is a session, so it stays under the part of
+ * `.visual-diff/` that `vdiff init`'s gitignore block leaves untracked — plus the certificate
+ * escape hatch and `maskColor`, the paint a flow `mask` covers its selectors with (D55).
  */
+/**
+ * A CSS colour Playwright will accept as `maskColor`: a hex literal, or one of the two keywords a
+ * project actually reaches for. Validated here rather than passed through, because an unusable
+ * value silently falls back to magenta at capture time — the exact "the setting does nothing"
+ * failure the strict schema exists to prevent (D55).
+ */
+const cssColour = z
+  .string()
+  .trim()
+  .regex(
+    /^(#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|transparent|white|black)$/,
+    'expected a hex colour like "#ffffff", or "white", "black" or "transparent"',
+  );
+
 const browserSchema = z
   .object({
     storageState: z.string().min(1).optional(),
     /** Accept a self-signed certificate — a CI proxy with `tls internal` in front of the app. */
     ignoreHTTPSErrors: z.boolean().optional(),
+    /** What a flow `mask` paints over its selectors (D55). Magenta unless a project says otherwise. */
+    maskColor: cssColour.optional(),
   })
   .strict();
 
@@ -267,6 +284,7 @@ export function buildConfig(
     if (file.browser.ignoreHTTPSErrors !== undefined) {
       browser.ignoreHTTPSErrors = file.browser.ignoreHTTPSErrors;
     }
+    if (file.browser.maskColor !== undefined) browser.maskColor = file.browser.maskColor;
     if (Object.keys(browser).length > 0) config.browser = browser;
   }
 
