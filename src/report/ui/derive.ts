@@ -21,7 +21,7 @@ import type {
   ViewportDiff,
   ViewportId,
 } from '../../types.js';
-import { SCENARIO_NONE, SEVERITIES, SEVERITY_ORDER } from '../../types.js';
+import { FINDING_KINDS, SCENARIO_NONE, SEVERITIES, SEVERITY_ORDER } from '../../types.js';
 import { describeRuleHit, type StepAttribution } from '../attribution.js';
 import {
   classifySourcePair,
@@ -779,6 +779,15 @@ export function degradedLayerNotes(diff: DiffResult | null): string[] {
       'findings: turned off for this diff (diff.findings: false), so this report shows the pixel' +
         ' diff and nothing else',
     );
+  }
+  // A kind the project excluded (D57) is empty for the same reason a trace's style layer is: it was
+  // never looked at. Named individually, because the reader's question is per-kind.
+  if (diff !== null && diff.emit?.kinds !== undefined) {
+    const allowed = diff.emit.kinds;
+    for (const kind of FINDING_KINDS) {
+      if (allowed.includes(kind)) continue;
+      notes.push(`${kind}: not looked for in this diff (diff.kinds excludes it)`);
+    }
   }
   if (isPixelsOnlyPair(diff)) notes.push(PIXELS_ONLY_ATTRIBUTION_NOTE);
   for (const [kind, entry] of [...DEGRADED_KIND_NOTES, ...PIXELS_ONLY_KIND_NOTES]) {

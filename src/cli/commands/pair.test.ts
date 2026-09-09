@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { fakeConfig, fakeDiffResult } from '../testing.js';
-import { diffOptions, emitChannelsOf } from './pair.js';
+import { diffOptions, emitChannelsOf, omittedKindsOf } from './pair.js';
 import type { PairSelection } from './pair.js';
 
 function selection(overrides: Partial<PairSelection> = {}): PairSelection {
@@ -50,6 +50,31 @@ describe('diffOptions', () => {
     const options = diffOptions(fakeConfig());
     expect(options.emitFindings).toBe(true);
     expect(options.emitWarnings).toBe(true);
+  });
+});
+
+describe('diffOptions and the kind allowlist', () => {
+  it('leaves kinds absent when the project wants every kind', () => {
+    expect(diffOptions(fakeConfig(), selection()).kinds).toBeUndefined();
+  });
+
+  it('passes a narrowed list through', () => {
+    const config = fakeConfig();
+    config.diff.kinds = ['content', 'layout'];
+    expect(diffOptions(config, selection()).kinds).toEqual(['content', 'layout']);
+  });
+});
+
+describe('omittedKindsOf', () => {
+  it('is empty for a diff that emitted every kind', () => {
+    expect(omittedKindsOf(fakeDiffResult())).toEqual([]);
+  });
+
+  it('names what was never looked for, in vocabulary order', () => {
+    const narrowed = fakeDiffResult({
+      emit: { findings: true, warnings: true, kinds: ['content', 'layout'] },
+    });
+    expect(omittedKindsOf(narrowed)).toEqual(['style', 'structural', 'a11y', 'console', 'network']);
   });
 });
 

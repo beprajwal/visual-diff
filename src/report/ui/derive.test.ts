@@ -300,6 +300,16 @@ describe('degradedLayerNotes and the emit switches', () => {
     expect(degradedLayerNotes(off)[0]).toContain('turned off for this diff');
   });
 
+  it('says, per kind, which ones were never looked for (D57)', () => {
+    const narrowed = makeDiff({
+      emit: { findings: true, warnings: true, kinds: ['content', 'style', 'layout', 'a11y'] },
+    });
+    const notes = degradedLayerNotes(narrowed);
+    expect(notes).toContain('console: not looked for in this diff (diff.kinds excludes it)');
+    expect(notes).toContain('network: not looked for in this diff (diff.kinds excludes it)');
+    expect(notes.some((note) => note.startsWith('content:'))).toBe(false);
+  });
+
   it('says nothing for a diff computed with both channels on', () => {
     expect(degradedLayerNotes(makeDiff({}))).toEqual([]);
   });

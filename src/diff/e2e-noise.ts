@@ -57,7 +57,7 @@
  * mask nothing while the user believes the clock is covered.
  */
 
-import { DIFF_ENGINE_VERSION, DEFAULTS } from '../types.js';
+import { DIFF_ENGINE_VERSION, DEFAULTS, FINDING_KINDS } from '../types.js';
 import type { Config, DiffEngineOptions } from '../types.js';
 import { isE2eRun } from '../store/internal/e2e.js';
 import type { MaybeE2e } from '../store/internal/e2e.js';
@@ -260,6 +260,9 @@ export function diffOptionsFromConfig(
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,
     emitFindings: config.diff.findings !== false,
     emitWarnings: config.diff.warnings !== false,
+    ...(config.diff.kinds === undefined || config.diff.kinds.length === FINDING_KINDS.length
+      ? {}
+      : { kinds: [...config.diff.kinds] }),
     ...overrides,
   };
   const e2e = e2eNoiseOf(config);
