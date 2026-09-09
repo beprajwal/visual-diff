@@ -29,6 +29,7 @@ import {
   type RunResult,
 } from '../../src/types.js';
 import { computeDiff } from '../../src/diff/index.js';
+import { decodePng } from '../../src/diff/pixel.js';
 import { loadConfigOrThrow, openStore, paths } from '../../src/store/index.js';
 import { runFlow } from '../../src/runner/index.js';
 
@@ -278,4 +279,49 @@ describe('the determinism harness', () => {
     }
     expect(typeof hasChromium).toBe('boolean');
   });
+});
+
+/* ------------------------------------------------------------------ the mask paint (D55) */
+
+const MAGENTA: readonly [number, number, number] = [255, 0, 255];
+
+/** Whether any pixel of a screenshot is exactly this colour. */
+async function paints(file: string, [r, g, b]: readonly [number, number, number]): Promise<boolean> {
+  const image = decodePng(await readFile(file));
+  for (let i = 0; i < image.data.length; i += 4) {
+    if (image.data[i] === r && image.data[i + 1] === g && image.data[i + 2] === b) return true;
+  }
+  return false;
+}
+
+describeIfBrowser('browser.maskColor', () => {
+  it('paints the mask magenta unless the project names a colour, and then paints that', async () => {
+    // Magenta by default: a redaction bar nobody can mistake for the UI. The fixture's own palette
+    // has no magenta in it, so finding one means the mask painted it.
+    const shot = (dir: string): string => join(dir, 'steps/cart/400x300/screenshot.png');
+    expect(await paints(shot(first.runDir), MAGENTA)).toBe(true);
+
+    // The same flow with `browser.maskColor: white`, which is this fixture's page background: the
+    // masked counter is still frozen — the whole point of the mask — and the screenshot reads as a
+    // picture of the product rather than of a redaction (D55).
+    const painted = await mkdtemp(join(tmpdir(), 'vdiff-maskcolour-'));
+    try {
+      await mkdir(paths.flowsDir(painted), { recursive: true });
+      await writeFile(
+        paths.configFile(painted),
+        `${CONFIG}browser:\n  maskColor: white\n`,
+        'utf8',
+      );
+      await writeFile(paths.flowFile(painted, 'demo'), FLOW, 'utf8');
+      await writeFile(join(painted, 'server.mjs'), SERVER, 'utf8');
+      await writeFile(join(painted, 'index.html'), HTML, 'utf8');
+
+      const white = await runFlow({ flow: 'demo', cwd: painted });
+      expect(white.meta.status).toBe('ok');
+      expect(await paints(shot(white.runDir), MAGENTA)).toBe(false);
+      expect(await paints(shot(white.runDir), [255, 255, 255])).toBe(true);
+    } finally {
+      await rm(painted, { recursive: true, force: true });
+    }
+  }, 180_000);
 });

@@ -307,6 +307,13 @@ steps:
     waitFor: "text=Payment"
 ```
 
+A `mask` paints a solid rectangle over its selectors before the shot is taken, so a clock or an
+order id cannot make every run differ. The paint is magenta, because a redaction bar should not be
+mistakable for the UI — set `browser.maskColor` in `config.yaml` (any hex colour, or `white` /
+`black`) when the screenshots are read as pictures of the product and your page background would
+hide the box better. Both sides of a diff paint the same colour, whichever it is; change it and
+recapture the baseline, or every masked rectangle reads as a change once.
+
 A flow can also `upload` committed fixture files (`upload: { "input[type=file]": fixtures/spec.pdf }`,
 paths relative to `.visual-diff/`; the selector may be the input or the button that opens the file
 dialog), which is how a flow creates the state it captures instead of pointing at data that has to

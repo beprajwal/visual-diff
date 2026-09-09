@@ -153,6 +153,21 @@ that must never be confused: nothing was found, or nothing was looked for. The s
 reused across that difference, `vdiff diff` says which channel is off, and the pull-request comment
 says so where it would otherwise print "No findings."
 
+**D55 — The mask paint is a setting, magenta by default.**
+A flow `mask` paints a solid rectangle over its selectors before capture, and the colour is
+magenta: a redaction bar has to be impossible to mistake for the UI, and this is evidence before it
+is a picture. But the screenshots are also what a reviewer looks at on a pull request, and on a
+flow that masks several elements the shot reads as a page of censorship bars. So
+`browser.maskColor` names the colour, and a project that sets it to its own page background gets a
+masked box that disappears into the page. What the diff needs is only that both sides paint the
+*same* colour; which colour that is belongs to whoever reads the pictures.
+
+It is validated at parse time rather than passed through to Playwright, because an unusable colour
+silently reverts to magenta at capture — a setting that appears to work and does nothing. And it is
+read from the working tree on both sides of a pair, like the session file is, so changing it
+repaints both sides at once. Changing it *between* a stored baseline and a new run does not: the
+old run keeps the old paint, and every masked rectangle is a change until the baseline is recaptured.
+
 ## 5. Architecture
 
 One npm package, `@beprajwal/visual-diff`, one binary, `vdiff`, with hard internal module seams
