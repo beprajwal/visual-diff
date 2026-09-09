@@ -41,6 +41,7 @@ function configFor(projectRoot: string): Config {
       readyOn: 'http://127.0.0.1:$PORT/',
       readyTimeoutMs: DEFAULTS.readyTimeoutMs,
     },
+    capture: { ...DEFAULTS.capture },
     diff: {
       minRegionArea: DEFAULTS.diff.minRegionArea,
       maxRegions: DEFAULTS.diff.maxRegions,

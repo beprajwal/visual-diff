@@ -283,6 +283,7 @@ describe('GET /api/variant over the wire', () => {
         readyOn: 'http://localhost:$PORT/',
         readyTimeoutMs: DEFAULTS.readyTimeoutMs,
       },
+      capture: { ...DEFAULTS.capture },
       diff: {
         minRegionArea: DEFAULTS.diff.minRegionArea,
         maxRegions: DEFAULTS.diff.maxRegions,
