@@ -258,6 +258,8 @@ export function diffOptionsFromConfig(
     ignore: config.diff.ignore,
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,
+    emitFindings: config.diff.findings !== false,
+    emitWarnings: config.diff.warnings !== false,
     ...overrides,
   };
   const e2e = e2eNoiseOf(config);

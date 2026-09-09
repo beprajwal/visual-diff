@@ -219,6 +219,8 @@ export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): 
       maxRegions: DEFAULTS.diff.maxRegions,
       antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
       ignore: [...DEFAULTS.diff.ignore],
+      findings: DEFAULTS.diff.findings,
+      warnings: DEFAULTS.diff.warnings,
     },
     network: { redact: [...DEFAULTS.network.redact], scrub: DEFAULTS.network.scrub },
     retention: { keepRuns: DEFAULTS.retention.keepRuns },

@@ -189,6 +189,20 @@ describe('renderComment', () => {
     expect(doc.markdown).toContain('2 step(s) failed');
   });
 
+  it('says the findings channel was off rather than letting "No findings" read as clean (D54)', () => {
+    const doc = renderComment({
+      result: diffWithFindings(0, { emit: { findings: false, warnings: true } }),
+      version: '0.6.0',
+    });
+    expect(doc.markdown).toContain('**Findings are off for this diff**');
+    expect(doc.markdown).toContain('`diff.findings: false`');
+  });
+
+  it('says nothing about the channels when both were on', () => {
+    const doc = renderComment({ result: diffWithFindings(0), version: '0.6.0' });
+    expect(doc.markdown).not.toContain('Findings are off');
+  });
+
   it('escapes a pipe in a step detail so no cell can invent a column', () => {
     const result = diffWithFindings(1);
     const step = result.steps[0];

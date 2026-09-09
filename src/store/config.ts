@@ -12,6 +12,8 @@
  *   maxRegions: 40
  *   antialiasTolerance: 0.1
  *   ignore: ["[data-test=session-id]"]
+ *   findings: true
+ *   warnings: true
  * network:
  *   redact: ["x-api-key"]
  * retention:
@@ -25,6 +27,10 @@
  * is validated strictly: an unknown key is an error carrying file, line and the offending key
  * (spec §10, row 1), because a silently ignored `minRegionAre:` typo is how a user concludes the
  * noise controls "don't work".
+ *
+ * `diff.findings` and `diff.warnings` turn the two report channels off for every pair (D54); the
+ * pixel diff, the regions and the overlays are computed either way. `vdiff diff --no-findings` and
+ * `--no-warnings` are the same switches for one invocation, and the flag wins over the file.
  *
  * `network.scrub` is deliberately **not** readable from the file: HAR scrubbing is disabled only
  * by an explicit `--no-scrub` (spec §6).
@@ -86,6 +92,11 @@ const diffSchema = z
     maxRegions: z.number().int().positive().optional(),
     antialiasTolerance: z.number().min(0).max(1).optional(),
     ignore: z.array(z.string()).optional(),
+    // The two report channels (D54). Booleans, not levels: "which findings" is what `ignore`,
+    // `minRegionArea` and the severity order are for, and a second, coarser filter over the same
+    // question is how two settings come to disagree about what the user asked for.
+    findings: z.boolean().optional(),
+    warnings: z.boolean().optional(),
   })
   .strict();
 
@@ -227,6 +238,8 @@ export function buildConfig(
       maxRegions: file.diff?.maxRegions ?? DEFAULTS.diff.maxRegions,
       antialiasTolerance: file.diff?.antialiasTolerance ?? DEFAULTS.diff.antialiasTolerance,
       ignore: [...(file.diff?.ignore ?? DEFAULTS.diff.ignore)],
+      findings: file.diff?.findings ?? DEFAULTS.diff.findings,
+      warnings: file.diff?.warnings ?? DEFAULTS.diff.warnings,
     },
     network: {
       redact: [...(file.network?.redact ?? DEFAULTS.network.redact)],

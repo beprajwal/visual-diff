@@ -3,6 +3,10 @@
  * tests pin the "no finding at all" promise on every path that can produce one: the region merge,
  * the pixel-free a11y pass, and the page-size finding — plus the warning that fires when an ignore
  * rule cannot be evaluated, because a rule that silently does nothing is worse than no rule.
+ *
+ * The pixel gate (D53) and the two emit switches (D54) sit in front of all of it, and are pinned
+ * here too: a pair that rendered identically reports nothing, and `emitFindings: false` reports
+ * nothing while still producing the pixel diff and its regions.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -125,23 +129,40 @@ describe('ignoredNodes', () => {
 });
 
 describe('ignore and the a11y pass', () => {
-  // Identical screenshots: the only path to a finding is the pixel-free a11y pass.
   const image = () => solidImage(100, 100, WHITE);
+  // The a11y pass is pixel-*free*, not pixel-independent: it runs on a pair that moved pixels
+  // somewhere, and reports the regression that moved none of its own (D53). The corner square is
+  // that "somewhere", far from the badge whose label is what these tests are about.
+  const nudged = () => paintRect(solidImage(100, 100, WHITE), { x: 80, y: 80, w: 10, h: 10 }, RED);
   const before = () => side(image(), [body(), sessionBadge('Session 4f21')]);
-  const after = () => side(image(), [body(), sessionBadge(undefined)]);
+  const after = () => side(nudged(), [body(), sessionBadge(undefined)]);
 
   it('reports a lost accessible name when nothing is ignored', () => {
     const out = run(before(), after());
+    const a11y = out.diff.findings.filter((f) => f.kind === 'a11y');
+    expect(a11y).toHaveLength(1);
+    expect(a11y[0]?.severity).toBe('high');
+    expect(a11y[0]?.element?.selector).toBe('[data-test="session-id"]');
+    expect(a11y[0]?.region).toBeUndefined();
+  });
+
+  it('reports nothing at all when the two screenshots are identical', () => {
+    // The same lost accessible name, on a pair that rendered pixel-for-pixel the same. Findings
+    // are claims about a change the reader can be shown; there is nothing to show (D53).
+    const out = run(before(), side(image(), [body(), sessionBadge(undefined)]));
+    expect(out.diff.pixelChangedRatio).toBe(0);
+    expect(out.diff.findings).toEqual([]);
     expect(out.diff.regions).toEqual([]);
-    expect(out.diff.findings).toHaveLength(1);
-    expect(out.diff.findings[0]?.kind).toBe('a11y');
-    expect(out.diff.findings[0]?.severity).toBe('high');
-    expect(out.diff.findings[0]?.element?.selector).toBe('[data-test="session-id"]');
   });
 
   it('produces no finding at all for an ignored element whose label churns', () => {
+    // The pair moved pixels in the corner, so the a11y pass ran; the ignored badge contributed
+    // nothing to it. What survives is the corner square and only the corner square.
     const out = run(before(), after(), ['[data-test=session-id]']);
-    expect(out.diff.findings).toEqual([]);
+    expect(out.diff.findings.map((f) => f.element?.selector)).not.toContain(
+      '[data-test="session-id"]',
+    );
+    expect(out.diff.findings.every((f) => f.reasons.includes('pixels-only'))).toBe(true);
     expect(out.warnings).toEqual([]);
   });
 
@@ -181,11 +202,12 @@ describe('ignore and the a11y pass', () => {
     };
     const out = run(
       side(image(), [body(), sessionBadge('Session 4f21'), sibling('Pay now')]),
-      side(image(), [body(), sessionBadge(undefined), sibling(undefined)]),
+      side(nudged(), [body(), sessionBadge(undefined), sibling(undefined)]),
       ['[data-test=session-id]'],
     );
-    expect(out.diff.findings).toHaveLength(1);
-    expect(out.diff.findings[0]?.element?.selector).toBe('[data-test="pay"]');
+    const a11y = out.diff.findings.filter((f) => f.kind === 'a11y');
+    expect(a11y).toHaveLength(1);
+    expect(a11y[0]?.element?.selector).toBe('[data-test="pay"]');
   });
 });
 
@@ -340,5 +362,61 @@ describe('unsupported ignore selectors', () => {
     });
     expect(out.diff.missing).toBe('base');
     expect(out.warnings).toHaveLength(1);
+  });
+});
+
+describe('the emit switches (D54)', () => {
+  const nodes = (text: string): DomNode[] => [
+    body(),
+    domNode({
+      path: 'html>body>p',
+      parent: 'html>body',
+      tag: 'p',
+      rect: { x: 10, y: 10, w: 60, h: 20 },
+      text,
+    }),
+  ];
+  const changedPair = (): [ShotSide, ShotSide] => [
+    side(solidImage(100, 100, WHITE), nodes('Pay')),
+    side(paintRect(solidImage(100, 100, WHITE), { x: 10, y: 10, w: 60, h: 20 }, RED), nodes('Pay now')),
+  ];
+
+  function withOptions(emit: { emitFindings?: boolean; emitWarnings?: boolean }): ViewportDiffOutput {
+    const [base, head] = changedPair();
+    return diffViewport({
+      step: 'cart',
+      viewport: VIEWPORT,
+      base,
+      head,
+      options: defaultDiffOptions({
+        deviceScaleFactor: 1,
+        minRegionArea: 4,
+        ignore: ['div > .clock'],
+        ...emit,
+      }),
+    });
+  }
+
+  it('emits findings, regions and the overlay by default', () => {
+    const out = withOptions({});
+    expect(out.diff.findings.length).toBeGreaterThan(0);
+    expect(out.diff.regions.length).toBeGreaterThan(0);
+    expect(out.overlay).not.toBeNull();
+  });
+
+  it('keeps the pixel diff, the regions and the overlay with findings off', () => {
+    const out = withOptions({ emitFindings: false });
+    expect(out.diff.findings).toEqual([]);
+    expect(out.diff.pixelChangedRatio).toBeGreaterThan(0);
+    expect(out.diff.regions.length).toBeGreaterThan(0);
+    expect(out.overlay).not.toBeNull();
+    expect(out.regionSet).not.toBeNull();
+  });
+
+  it('drops the ignore-selector warning with warnings off, and keeps the findings', () => {
+    const out = withOptions({ emitWarnings: false });
+    expect(out.warnings).toEqual([]);
+    expect(out.diff.findings.length).toBeGreaterThan(0);
+    expect(withOptions({}).warnings).toHaveLength(1);
   });
 });

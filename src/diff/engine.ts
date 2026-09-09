@@ -75,6 +75,8 @@ export function defaultDiffOptions(overrides: Partial<DiffEngineOptions> = {}): 
     ignore: [],
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: 2,
+    emitFindings: true,
+    emitWarnings: true,
     ...overrides,
   };
 }
@@ -149,12 +151,10 @@ function summarize(flowDiff: readonly FlowDiffEntry[], steps: readonly StepDiff[
   }
 
   for (const step of steps) {
-    let count = step.findings.length;
     for (const vp of Object.values(step.viewports)) {
-      count += vp.findings.length;
       summary.maxPixelChangedRatio = Math.max(summary.maxPixelChangedRatio, vp.pixelChangedRatio);
     }
-    if (count > 0) summary.stepsChanged += 1;
+    if (pixelChanged(step)) summary.stepsChanged += 1;
     for (const finding of allFindings(step)) {
       summary.totalFindings += 1;
       summary.bySeverity[finding.severity] += 1;
@@ -162,6 +162,24 @@ function summarize(flowDiff: readonly FlowDiffEntry[], steps: readonly StepDiff[
     }
   }
   return summary;
+}
+
+/**
+ * Whether this step rendered differently: some compared viewport moved a pixel or changed size.
+ *
+ * `stepsChanged` is answered from the pixels alone (D53), not from the finding count. A step with a
+ * new console error and two identical screenshots is a step that did not change *visually*, and
+ * counting it would put the sentence "1/4 steps changed" on a pull request whose filmstrip shows
+ * four identical frames. The console finding is still reported; it is simply not a pixel claim.
+ *
+ * A viewport with a `missing` side was never compared, so it can say nothing either way.
+ */
+function pixelChanged(step: StepDiff): boolean {
+  for (const vp of Object.values(step.viewports)) {
+    if (vp.missing !== undefined) continue;
+    if (vp.pixelChangedRatio > 0 || vp.dimensionsChanged) return true;
+  }
+  return false;
 }
 
 function* allFindings(step: StepDiff): Generator<Finding> {
@@ -207,6 +225,10 @@ export async function diffRuns(
   // metas that make it, and `resolveDiffOptions` is idempotent so `computeDiff` may resolve too.
   const resolved = resolveDiffOptions(requestedOptions, base.meta, head.meta);
   const options = resolved.options;
+  // Absent means on, so a caller that assembles its own options — the report server, an embedder —
+  // is unaffected by the switches existing (D54).
+  const emitFindings = options.emitFindings !== false;
+  const emitWarnings = options.emitWarnings !== false;
   warnings.push(...resolved.warnings);
 
   if (base.meta.flow !== head.meta.flow) {
@@ -245,11 +267,13 @@ export async function diffRuns(
     const baseStep = base.stepsById[entry.id];
     const headStep = head.stepsById[entry.id];
 
-    const stepFindings: Finding[] = [
-      ...structuralFindings(entry),
-      ...consoleFindings(entry.id, baseStep?.console ?? [], headStep?.console ?? []),
-      ...networkFindings(entry.id, baseStep?.network ?? [], headStep?.network ?? []),
-    ];
+    const stepFindings: Finding[] = emitFindings
+      ? [
+          ...structuralFindings(entry),
+          ...consoleFindings(entry.id, baseStep?.console ?? [], headStep?.console ?? []),
+          ...networkFindings(entry.id, baseStep?.network ?? [], headStep?.network ?? []),
+        ]
+      : [];
 
     const viewports: Record<ViewportId, ViewportDiff> = {};
     const comparable = isComparable(entry.status);
@@ -375,8 +399,15 @@ export async function diffRuns(
     flowDiff,
     steps,
     summary: summarize(flowDiff, steps),
-    warnings,
+    // Collected either way and dropped here, in one place: a warning suppressed at each of its
+    // dozen push sites is a switch that half works the day someone adds the thirteenth.
+    warnings: emitWarnings ? warnings : [],
   };
+  // Stamped only when something was off, so a diff of a project that never touches the switches
+  // stores exactly the JSON it stored before they existed.
+  if (!emitFindings || !emitWarnings) {
+    result.emit = { findings: emitFindings, warnings: emitWarnings };
+  }
 
   return { result, artifacts };
 }

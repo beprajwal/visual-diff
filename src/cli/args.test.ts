@@ -57,6 +57,28 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       json: false,
     });
 
+    // Absent, not `false`: no switch was asked for, and the engine reads absent as "emit" (D54).
+    expect(ok(['diff', 'checkout', '--no-findings', '--no-warnings'])).toEqual({
+      kind: 'diff',
+      flow: 'checkout',
+      e2e: false,
+      json: false,
+      noFindings: true,
+      noWarnings: true,
+    });
+    expect(ok(['comment', 'checkout', '--no-findings'])).toMatchObject({
+      kind: 'comment',
+      noFindings: true,
+    });
+    expect(ok(['export', 'checkout', '--no-warnings'])).toMatchObject({
+      kind: 'export',
+      noWarnings: true,
+    });
+    expect(ok(['review', 'checkout', '--no-findings'])).toMatchObject({
+      kind: 'review',
+      noFindings: true,
+    });
+
     expect(ok(['serve'])).toEqual({ kind: 'serve', open: false, json: false });
     expect(ok(['feedback'])).toEqual({ kind: 'feedback', ack: false, json: false });
     expect(ok(['pin', '0007'])).toEqual({ kind: 'pin', runId: '0007', json: false });

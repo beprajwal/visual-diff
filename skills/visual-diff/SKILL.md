@@ -76,6 +76,14 @@ screenshots alone.
 **`vdiff diff` exits 0 even when findings exist.** Findings are information, not a gate. A non-empty
 result is the normal case after a UI change — it does not mean something is broken.
 
+A step whose two screenshots are identical reports no findings at all, and `steps changed` counts
+pixel movement, so an unchanged frame never arrives with a finding attached to it. A step-scoped
+finding — a new console error, a new request — is still reported on such a step; it is a fact about
+the run, not about the pixels. If a project turned a channel off (`diff.findings` /
+`diff.warnings` in `config.yaml`, or `--no-findings` / `--no-warnings`), the output says so and
+`findings.json` carries an `emit` block: an empty list then means nothing was looked for, not that
+nothing changed.
+
 ## Step 4 — summarize
 
 This is your job, not the tool's. In an agent session `vdiff` calls no model: it emits structured

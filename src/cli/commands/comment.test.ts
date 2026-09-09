@@ -18,7 +18,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { EXIT, type DiffResult } from '../../types.js';
 import type { CommandContext } from '../command.js';
-import { createTestPorts, createTestStore, fakeDiffResult, fakeRunSummary } from '../testing.js';
+import {
+  createTestPorts,
+  createTestStore,
+  fakeConfig,
+  fakeDiffResult,
+  fakeRunSummary,
+} from '../testing.js';
 import { comment } from './comment.js';
 import { exportCommand } from './export.js';
 
@@ -141,6 +147,36 @@ describe('vdiff comment', () => {
     expect(high.warnings).toContain('gate failed: 1 high-severity finding (gate: high)');
     // The body is still produced: a red check with no explanation is the worst outcome (D35).
     expect(high.data.markdown).toContain('❌ **Gate failed**');
+  });
+
+  it('says a gate cannot trip when the project turned findings off (D54)', async () => {
+    const suppressed = diffWith(0);
+    suppressed.emit = { findings: false, warnings: true };
+    const config = fakeConfig();
+    config.diff.findings = false;
+    const ctx: CommandContext = {
+      ...context(suppressed),
+      ports: createTestPorts({
+        loadConfig: async () => config,
+        openStore: async () =>
+          createTestStore({
+            runs: {
+              checkout: [fakeRunSummary({ runId: '0003' }), fakeRunSummary({ runId: '0007' })],
+            },
+            diffs: { 'checkout/0003..0007': suppressed },
+          }),
+      }),
+    };
+
+    const result = await comment(ctx, { ...invocation, failOn: 'high' });
+    expect(result.exitCode ?? EXIT.OK).toBe(EXIT.OK);
+    expect(result.warnings).toContain(
+      '--fail-on high cannot trip: findings are off for this diff, so the gate has nothing to count',
+    );
+
+    // Nothing of the sort when no gate was asked for: `none` gates nothing either way.
+    const ungated = await comment(ctx, invocation);
+    expect((ungated.warnings ?? []).some((w) => w.includes('cannot trip'))).toBe(false);
   });
 
   it('does not trip a gate the findings do not reach', async () => {

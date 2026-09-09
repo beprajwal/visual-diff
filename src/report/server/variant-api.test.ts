@@ -287,8 +287,7 @@ describe('GET /api/variant over the wire', () => {
         minRegionArea: DEFAULTS.diff.minRegionArea,
         maxRegions: DEFAULTS.diff.maxRegions,
         antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
-        ignore: [...DEFAULTS.diff.ignore],
-      },
+        ignore: [...DEFAULTS.diff.ignore], findings: true, warnings: true },
       network: { redact: [...DEFAULTS.network.redact], scrub: DEFAULTS.network.scrub },
       retention: { keepRuns: DEFAULTS.retention.keepRuns },
     };

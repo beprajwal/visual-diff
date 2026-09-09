@@ -359,6 +359,14 @@ export interface DiffConfig {
   antialiasTolerance: number;
   /** Selectors whose rects are excluded from regions and findings. */
   ignore: string[];
+  /**
+   * Emit findings at all (D54). False turns the whole findings channel off: the pixel diff, the
+   * regions and the overlays are still computed and stored, and `findings.json` carries no
+   * findings. For a project that wants the pictures and nothing else.
+   */
+  findings: boolean;
+  /** Emit `DiffResult.warnings` (D54). False stores an empty list. */
+  warnings: boolean;
 }
 
 export interface NetworkConfigFile {
@@ -959,6 +967,21 @@ export interface DiffResult {
   steps: StepDiff[];
   summary: DiffSummary;
   warnings: string[];
+  /**
+   * The channels this diff was computed with, when either was off (D54). Absent means both were
+   * on — the default, and what every diff stored before this field existed was computed under.
+   *
+   * Stored rather than derived, because an empty findings list has two causes that must not be
+   * confused: nothing was found, or nothing was looked for. A reader — the report, the comment,
+   * the cache rule in `cli/commands/pair.ts` — needs to be able to tell them apart.
+   */
+  emit?: DiffEmitChannels;
+}
+
+/** Which of the diff's two report channels were emitted (D54). */
+export interface DiffEmitChannels {
+  findings: boolean;
+  warnings: boolean;
 }
 
 /* ------------------------------------------------------------------ model-written review (CI spec D39) */
@@ -1035,6 +1058,13 @@ export interface DiffEngineOptions {
   deviceScaleFactor: number;
   /** Skip the cache and recompute. */
   force?: boolean;
+  /**
+   * Emit findings (D54). **Absent means yes**, so a caller that assembles these options by hand —
+   * and every one of them predates this field — keeps the behaviour it had.
+   */
+  emitFindings?: boolean;
+  /** Emit warnings (D54). Absent means yes, for the same reason. */
+  emitWarnings?: boolean;
 }
 
 /* ------------------------------------------------------------------ store (§6) */
@@ -1383,7 +1413,7 @@ export interface Adapter {
 /* ------------------------------------------------------------------ defaults (§6, §12) */
 
 /** Bumped whenever diff output could change; part of the diff cache key (spec §8). */
-export const DIFF_ENGINE_VERSION = '1';
+export const DIFF_ENGINE_VERSION = '2';
 
 /**
  * Single source of truth for every default named in the spec. config/defaults.ts re-exports these
@@ -1402,6 +1432,9 @@ export const DEFAULTS = {
     maxRegions: 40,
     antialiasTolerance: 0.1,
     ignore: [] as string[],
+    /** Both channels are on: turning one off is a choice a project makes explicitly (D54). */
+    findings: true,
+    warnings: true,
   },
   retention: { keepRuns: 20 },
   network: { redact: [] as string[], scrub: true },

@@ -5,6 +5,10 @@
  * Pure: images and snapshots in, a `ViewportDiff` plus the artifacts the engine writes out. All
  * geometry it returns is image-space, matching `pixel.png`, `regions.json` and the crops.
  *
+ * Two switches sit in front of all of it. A pair whose pixels are identical emits no findings at
+ * all (D53), and `diff.findings: false` turns the channel off outright (D54); both keep the pixel
+ * diff, the regions and the overlay, because those are what the reader looks at either way.
+ *
  * Config `ignore` applies to every finding-producing path here, not only to region clustering: an
  * ignored node (and its subtree) contributes no region, no node change — including the
  * pixel-free a11y pass — and no page-size finding it alone explains. Half-applied noise control is
@@ -238,8 +242,9 @@ function emptyDiff(
 
 export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const { step, viewport, base, head, options } = input;
+  const emitFindings = options.emitFindings !== false;
   // An ignore rule that cannot be evaluated must never pass for a rule that matched nothing.
-  const warnings = ignoreSelectorWarnings(options.ignore);
+  const warnings = options.emitWarnings === false ? [] : ignoreSelectorWarnings(options.ignore);
 
   if (base === null || head === null) {
     return {
@@ -254,6 +259,37 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const pixels = pixelDiff(base.image, head.image, {
     antialiasTolerance: options.antialiasTolerance,
   });
+
+  // ---- the pixel gate (D53). Not one finding is emitted for a pair that rendered identically:
+  // the pixel-free a11y pass and the page-size finding are the two paths that could reach a reader
+  // without a single pixel behind them, and a report that says "3 findings" for two screenshots
+  // the reader can see are the same teaches them to distrust the count. A dimension change *is* a
+  // pixel change — the image is a different size — so it does not pass through here.
+  //
+  // The whole of stage 5 is skipped with it, which is also why this returns rather than filtering
+  // at the end: matching two 5,000-node trees to emit nothing is work done for no one.
+  if (pixels.changedRatio === 0 && !pixels.dimensionsChanged) {
+    const quietRegions = clusterRegions(pixels.mask, pixels.compared.w, pixels.compared.h, {
+      minRegionArea: options.minRegionArea,
+      maxRegions: options.maxRegions,
+      exclude: [],
+    });
+    return {
+      diff: {
+        viewport,
+        pixelChangedRatio: pixels.changedRatio,
+        baseSize: pixels.base,
+        headSize: pixels.head,
+        dimensionsChanged: false,
+        regions: quietRegions.regions,
+        findings: [],
+      },
+      overlay: renderPixelOverlay(head.image, pixels),
+      regionSet: quietRegions,
+      cropSource: head.image,
+      warnings,
+    };
+  }
 
   const headScale = scaleFor(head.shot, options.deviceScaleFactor);
 
@@ -274,6 +310,27 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     maxRegions: options.maxRegions,
     exclude,
   });
+
+  // Findings turned off (D54): the pixel diff, the regions and the overlay are exactly what they
+  // would have been — a project that wants the pictures and not the list gets the pictures — and
+  // the stages that only exist to explain a region are not run.
+  if (!emitFindings) {
+    return {
+      diff: {
+        viewport,
+        pixelChangedRatio: pixels.changedRatio,
+        baseSize: pixels.base,
+        headSize: pixels.head,
+        dimensionsChanged: pixels.dimensionsChanged,
+        regions: regionSet.regions,
+        findings: [],
+      },
+      overlay: renderPixelOverlay(head.image, pixels),
+      regionSet,
+      cropSource: head.image,
+      warnings,
+    };
+  }
 
   // ---- stage 5: node matching and classification, before attribution needs `rectChanged`.
   const match = matchNodes(base.shot.dom.nodes, head.shot.dom.nodes);

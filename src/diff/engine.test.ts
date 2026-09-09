@@ -7,7 +7,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DiffResult, DomNode, Finding, StepDiff } from '../types.js';
+import type { DiffEngineOptions, DiffResult, DomNode, Finding, StepDiff } from '../types.js';
 import { computeDiff, defaultDiffOptions } from './engine.js';
 import { createImage, decodePng } from './pixel.js';
 import {
@@ -508,5 +508,105 @@ describe('the warnings the engine hands the CLI and the report', () => {
     expect(result.warnings.filter((w) => w.startsWith('viewports ') || w.startsWith('baseUrl '))).toEqual(
       [],
     );
+  });
+});
+
+describe('the pixel gate and the emit switches (D53, D54)', () => {
+  let tmp: string;
+  let vdiffDir: string;
+
+  /** The head run, with a console error on `cart` — the step whose two screenshots are identical. */
+  function headWithQuietConsole(runId: string): FixtureRun {
+    const run = headRun(runId);
+    const cart = run.steps.find((s) => s.id === 'cart');
+    if (cart === undefined) throw new Error('no cart step in the fixture');
+    cart.console = [consoleEntry('cart', 'error', 'TypeError: cart is not a function')];
+    return run;
+  }
+
+  async function diffOf(
+    dir: string,
+    head: FixtureRun,
+    options: Partial<DiffEngineOptions> = {},
+  ): Promise<DiffResult> {
+    const runs = path.join(dir, 'runs', 'checkout');
+    await writeRunFixture(path.join(runs, '0003'), baseRun('0003'));
+    await writeRunFixture(path.join(runs, head.runId), head);
+    return computeDiff({
+      baseRunDir: path.join(runs, '0003'),
+      headRunDir: path.join(runs, head.runId),
+      vdiffDir: dir,
+      options: defaultDiffOptions({ deviceScaleFactor: 1, ...options }),
+    });
+  }
+
+  beforeAll(async () => {
+    tmp = await mkdtemp(path.join(os.tmpdir(), 'vdiff-gate-'));
+    vdiffDir = path.join(tmp, '.visual-diff');
+  });
+
+  afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it('counts only the steps that moved a pixel as changed', async () => {
+    const result = await diffOf(path.join(vdiffDir, 'a'), headWithQuietConsole('0007'));
+    const cart = stepOf(result, 'cart');
+
+    // `cart` has a new console error and two indistinguishable screenshots. The finding is
+    // reported; the step is not counted as changed, because nothing about it rendered differently.
+    expect(cart.findings.map((f) => f.kind)).toEqual(['console']);
+    expect(cart.viewports['1280x800']?.pixelChangedRatio).toBe(0);
+    expect(result.summary.stepsChanged).toBe(1);
+    expect(result.summary.byKind.console).toBe(2);
+  });
+
+  it('emits no findings and stamps the result with findings off', async () => {
+    const result = await diffOf(path.join(vdiffDir, 'b'), headRun('0008'), {
+      emitFindings: false,
+    });
+
+    expect(result.emit).toEqual({ findings: false, warnings: true });
+    expect(result.summary.totalFindings).toBe(0);
+    expect(result.steps.every((s) => s.findings.length === 0)).toBe(true);
+    expect(
+      result.steps.every((s) => Object.values(s.viewports).every((v) => v.findings.length === 0)),
+    ).toBe(true);
+
+    // The pictures survive: pixel change, the step count and the overlay are what they always were.
+    expect(result.summary.maxPixelChangedRatio).toBeGreaterThan(0);
+    expect(result.summary.stepsChanged).toBe(1);
+    const overlay = path.join(
+      vdiffDir,
+      'b',
+      'diffs',
+      'checkout',
+      '0003..0008',
+      'steps',
+      'pay-form',
+      '1280x800',
+      'pixel.png',
+    );
+    expect(await readFile(overlay)).toBeInstanceOf(Buffer);
+  });
+
+  it('stores an empty warnings list with warnings off, and keeps the findings', async () => {
+    const dir = path.join(vdiffDir, 'c');
+    const withWarnings = await diffOf(dir, headRun('0009'), { ignore: ['div > .clock'] });
+    expect(withWarnings.warnings.length).toBeGreaterThan(0);
+
+    const silent = await diffOf(dir, headRun('0009'), {
+      ignore: ['div > .clock'],
+      emitWarnings: false,
+      force: true,
+    });
+    expect(silent.warnings).toEqual([]);
+    expect(silent.emit).toEqual({ findings: true, warnings: false });
+    expect(silent.summary.totalFindings).toBeGreaterThan(0);
+  });
+
+  it('leaves the stamp off a diff computed with both channels on', async () => {
+    const result = await diffOf(path.join(vdiffDir, 'd'), headRun('0010'));
+    expect(result.emit).toBeUndefined();
   });
 });

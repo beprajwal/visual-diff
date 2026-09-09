@@ -68,6 +68,10 @@ export function createDiffService(options: DiffServiceOptions): DiffService {
       headMeta.env?.deviceScaleFactor ??
       baseMeta.env?.deviceScaleFactor ??
       DEFAULTS.deviceScaleFactor,
+    // The report computes under the project's own switches (D54), or a config that turned a
+    // channel off would find it back on the moment a pair was diffed by the server instead.
+    emitFindings: config.diff.findings !== false,
+    emitWarnings: config.diff.warnings !== false,
   });
 
   async function resolve(flow: string, base: RunId, head: RunId): Promise<DiffResponse> {

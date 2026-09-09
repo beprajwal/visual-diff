@@ -28,7 +28,7 @@ import { percent, table } from '../output.js';
 import { describeLabel, pairLabels, showScenario } from '../pair-notices.js';
 import type { DiffData } from '../shapes.js';
 import { classifyVariantPair, describeVariantPair, VARIANT_NONE } from '../variant.js';
-import { resolveDiff } from './pair.js';
+import { emitChannelsOf, resolveDiff } from './pair.js';
 
 type DiffInvocation = Extract<Invocation, { kind: 'diff' }>;
 
@@ -61,6 +61,13 @@ export async function diff(
       ? ''
       : `  scenario ${showScenario(result.scenarios.base)}..${showScenario(result.scenarios.head)}`;
 
+  // An empty findings list has two causes, and a reader who cannot tell them apart will read "0
+  // findings" as "nothing changed" (D54). So a suppressed channel says so, on its own line.
+  const emitted = emitChannelsOf(result);
+  const suppressed: string[] = [];
+  if (!emitted.findings) suppressed.push('findings');
+  if (!emitted.warnings) suppressed.push('warnings');
+
   const human: string[] = [
     `${pair.flow}  ${pair.base}..${pair.head}${scenarioCell}${reusable ? '  (cached)' : ''}`,
     `${summary.totalFindings} findings` +
@@ -71,6 +78,13 @@ export async function diff(
       ` ${summary.stepsSpecChanged} spec-changed, ${summary.stepsFailed} failed,` +
       ` ${summary.stepsBlocked} blocked`,
   ];
+
+  if (suppressed.length > 0) {
+    human.push('');
+    human.push(
+      `! ${suppressed.join(' and ')} turned off for this diff: the pixel change below is all it reports`,
+    );
+  }
 
   // Labels go above the step table, not below it: a reader who stops at the summary must still
   // have been told that this pair is not an ordinary revision-to-revision comparison.
