@@ -1,0 +1,88 @@
+src/cli/deps.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 230
+README.md
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 367-381
+src/cli/commands/review.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 99-100
+docs/superpowers/plans/2026-09-10-ai-noise-review.md
+  s_fe7f581b3ba39c::t_7254f8f33bbbb3 1-10
+docs/superpowers/specs/2026-09-10-ai-noise-review.md
+  s_fe7f581b3ba39c::t_7254f8f33bbbb3 1-31
+src/ci/review.test.ts
+  s_fe7f581b3ba39c::t_f7dfcc1be1aead 241-242
+  s_fe7f581b3ba39c::t_0b8237950cac3f 273
+  s_fe7f581b3ba39c::t_d67631d0a7ebff 2,309,311,350-352
+  s_fe7f581b3ba39c::t_a5f8160110e195 162-172
+  s_fe7f581b3ba39c::t_cc680f62a67fcc 232-240,243-255
+src/cli/commands/comment.test.ts
+  s_fe7f581b3ba39c::t_8467da4125b51b 114-116
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 252-254
+  s_fe7f581b3ba39c::t_d67631d0a7ebff 23-24,31,99-113,117-130
+src/types.ts
+  s_fe7f581b3ba39c::t_13a9471ae44ea6 1085-1106,1125-1126
+src/store/diff-store.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 107-111
+src/store/index.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 105,170
+src/cli/testing.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 709-712
+src/ci/export.test.ts
+  s_fe7f581b3ba39c::t_835a0ee215fa7a 20-21,106-139
+  s_fe7f581b3ba39c::t_f8826bb0dd48b6 140
+src/ci/preview-card.ts
+  s_fe7f581b3ba39c::t_2bb2b82a462457 20-21,34,172-174,177,195,204,210
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 19
+src/store/diff-store.test.ts
+  s_fe7f581b3ba39c::t_d67631d0a7ebff 10-12,28,32-40
+  s_fe7f581b3ba39c::t_5654e743edcf25 41
+src/report/ui/static-main.tsx
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 86-101
+  s_fe7f581b3ba39c::t_835a0ee215fa7a 77-85,102-103
+src/ci/review.ts
+  s_fe7f581b3ba39c::t_0b8237950cac3f 388,418
+  s_fe7f581b3ba39c::t_ba8d511a2cb495 44,49-50,127-128,172,176,190,196,219,233,248-262,275,286,300,338-342,368-370,434-435,438,445,476-481,776,778
+src/ci/review-triage.ts
+  s_fe7f581b3ba39c::t_13a9471ae44ea6 1-59,61-68,76-77,79-103
+  s_fe7f581b3ba39c::t_f7dfcc1be1aead 60,69-75,78
+src/ci/review-triage.test.ts
+  s_fe7f581b3ba39c::t_6c00ab475871c7 9,31-49
+  s_fe7f581b3ba39c::t_2bb2b82a462457 15
+  s_fe7f581b3ba39c::t_9faf99b4ffa732 1-8,10-14,16-30,50-138
+src/ci/comment.ts
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 31
+  s_fe7f581b3ba39c::t_2bb2b82a462457 30,422-426,434-447
+src/ci/review-assessment.ts
+  s_fe7f581b3ba39c::t_f7dfcc1be1aead 61-63,65
+  s_fe7f581b3ba39c::t_ba8d511a2cb495 1-60,64,66-68
+src/ci/export.ts
+  s_fe7f581b3ba39c::t_8a251701aeafc4 35,193,324
+  s_fe7f581b3ba39c::t_2bb2b82a462457 292
+src/diff/significance.ts
+  s_fe7f581b3ba39c::t_13a9471ae44ea6 3,35-39,68-69
+src/cli/commands/review.test.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 115
+  s_fe7f581b3ba39c::t_b9312e0d19fa02 198-209
+src/ci/comment.test.ts
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 20,359,381
+src/cli/commands/comment.ts
+  s_fe7f581b3ba39c::t_b0fc09fa78a60e 27
+  s_fe7f581b3ba39c::t_2bb2b82a462457 28,41,77,106,109
+src/cli/ports.ts
+  s_fe7f581b3ba39c::t_76d17f06127a31 152-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e5d8bcacf341a65cb6d72a69724f41c4dcf5ae16",
+  "prompts": {},
+  "sessions": {
+    "s_fe7f581b3ba39c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0897c-be4e-7d31-b0bf-a0e417682789",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
