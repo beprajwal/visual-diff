@@ -1,3 +1,4 @@
+import { minorDiff } from '../diff/tolerance-testkit.js';
 /**
  * The model-written review (CI spec D39): provider resolution, what the model is shown, what is
  * accepted back, and the exact request each provider receives — driven through an injected `fetch`,
@@ -588,5 +589,16 @@ describe('Anthropic credentials beyond a key (D43)', () => {
         fetch: empty.fetch,
       }),
     ).rejects.toMatchObject({ code: 'review-identity-token-unreadable' });
+  });
+});
+
+describe('review tolerance', () => {
+  it('does not send minor-only steps or findings to the model', () => {
+    const result = minorDiff();
+    expect(rankCells(result)).toEqual([]);
+    const prompt = describeDiff(result, []);
+    expect(prompt).not.toContain('minor-step');
+    expect(prompt).not.toContain('tiny pixel noise');
+    expect(JSON.parse(prompt).summary.totalFindings).toBe(0);
   });
 });

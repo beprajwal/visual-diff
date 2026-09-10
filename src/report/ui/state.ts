@@ -32,6 +32,7 @@ import {
   ALL_SCENARIOS,
   ALL_VARIANTS,
   buildFilmstrip,
+  findingsForStep,
   runIndex,
   runsForScenario,
   runsForVariant,
@@ -97,6 +98,8 @@ export interface AppState {
   /** Swipe divider position, 0..1. */
   swipeAt: number;
   findingsOnly: boolean;
+  /** Detailed reports show raw minor changes by default; reviewers can hide them explicitly. */
+  showMinorChanges: boolean;
   selectedFinding: string | null;
   feedback: FeedbackTarget | null;
   feedbackSaving: boolean;
@@ -130,6 +133,7 @@ export function initialState(route: RouteState = {}): AppState {
     overlayOpacity: 0.5,
     swipeAt: 0.5,
     findingsOnly: route.findingsOnly ?? false,
+    showMinorChanges: route.showMinorChanges ?? true,
     selectedFinding: null,
     feedback: null,
     feedbackSaving: false,
@@ -166,6 +170,7 @@ export type Action =
   | { type: 'set-overlay-opacity'; value: number }
   | { type: 'set-swipe'; value: number }
   | { type: 'toggle-findings-only' }
+  | { type: 'toggle-minor-changes' }
   | { type: 'select-finding'; findingId: string | null }
   | { type: 'open-feedback'; target: FeedbackTarget }
   | { type: 'close-feedback' }
@@ -276,9 +281,11 @@ export function defaultPair(runs: readonly RunSummary[]): { base: RunId; head: R
 /** The ordered step ids the reviewer can currently navigate between. */
 export function navigableSteps(state: AppState): StepId[] {
   if (!state.diff) return [];
-  return visibleCells(buildFilmstrip(state.diff, state.viewport), state.findingsOnly).map(
-    (c) => c.id,
-  );
+  return visibleCells(
+    buildFilmstrip(state.diff, state.viewport, state.showMinorChanges),
+    state.findingsOnly,
+    state.showMinorChanges,
+  ).map((c) => c.id);
 }
 
 function withPair(state: AppState, base: RunId, head: RunId): AppState {
@@ -382,11 +389,19 @@ function clampSelection(state: AppState, diff: DiffResult): AppState {
       ? state.viewport
       : (viewports[0] ?? null);
 
-  const cells = buildFilmstrip(diff, viewport);
-  const ids = cells.map((c) => c.id);
+  const ids = navigableSteps({ ...state, diff, viewport });
   const step = state.step !== null && ids.includes(state.step) ? state.step : (ids[0] ?? null);
 
-  return { ...state, viewport, step };
+  let selectedFinding = step === state.step ? state.selectedFinding : null;
+  if (!state.showMinorChanges && selectedFinding !== null) {
+    const stepDiff = diff.steps.find((item) => item.id === step);
+    if (
+      findingsForStep(stepDiff, viewport).some(
+        (finding) => finding.id === selectedFinding && finding.withinTolerance === true,
+      )
+    ) selectedFinding = null;
+  }
+  return { ...state, viewport, step, selectedFinding };
 }
 
 /* ------------------------------------------------------------------ reducer */
@@ -537,7 +552,8 @@ export function reduce(state: AppState, action: Action): AppState {
 
     case 'select-viewport': {
       if (action.viewport === state.viewport) return state;
-      return { ...state, viewport: action.viewport, selectedFinding: null };
+      const next = { ...state, viewport: action.viewport, selectedFinding: null };
+      return next.diff ? clampSelection(next, next.diff) : next;
     }
 
     case 'set-view':
@@ -555,13 +571,12 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'toggle-findings-only': {
       const findingsOnly = !state.findingsOnly;
       const next: AppState = { ...state, findingsOnly };
-      // Filtering must not strand the selection on a step that just disappeared.
-      const steps = navigableSteps(next);
-      if (next.step !== null && !steps.includes(next.step)) {
-        next.step = steps[0] ?? null;
-        next.selectedFinding = null;
-      }
-      return next;
+      return next.diff ? clampSelection(next, next.diff) : next;
+    }
+
+    case 'toggle-minor-changes': {
+      const next = { ...state, showMinorChanges: !state.showMinorChanges };
+      return next.diff ? clampSelection(next, next.diff) : next;
     }
 
     case 'select-finding':
@@ -695,6 +710,7 @@ function helloFlow(name: string): FlowsResponse['flows'][number] {
 /** The route describing the current position, for the location hash. */
 export function routeOf(state: AppState): RouteState {
   const route: RouteState = { view: state.view, findingsOnly: state.findingsOnly };
+  if (!state.showMinorChanges) route.showMinorChanges = false;
   if (state.flow) route.flow = state.flow;
   if (state.scenario !== ALL_SCENARIOS) route.scenario = state.scenario;
   if (state.variant !== ALL_VARIANTS) route.variant = state.variant;

@@ -82,6 +82,20 @@ describe('routePair', () => {
   });
 });
 
+describe('minor changes in the hash', () => {
+  it('round-trips hidden minor changes for a shared review position', () => {
+    const route = { flow: 'checkout', showMinorChanges: false };
+    expect(formatHash(route)).toBe('#flow=checkout&minor=0');
+    expect(parseHash(formatHash(route))).toEqual(route);
+  });
+
+  it('omits the default of showing minor changes', () => {
+    expect(formatHash({ showMinorChanges: true })).toBe('');
+    expect(parseHash('#minor=1').showMinorChanges).toBe(true);
+    expect(parseHash('').showMinorChanges).toBeUndefined();
+  });
+});
+
 describe('isViewMode', () => {
   it('accepts exactly the three view modes', () => {
     expect(isViewMode('side-by-side')).toBe(true);

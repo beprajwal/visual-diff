@@ -53,6 +53,11 @@ diff:
   minRegionArea: 64        # ignore changed regions smaller than this many pixels
   maxRegions: 40           # cap boxes per shot; the remainder collapses to "N smaller changes"
   antialiasTolerance: 0.1
+  # Keep minor changes in the HTML report, omit them from PR comments and gates.
+  maxChangedPixelRatio: 0.003  # fraction: 0.003 = 0.3%, inclusive; 0 disables pixel allowance
+  layout:
+    enabled: true             # false tolerates all geometry changes
+    tolerancePx: 2            # CSS pixels, inclusive; 0 flags any movement or resize
   ignore: ["[data-test=session-id]"]   # selectors excluded from regions and findings
 
 network:

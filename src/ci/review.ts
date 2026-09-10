@@ -1,3 +1,4 @@
+import { significantDiff, significanceFingerprint } from '../diff/significance.js';
 /**
  * ci/review — a hosted model reads a stored diff and writes the paragraph an agent would have
  * (CI spec D39).
@@ -134,6 +135,7 @@ function worstSeverity(cell: ShotCell): number {
 }
 
 export function rankCells(result: DiffResult): ShotCell[] {
+  result = significantDiff(result);
   return selectCells(shotCells(result), 'changed').sort((a, b) => {
     const bySeverity = worstSeverity(a) - worstSeverity(b);
     if (bySeverity !== 0) return bySeverity;
@@ -269,6 +271,7 @@ function promptFinding(finding: Finding): PromptFinding {
  * the change — the same rule the comment follows (D33).
  */
 export function describeDiff(result: DiffResult, cellsShown: readonly ShotCell[]): string {
+  result = significantDiff(result);
   let budget = MAX_FINDINGS_IN_PROMPT;
   let dropped = 0;
   const take = (findings: readonly Finding[]): PromptFinding[] => {
@@ -315,6 +318,13 @@ export function userPrompt(request: ReviewRequest, evidence: ReviewEvidence): st
       'and environment). Pixel ratios are the fraction of the viewport that changed. Findings ' +
       'name the responsible element and the property that changed.',
   );
+  if (request.result.tolerance !== undefined) {
+    parts.push('This comparison uses visual tolerances. The supplied findings and percentages exclude ' +
+      'tolerated changes. Screenshots retain the original pixels: do not reintroduce minor pixel noise ' +
+      'or tolerated layout movement into the headline, summary, changes, or concerns. ' +
+      'Report significant changes supported by the supplied evidence. Configured tolerance: ' +
+      JSON.stringify(request.result.tolerance));
+  }
   if (request.context !== undefined && request.context.trim().length > 0) {
     parts.push('The pull request describes the change as:\n"""\n' + request.context.trim() + '\n"""');
   } else {
@@ -706,6 +716,8 @@ async function callOpenai(
  * anything the provider does wrong, because a network failure is a run failure, not a spec error.
  */
 export async function requestReview(request: ReviewRequest): Promise<ReviewResponse> {
+  const diffFingerprint = significanceFingerprint(request.result);
+  request = { ...request, result: significantDiff(request.result) };
   const fetchFn = request.fetch ?? globalThis.fetch;
   if (typeof fetchFn !== 'function') {
     throw new ReviewError('review-no-fetch', 'this Node has no global fetch; Node 20 or newer is required');
@@ -721,6 +733,7 @@ export async function requestReview(request: ReviewRequest): Promise<ReviewRespo
 
   const body = parseReviewBody(answer.text, request.result);
   const review: Review = {
+    diffFingerprint,
     flow: request.result.flow,
     pair: request.result.pair,
     engineVersion: request.result.engineVersion,
@@ -739,4 +752,3 @@ export async function requestReview(request: ReviewRequest): Promise<ReviewRespo
   };
   return { review, usage: answer.usage, images: evidence.images.length };
 }
-

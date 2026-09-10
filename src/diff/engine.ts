@@ -10,6 +10,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  DEFAULTS,
   DIFF_ENGINE_VERSION,
   FINDING_KINDS,
   SEVERITIES,
@@ -44,6 +45,7 @@ import { loadRunDir } from './loadRun.js';
 import { cropImage, decodePng, encodePng } from './pixel.js';
 import { ignoreSelectorWarnings } from './selector.js';
 import { diffViewport } from './viewportDiff.js';
+import { resolvedTolerance, toleranceActive } from './tolerance.js';
 import type { ShotSide } from './viewportDiff.js';
 
 /** Image pixels of context kept around a region when cutting its crop. */
@@ -72,6 +74,8 @@ export function defaultDiffOptions(overrides: Partial<DiffEngineOptions> = {}): 
     minRegionArea: 64,
     maxRegions: 40,
     antialiasTolerance: 0.1,
+    maxChangedPixelRatio: DEFAULTS.diff.maxChangedPixelRatio,
+    layout: { ...DEFAULTS.diff.layout },
     ignore: [],
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: 2,
@@ -406,6 +410,7 @@ export async function diffRuns(
   }
 
   const result: SourceAwareDiffResult = {
+    ...(toleranceActive(options) ? { tolerance: resolvedTolerance(options) } : {}),
     engineVersion: options.engineVersion,
     flow: head.meta.flow,
     pair: { base: base.meta.runId, head: head.meta.runId },

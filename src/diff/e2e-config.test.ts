@@ -128,6 +128,21 @@ async function diffPair(input: PairInput): Promise<DiffResult> {
 }
 
 describe('the `e2e:` config block reaches the engine (§5)', () => {
+  it.each([false, true])('applies the enabled defaults without a diff config (ingested=%s)', async ingested => {
+    const result = await diffPair({ ingested, changed: { x: 10, y: 10, w: 3, h: 3 } });
+    expect(result.tolerance).toEqual({ maxChangedPixelRatio: 0.003, layout: { enabled: true, tolerancePx: 2 } });
+    expect(result.steps[0]?.viewports['1280x800']?.withinTolerance).toBe(true);
+    expect(result.steps[0]?.viewports['1280x800']?.pixelChangedRatio).toBe(0.0025);
+  });
+
+  it.each([false, true])('carries configured tolerance through real captures (ingested=%s)', async ingested => {
+    const result = await diffPair({ ingested, changed: SMALL,
+      config: configFrom('diff:', '  maxChangedPixelRatio: 0.03') });
+    expect(result.tolerance?.maxChangedPixelRatio).toBe(0.03);
+    expect(result.steps[0]?.viewports['1280x800']?.withinTolerance).toBe(true);
+    expect(result.steps[0]?.viewports['1280x800']?.pixelChangedRatio).toBeGreaterThan(0);
+  });
+
   it('builds engine options a caller cannot accidentally strip the block out of', () => {
     const config = configFrom('e2e:', '  minRegionArea: 900', '  antialiasTolerance: 0.4');
     const options = diffOptionsFromConfig(config);

@@ -18,6 +18,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { EXIT, type DiffResult } from '../../types.js';
 import type { CommandContext } from '../command.js';
+import { significanceFingerprint } from '../../diff/significance.js';
+import { minorDiff } from '../../diff/tolerance-testkit.js';
 import {
   createTestPorts,
   createTestStore,
@@ -245,6 +247,54 @@ describe('vdiff comment', () => {
     });
     expect(result.data.truncated).toEqual({ images: 0, steps: false });
     expect(result.data.bytes).toBeGreaterThan(0);
+  });
+
+  it('forwards a captured preview fingerprint so a filtered preview remains usable', async () => {
+    const dir = await tempDir();
+    const raw = minorDiff();
+    const diff = fakeDiffResult({ steps: raw.steps, summary: raw.summary });
+    const fingerprint = significanceFingerprint(diff);
+    await mkdir(join(dir, 'bundle', 'images'), { recursive: true });
+    await writeFile(join(dir, 'bundle', 'images', 'preview.png'), 'png');
+    await writeFile(join(dir, 'bundle', 'images', 'preview.json'), JSON.stringify({
+      diffFingerprint: fingerprint,
+    }));
+    const ctx = context(diff, dir);
+    const render = ctx.ports.renderComment;
+    let forwarded: string | undefined;
+    ctx.ports.renderComment = async (input) => {
+      forwarded = input.previewDiffFingerprint;
+      return render(input);
+    };
+    const result = await comment(ctx, {
+      ...invocation, bundle: 'bundle', imageBase: 'https://example.test/base',
+    });
+    expect(forwarded).toBe(fingerprint);
+    expect(result.data.preview).toBe(true);
+    expect(result.data.markdown).toContain('https://example.test/base/images/preview.png');
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['malformed', '{'],
+    ['null', 'null'],
+    ['wrong shape', JSON.stringify({ diffFingerprint: 7 })],
+    ['empty', JSON.stringify({ diffFingerprint: '' })],
+    ['stale', JSON.stringify({ diffFingerprint: 'b'.repeat(64) })],
+  ])('omits a tolerant diff preview when its capture stamp is %s', async (_label, manifest) => {
+    const dir = await tempDir();
+    const raw = minorDiff();
+    const diff = fakeDiffResult({ steps: raw.steps, summary: raw.summary });
+    await mkdir(join(dir, 'bundle', 'images'), { recursive: true });
+    await writeFile(join(dir, 'bundle', 'images', 'preview.png'), 'png');
+    if (manifest !== undefined) {
+      await writeFile(join(dir, 'bundle', 'images', 'preview.json'), manifest);
+    }
+    const result = await comment(context(diff, dir), {
+      ...invocation, bundle: 'bundle', imageBase: 'https://example.test/base',
+    });
+    expect(result.data.preview).toBe(false);
+    expect(result.data.markdown).not.toContain('preview.png');
   });
 });
 

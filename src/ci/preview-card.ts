@@ -15,6 +15,8 @@
 import { SEVERITY_ORDER, type DiffResult, type Finding } from '../types.js';
 import { PRODUCT_NAME } from './comment.js';
 import type { ShotCell } from './layout.js';
+import { shotCells } from './layout.js';
+import { hasMinorChanges, significantDiff, significanceFingerprint } from '../diff/significance.js';
 
 /** Bundle-relative path of the card. Beside `report.html`, so the same publish step ships it. */
 export const PREVIEW_PAGE = 'preview.html';
@@ -163,9 +165,12 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; display: flex; 
 
 /** The card as a page. Deterministic for a given input: no dates, no random ids. */
 export function renderPreviewCard(input: PreviewCardInput): string {
-  const { result } = input;
+  const minor = hasMinorChanges(input.result);
+  const result = significantDiff(input.result);
   const summary = result.summary;
-  const ranked = rankChanges(onePerStep(input.cells));
+  const selected = new Set(input.cells.map(cell => `${cell.step}\0${cell.viewport}`));
+  const cells = minor ? shotCells(result).filter(cell => cell.changed && selected.has(`${cell.step}\0${cell.viewport}`)) : input.cells;
+  const ranked = rankChanges(onePerStep(cells));
   const max = Math.max(0, input.maxChanges ?? DEFAULT_MAX_CHANGES);
   const shown = ranked.slice(0, max);
   const hidden = ranked.length - shown.length;
@@ -179,9 +184,10 @@ export function renderPreviewCard(input: PreviewCardInput): string {
     (summary.stepsAdded > 0 ? `, ${summary.stepsAdded} added` : '') +
     (summary.stepsRemoved > 0 ? `, ${summary.stepsRemoved} removed` : '');
 
+  const minorOnly = minor && summary.totalFindings === 0 && summary.stepsChanged === 0 && result.steps.every(step => step.status === 'matched');
   const body =
     shown.length === 0
-      ? `<p class="verdict">Nothing moved between the two revisions.</p>`
+      ? `<p class="verdict">${minorOnly ? 'No changes above the configured thresholds.' : 'Nothing moved between the two revisions.'}</p>`
       : `<ol class="preview-card-list">${shown.map((cell, i) => entry(i + 1, cell, input.available)).join('')}</ol>` +
         (hidden > 0
           ? `<p class="more">and ${hidden} more change${hidden === 1 ? '' : 's'} in the report</p>`
@@ -190,6 +196,7 @@ export function renderPreviewCard(input: PreviewCardInput): string {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
+    `<meta name="vdiff-fingerprint" content="${significanceFingerprint(input.result)}">`,
     `<title>${escape(PRODUCT_NAME)} — ${escape(result.flow)} ${escape(result.pair.base)}..${escape(result.pair.head)}</title>`,
     `<style>${STYLE}</style>`,
     '</head><body class="preview-card">',

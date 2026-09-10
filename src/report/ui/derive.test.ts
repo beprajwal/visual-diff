@@ -178,6 +178,87 @@ describe('severity helpers', () => {
   });
 });
 
+describe('minor changes in the detailed report', () => {
+  const minor = makeFinding('minor-layout', { kind: 'layout', withinTolerance: true });
+  const step = makeStepDiff('minor', 'matched', {
+    viewports: {
+      '1280x800': makeViewportDiff('1280x800', {
+        pixelChangedRatio: 0.0004,
+        withinTolerance: true,
+        findings: [minor],
+      }),
+    },
+  });
+  const diff = makeDiff({ flowDiff: [entry('minor', 0, 0, 'matched')], steps: [step] });
+
+  it('keeps the raw percentage and findings under a distinct within-tolerance badge', () => {
+    expect(buildFilmstrip(diff, '1280x800')[0]).toMatchObject({
+      variant: 'within-tolerance',
+      badge: '≈',
+      identical: false,
+      pixelChangedRatio: 0.0004,
+      findingsCount: 1,
+    });
+    expect(findingsForStep(step, '1280x800')).toEqual([minor]);
+  });
+
+  it('filters only explicitly tolerated findings, preserving semantic and step-level evidence', () => {
+    const mixed = makeStepDiff('mixed', 'matched', {
+      viewports: {
+        '1280x800': makeViewportDiff('1280x800', {
+          withinTolerance: true,
+          pixelChangedRatio: 0.0004,
+          findings: [minor, makeFinding('content')],
+        }),
+      },
+      findings: [makeFinding('console', { kind: 'console', viewport: undefined })],
+    });
+    expect(findingsForStep(mixed, '1280x800', false).map((f) => f.id)).toEqual([
+      'content', 'console',
+    ]);
+    const mixedDiff = makeDiff({
+      flowDiff: [entry('mixed', 0, 0, 'matched')],
+      steps: [mixed],
+    });
+    expect(buildFilmstrip(mixedDiff, '1280x800', false)[0]).toMatchObject({
+      variant: 'changed',
+      findingsCount: 2,
+      pixelChangedRatio: 0.0004,
+    });
+    expect(visibleCells(buildFilmstrip(mixedDiff, '1280x800', false), true, false)).toHaveLength(1);
+  });
+
+  it('does not bring hidden minor cells back when the findings-only fallback is used', () => {
+    const cells = buildFilmstrip(diff, '1280x800', false);
+    expect(visibleCells(cells, false, false)).toEqual([]);
+    expect(visibleCells(cells, true, false)).toEqual([]);
+    expect(visibleCells(cells, false, true)).toHaveLength(1);
+  });
+
+  it('keeps failed steps visible even when their pixels are within tolerance', () => {
+    const failed = makeDiff({
+      flowDiff: [entry('minor', 0, 0, 'failed')],
+      steps: [{ ...step, status: 'failed' }],
+    });
+    expect(visibleCells(buildFilmstrip(failed, '1280x800', false), true, false)[0]?.variant).toBe('failed');
+  });
+
+  it('leaves old reports with no tolerance metadata unchanged', () => {
+    const legacy = makeDiff({
+      flowDiff: [entry('legacy', 0, 0, 'matched')],
+      steps: [makeStepDiff('legacy', 'matched', {
+        viewports: { '1280x800': makeViewportDiff('1280x800', {
+          pixelChangedRatio: 0.0004,
+          findings: [makeFinding('legacy-finding')],
+        }) },
+      })],
+    });
+    expect(visibleCells(buildFilmstrip(legacy, '1280x800', false), true, false)[0]).toMatchObject({
+      variant: 'changed', findingsCount: 1,
+    });
+  });
+});
+
 describe('buildFilmstrip', () => {
   const diff = makeDiff({
     flowDiff: [

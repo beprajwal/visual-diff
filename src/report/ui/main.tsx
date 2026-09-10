@@ -172,12 +172,12 @@ export function App({ client }: AppProps) {
   /* ------------------------------------------------------------ derived view model */
 
   const cells = useMemo(
-    () => (state.diff ? buildFilmstrip(state.diff, state.viewport) : []),
-    [state.diff, state.viewport],
+    () => (state.diff ? buildFilmstrip(state.diff, state.viewport, state.showMinorChanges) : []),
+    [state.diff, state.viewport, state.showMinorChanges],
   );
   const strip = useMemo(
-    () => visibleCells(cells, state.findingsOnly),
-    [cells, state.findingsOnly],
+    () => visibleCells(cells, state.findingsOnly, state.showMinorChanges),
+    [cells, state.findingsOnly, state.showMinorChanges],
   );
   const cell = useMemo(() => cells.find((c) => c.id === state.step), [cells, state.step]);
   const stepDiff = useMemo(
@@ -186,9 +186,12 @@ export function App({ client }: AppProps) {
   );
   const viewportDiff = viewportDiffOf(stepDiff, state.viewport);
   const findings = useMemo(
-    () => findingsForStep(stepDiff, state.viewport),
-    [stepDiff, state.viewport],
+    () => findingsForStep(stepDiff, state.viewport, state.showMinorChanges),
+    [stepDiff, state.viewport, state.showMinorChanges],
   );
+  const hiddenFindings = state.showMinorChanges
+    ? 0
+    : findingsForStep(stepDiff, state.viewport).length - findings.length;
   const viewports = useMemo(() => (state.diff ? viewportsOf(state.diff) : []), [state.diff]);
   const baseAttribution = useMemo(
     () => attributionForRun(state, state.base),
@@ -209,10 +212,10 @@ export function App({ client }: AppProps) {
   const viewportCounts = useMemo(() => {
     const counts: Record<ViewportId, number> = {};
     for (const viewport of viewports) {
-      counts[viewport] = findingsForStep(stepDiff, viewport).length;
+      counts[viewport] = findingsForStep(stepDiff, viewport, state.showMinorChanges).length;
     }
     return counts;
-  }, [viewports, stepDiff]);
+  }, [viewports, stepDiff, state.showMinorChanges]);
 
   const shotUrl = useCallback(
     (side: 'base' | 'head', step: string | null): string | null => {
@@ -416,6 +419,14 @@ export function App({ client }: AppProps) {
             >
               findings only
             </button>
+            <button
+              type="button"
+              aria-pressed={state.showMinorChanges}
+              title="include changes within the configured tolerances"
+              onClick={() => dispatch({ type: 'toggle-minor-changes' })}
+            >
+              show minor changes
+            </button>
             <span class="spacer" />
             {state.loadingDiff ? <span class="note">computing…</span> : null}
             <span class="legend" role="group" aria-label="actions, also available as keyboard shortcuts">
@@ -471,7 +482,13 @@ export function App({ client }: AppProps) {
             </div>
           ) : null}
 
-          {state.diff ? (
+          {state.diff && cells.length > 0 && strip.length === 0 ? (
+            <div class="stage">
+              <p class="notice">
+                All steps are within tolerance. Enable “show minor changes” to inspect them.
+              </p>
+            </div>
+          ) : state.diff ? (
             <FocusPane
               cell={cell}
               viewportDiff={viewportDiff}
@@ -506,6 +523,7 @@ export function App({ client }: AppProps) {
           />
           <RightRail
             findings={findings}
+            hiddenFindings={hiddenFindings}
             selectedFinding={state.selectedFinding}
             unavailable={degradedLayerNotes(state.diff)}
             cropUrl={cropUrl}

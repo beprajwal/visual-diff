@@ -50,6 +50,7 @@ import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { SCENARIO_NONE } from '../types.js';
+import { resolvedTolerance } from './tolerance.js';
 import { REPLAY_PAIR, VARIANTLESS_PAIR } from './pairing.js';
 import type {
   PairSources,
@@ -60,6 +61,7 @@ import type {
 import type {
   DiffEngineOptions,
   DiffResult,
+  VisualToleranceOptions,
   PairId,
   PairScenarios,
   RunId,
@@ -72,7 +74,7 @@ import type {
  * `force` is absent on purpose: it selects whether the cache is *consulted*, not what the engine
  * computes, so folding it into the key would make `--force` write an entry nothing can ever read.
  */
-export interface DiffCacheOptions {
+export interface DiffCacheOptions extends VisualToleranceOptions {
   engineVersion: string;
   /** The finding kinds emitted (D57). Absent means every kind. */
   kinds?: readonly string[];
@@ -132,6 +134,7 @@ export function diffConfigFingerprint(
 ): string {
   const canonical = JSON.stringify({
     antialiasTolerance: options.antialiasTolerance,
+    ...resolvedTolerance(options),
     deviceScaleFactor: options.deviceScaleFactor,
     // Written only when a channel is *off* (D54). A diff computed with both channels on — every
     // diff before the switches existed, and every diff of a project that never touches them — must
