@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   hasDiff,
   invalidateDiff,
+  invalidateReview,
+  readReview,
+  writeReview,
   listAllStoredPairs,
   listStoredPairs,
   readDiff,
@@ -22,8 +25,19 @@ import {
 import { TINY_PNG, makeRunMeta } from './fixtures.js';
 import * as paths from './paths.js';
 import type { DiffResult, RunId, RunMeta } from '../types.js';
+import { fakeReview } from '../cli/testing.js';
 
 let tmp: string;
+
+it('invalidates only the review, keeping the measured diff and supporting repeated attempts', async () => {
+  const diff = makeDiff('checkout', '0003', '0007');
+  await writeDiff(tmp, diff);
+  await writeReview(tmp, fakeReview());
+  await invalidateReview(tmp, 'checkout', '0003', '0007');
+  expect(await readReview(tmp, 'checkout', '0003', '0007')).toBeNull();
+  expect(await readDiff(tmp, 'checkout', '0003', '0007')).toEqual(diff);
+  await expect(invalidateReview(tmp, 'checkout', '0003', '0007')).resolves.toBeUndefined();
+});
 
 beforeEach(async () => {
   tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'vdiff-diffs-'));

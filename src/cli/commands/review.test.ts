@@ -112,7 +112,7 @@ describe('vdiff review', () => {
       auth: { kind: 'api-key', apiKey: 'sk-ant-1' },
     });
     expect(h.requests[0]?.context).toBeUndefined();
-    expect(h.store.state.calls).toEqual(['writeReview checkout/0003..0007']);
+    expect(h.store.state.calls).toEqual(['invalidateReview checkout/0003..0007', 'writeReview checkout/0003..0007']);
     expect(h.store.state.reviews['checkout/0003..0007']?.provider).toBe('anthropic');
 
     expect(result.data.path).toBe('/project/.visual-diff/diffs/checkout/0003..0007/review.json');
@@ -195,6 +195,18 @@ describe('vdiff review', () => {
 });
 
 describe('comment and export pick up a stored review', () => {
+  it('discards the previous review when a fresh provider attempt fails', async () => {
+    const h = harness({ ANTHROPIC_API_KEY: 'a' });
+    await review(h.ctx, invocation);
+    h.ctx.ports.requestReview = async () => { throw new Error('provider unavailable'); };
+    await expect(review(h.ctx, invocation)).rejects.toThrow('provider unavailable');
+    expect(await h.store.readReview({ flow: 'checkout', base: '0003', head: '0007' })).toBeNull();
+    const after = await comment(h.ctx, {
+      kind: 'comment', flow: 'checkout', e2e: false, failOn: 'none', json: false,
+    });
+    expect(after.data.markdown).not.toContain('#### Review');
+  });
+
   it('render the review without a flag once vdiff review has run, and not before', async () => {
     const h = harness({ ANTHROPIC_API_KEY: 'a' });
     const commentInvocation = {

@@ -1,4 +1,5 @@
 import { minorDiff } from '../diff/tolerance-testkit.js';
+import { significanceFingerprint } from '../diff/significance.js';
 /**
  * The model-written review (CI spec D39): provider resolution, what the model is shown, what is
  * accepted back, and the exact request each provider receives — driven through an injected `fetch`,
@@ -158,6 +159,17 @@ describe('resolveReviewProvider', () => {
 });
 
 describe('what the model is shown', () => {
+  it('records only screenshot pairs actually attached, not merely selected cells', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vdiff-review-pairs-'));
+    try {
+      await seedStore(root);
+      expect((await collectEvidence(root, fixtureDiff(), 3)).comparedCells).toEqual([
+        { step: 'pay-form', viewport: '1280x800' },
+      ]);
+      await rm(join(root, '.visual-diff/runs/checkout/0007/steps/pay-form/1280x800/screenshot.png'));
+      expect((await collectEvidence(root, fixtureDiff(), 3)).comparedCells).toEqual([]);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
   it('ranks changed cells by worst finding, then by pixel movement', () => {
     const ranked = rankCells(fixtureDiff()).map((cell) => `${cell.step}@${cell.viewport}`);
     // cart moved 20% of its pixels but has no finding; pay-form has a high one.
@@ -217,6 +229,30 @@ describe('what the model is shown', () => {
 });
 
 describe('what is accepted back', () => {
+  it('bounds assessments to unambiguous finding IDs actually included in the prompt', () => {
+    const result = fixtureDiff();
+    result.steps[1]!.viewports['1280x800']!.findings = Array.from({ length: 70 }, (_, i) =>
+      makeFinding(`f${i}`, { changes: [], reasons: ['pixels-only'] }));
+    const noise = { assessment: 'capture-noise', confidence: 'high', reason: 'Matching content; only a blinking caret differs.' };
+    const triage = { findings: ['f1', 'f2', 'f2', 'f69', 'invented'].map(findingId => ({ findingId, ...noise })),
+      viewports: [{ step: 'pay-form', viewport: '1280x800', ...noise }, { step: 'ghost', viewport: '1280x800', ...noise }] };
+    const body = parseReviewBody(JSON.stringify({ ...BODY, triage }), result,
+      [{ step: 'pay-form', viewport: '1280x800' }]);
+    // Duplicate model assessments stay available for audit, but cannot suppress a finding.
+    expect(body.triage?.findings.map(f => f.findingId)).toEqual(['f1', 'f2', 'f2']);
+    expect(body.triage?.viewports.map(v => v.step)).toEqual(['pay-form']);
+    expect(body.triage?.comparedCells).toEqual([{ step: 'pay-form', viewport: '1280x800' }]);
+  });
+
+  it('downgrades noise decisions without both screenshots and rejects malformed assessments', () => {
+    const noise = { assessment: 'capture-noise', confidence: 'high', reason: 'A transient caret.' };
+    const triage = { findings: [{ findingId: 'f1', ...noise }], viewports: [{ step: 'pay-form', viewport: '1280x800', ...noise }] };
+    const body = parseReviewBody(JSON.stringify({ ...BODY, triage }), fixtureDiff());
+    expect(body.triage?.findings[0]).toMatchObject({ assessment: 'uncertain', confidence: 'low' });
+    expect(body.triage?.viewports[0]).toMatchObject({ assessment: 'uncertain', confidence: 'low' });
+    expect(() => parseReviewBody(JSON.stringify({ ...BODY, triage: { ...triage, findings: [{ findingId: 'f1', ...noise, reason: '  ' }] } }), fixtureDiff()))
+      .toThrowError(/does not match/);
+  });
   it('parses the body and drops changes that name steps or viewports the diff does not have', () => {
     const body = parseReviewBody(JSON.stringify(BODY), fixtureDiff());
     expect(body.changes.map((change) => `${change.step}/${change.viewport}`)).toEqual([
@@ -234,7 +270,7 @@ describe('what is accepted back', () => {
   });
 
   it('keeps the schema strict-mode friendly: every property required, nothing extra allowed', () => {
-    expect(REVIEW_SCHEMA.required).toEqual(['headline', 'summary', 'changes', 'concerns']);
+    expect(REVIEW_SCHEMA.required).toEqual(['triage', 'headline', 'summary', 'changes', 'concerns']);
     expect(REVIEW_SCHEMA.additionalProperties).toBe(false);
     expect(REVIEW_SCHEMA.properties.changes.items.required).toEqual([
       'step',
@@ -270,8 +306,9 @@ describe('requestReview', () => {
   }
 
   it('sends the Anthropic Messages API a structured-output request with the images inline', async () => {
+    const triage = { findings: [{ findingId: 'f1', assessment: 'meaningful', confidence: 'high', reason: 'The visible button label changed.' }], viewports: [] };
     const { fetch, calls } = fakeFetch({
-      content: [{ type: 'text', text: JSON.stringify(BODY) }],
+      content: [{ type: 'text', text: JSON.stringify({ ...BODY, triage }) }],
       stop_reason: 'end_turn',
       usage: { input_tokens: 4321, output_tokens: 210 },
     });
@@ -310,6 +347,9 @@ describe('requestReview', () => {
       evidence: { cells: 2, images: 4, contextProvided: true },
     });
     expect(response.review.changes).toHaveLength(3);
+    expect(response.review.diffFingerprint).toBe(significanceFingerprint(fixtureDiff()));
+    expect(response.review.triage).toEqual({ ...triage, version: 1,
+      comparedCells: [{ step: 'pay-form', viewport: '1280x800' }] });
   });
 
   it('sends the OpenAI Responses API a strict json_schema request with data-URI images', async () => {

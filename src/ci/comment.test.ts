@@ -17,6 +17,7 @@ import {
 } from './comment.js';
 import { fakeReview } from '../cli/testing.js';
 import { minorDiff } from '../diff/tolerance-testkit.js';
+import { commentFingerprint } from './review-triage.js';
 
 function diffWithFindings(count: number, patch: Partial<DiffResult> = {}): DiffResult {
   const findings = Array.from({ length: count }, (_, index) =>
@@ -355,6 +356,7 @@ describe('the picture of the report (D51)', () => {
       imageBase: base,
       reportUrl: `${base}/report.html`,
       preview: { light: 'images/preview.png', dark: 'images/preview-dark.png' },
+      previewDiffFingerprint: commentFingerprint(diffWithFindings(2)),
     });
     const lines = doc.markdown.split('\n');
     const picture = lines.findIndex((l) => l.startsWith('<a href="' + base + '/report.html"><picture>'));
@@ -376,6 +378,7 @@ describe('the picture of the report (D51)', () => {
       version: '0.6.0',
       imageBase: base,
       preview: { light: 'images/preview.png' },
+      previewDiffFingerprint: commentFingerprint(diffWithFindings(2)),
     });
     expect(doc.markdown).toContain(`<picture><img src="${base}/images/preview.png"`);
     expect(doc.markdown).not.toContain('<a href');

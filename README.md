@@ -364,6 +364,21 @@ the PR comment says **No changes above the configured thresholds** and links to 
 After changing the configuration, rerun the diff/export/review commands; cached comparisons are
 invalidated, and previews or AI reviews from an older tolerance decision are not reused in the PR.
 
+When AI review is enabled, the same review call also assesses findings and whole screenshots as
+meaningful, likely capture noise, uncertain, or incomplete captures, with an evidence-based reason.
+High-confidence noise can be omitted from PR comments and previews only when both before/after
+screenshots were actually supplied. Automatic exclusions are limited to pixel-only and layout
+findings; high-severity and confirmed semantic, structural, and accessibility findings stay visible.
+The model usually sees the top three changed views, so unreviewed views remain visible too.
+
+Uncertain findings stay in the comment. Loading/skeleton mismatches produce a capture-readiness
+concern, not a clean result. Missing, failed, or stale AI reviews fall back to threshold-based
+reporting. The HTML report and JSON retain all measured evidence; the HTML review panel includes
+the AI assessments and their reasons. AI confidence is a model assessment, not a calibrated
+probability. CI gates continue to use the measured thresholds, even when AI filters the comment.
+Rerun export with `--preview` after a new review: previews require a matching evidence/assessment
+stamp, and outdated or unstamped previews are omitted from comments.
+
 Loading states need a readiness condition: use a step's `waitFor` or an `expect` visibility check
 for the intended screen. A stable skeleton can still be the wrong state to capture; the percentage
 alone cannot identify that condition. Capture warnings about outstanding requests remain visible.

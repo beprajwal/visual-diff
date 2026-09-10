@@ -1,6 +1,6 @@
 /** Read-only PR projection. Stored evidence and the detailed HTML report remain complete. */
 import { createHash } from 'node:crypto';
-import type { DiffResult, Review, ViewportDiff } from '../types.js';
+import type { DiffResult, Review, StepDiff, ViewportDiff } from '../types.js';
 
 export function hasMinorChanges(result: DiffResult): boolean {
   return result.steps.some(step => step.findings.some(f => f.withinTolerance) ||
@@ -32,6 +32,11 @@ export function significantDiff(result: DiffResult): DiffResult {
     return hadMinor ? viewports.some(vp => vp.missing !== undefined || vp.pixelChangedRatio > 0 || vp.dimensionsChanged || vp.findings.length > 0) : viewports.length > 0;
   });
 
+  return withProjectedSteps(result, steps);
+}
+
+/** Recount a display projection without changing the original comparison denominator/statuses. */
+export function withProjectedSteps(result: DiffResult, steps: StepDiff[]): DiffResult {
   const summary = { ...result.summary, totalFindings: 0, stepsChanged: 0, maxPixelChangedRatio: 0,
     bySeverity: { ...result.summary.bySeverity }, byKind: { ...result.summary.byKind } };
   for (const severity of Object.keys(summary.bySeverity) as Array<keyof typeof summary.bySeverity>) summary.bySeverity[severity] = 0;
@@ -60,6 +65,8 @@ export function significanceFingerprint(result: DiffResult): string {
 }
 
 export function significantReview(result: DiffResult, review?: Review): Review | undefined {
+  if (review?.diffFingerprint !== undefined && review.diffFingerprint !== significanceFingerprint(result)) return undefined;
+  if (review?.triage !== undefined && review.diffFingerprint === undefined) return undefined;
   if (!hasMinorChanges(result)) return review;
   return review?.diffFingerprint === significanceFingerprint(result) ? review : undefined;
 }

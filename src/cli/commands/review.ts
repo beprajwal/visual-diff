@@ -96,9 +96,10 @@ export async function review(
   if (context !== undefined) request.context = context;
   if (invocation.shots !== undefined) request.shots = invocation.shots;
 
+  const store = await ctx.ports.openStore(config);
+  await store.invalidateReview(pair);
   const response = await ctx.ports.requestReview(request);
 
-  const store = await ctx.ports.openStore(config);
   const stored = await store.writeReview(pair, response.review);
 
   let out: string | null = null;

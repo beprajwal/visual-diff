@@ -1082,6 +1082,28 @@ export type ReviewProvider = (typeof REVIEW_PROVIDERS)[number];
 export const REVIEW_ASSESSMENTS = ['expected', 'unrelated', 'regression', 'unclear'] as const;
 export type ReviewAssessment = (typeof REVIEW_ASSESSMENTS)[number];
 
+export const TRIAGE_ASSESSMENTS = ['meaningful', 'capture-noise', 'uncertain', 'capture-incomplete'] as const;
+export interface ReviewNoiseAssessment {
+  assessment: (typeof TRIAGE_ASSESSMENTS)[number];
+  confidence: 'high' | 'low';
+  /** Short explanation grounded in the supplied evidence. */
+  reason: string;
+}
+export interface ReviewFindingAssessment extends ReviewNoiseAssessment {
+  findingId: string;
+}
+export interface ReviewViewportAssessment extends ReviewNoiseAssessment {
+  step: StepId;
+  viewport: ViewportId;
+}
+export interface ReviewTriage {
+  version: 1;
+  findings: ReviewFindingAssessment[];
+  viewports: ReviewViewportAssessment[];
+  /** Actual base/head screenshot pairs supplied to the model, recorded by the caller. */
+  comparedCells: Array<{ step: StepId; viewport: ViewportId }>;
+}
+
 export interface ReviewChange {
   /** Step id the change belongs to, exactly as `DiffResult.steps[].id` spells it. */
   step: StepId;
@@ -1100,6 +1122,8 @@ export interface ReviewChange {
  * needs to weigh it is on the object: which model wrote it, what it was shown, and when.
  */
 export interface Review {
+  /** Optional AI noise assessment. Never changes measured evidence or CI gate decisions. */
+  triage?: ReviewTriage;
   /** Exact evidence and tolerance classification used to produce this review. */
   diffFingerprint?: string;
   flow: string;

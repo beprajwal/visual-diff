@@ -32,6 +32,7 @@ import {
 } from './layout.js';
 import { PREVIEW_PAGE, renderPreviewCard } from './preview-card.js';
 import { renderReportPage } from './report-html.js';
+import { significantReview } from '../diff/significance.js';
 
 /** `summary.json` — the bundle's own header, for a consumer that will not parse a whole DiffResult. */
 export interface BundleSummary {
@@ -189,6 +190,7 @@ async function copyIfPresent(from: string, to: string): Promise<boolean> {
  */
 export async function exportBundle(request: ExportRequest): Promise<ExportReport> {
   const { result, root, outDir } = request;
+  const currentReview = significantReview(result, request.review);
   const flow = result.flow;
   const files: string[] = [];
   const missing: string[] = [];
@@ -287,7 +289,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
     const available = new Set(Array.from(shotSources.values(), (source) => source.to));
     await writeFile(
       path.join(outDir, PREVIEW_PAGE),
-      renderPreviewCard({ result, cells: selected, available, version: request.version }),
+      renderPreviewCard({ result, review: request.review, cells: selected, available, version: request.version }),
       'utf8',
     );
     files.push(PREVIEW_PAGE);
@@ -319,7 +321,7 @@ export async function exportBundle(request: ExportRequest): Promise<ExportReport
       ? {}
       : { notices: [...request.notices] }),
     ...(request.gate === undefined ? {} : { gate: request.gate }),
-    ...(request.review === undefined ? {} : { review: request.review }),
+    ...(currentReview === undefined ? {} : { review: currentReview }),
     version: request.version,
     generatedAt: request.generatedAt,
   });

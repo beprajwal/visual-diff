@@ -74,6 +74,33 @@ function ReviewBanner({ review }: { review: Review }) {
           ))}
         </ul>
       ) : null}
+      {review.triage?.version === 1 ? (
+        <>
+          {[...review.triage.viewports, ...review.triage.findings]
+            .filter(assessment => assessment.assessment === 'capture-incomplete')
+            .map((assessment, index) => (
+              <div class="flagged" key={`readiness-${index}`}>
+                Capture readiness: {'findingId' in assessment ? assessment.findingId : `${assessment.step} @ ${assessment.viewport}`} — {assessment.reason}
+              </div>
+            ))}
+          <details class="triage">
+            <summary>AI finding assessments</summary>
+            <div>All measured findings remain in this report. AI assessments affect PR presentation; gates use measured thresholds.</div>
+            <ul>
+              {review.triage.findings.map((finding, index) => (
+                <li key={`finding-${finding.findingId}-${index}`}>
+                  <code>{finding.findingId}</code> — {finding.assessment.replaceAll('-', ' ')} ({finding.confidence} confidence): {finding.reason}
+                </li>
+              ))}
+              {review.triage.viewports.map((view, index) => (
+                <li key={`view-${view.step}-${view.viewport}-${index}`}>
+                  <code>{view.step}</code> @ {view.viewport} — {view.assessment.replaceAll('-', ' ')} ({view.confidence} confidence): {view.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </>
+      ) : null}
       <div class="attribution">
         Review by {review.model} ({review.provider}) from {review.evidence.images} screenshot
         {review.evidence.images === 1 ? '' : 's'}

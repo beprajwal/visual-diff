@@ -20,12 +20,15 @@ import { EXIT, type DiffResult } from '../../types.js';
 import type { CommandContext } from '../command.js';
 import { significanceFingerprint } from '../../diff/significance.js';
 import { minorDiff } from '../../diff/tolerance-testkit.js';
+import { commentFingerprint } from '../../ci/review-triage.js';
+import { makeStepDiff, makeViewportDiff, makeFinding } from '../../report/ui/test-fixtures.js';
 import {
   createTestPorts,
   createTestStore,
   fakeConfig,
   fakeDiffResult,
   fakeRunSummary,
+  fakeReview,
 } from '../testing.js';
 import { comment } from './comment.js';
 import { exportCommand } from './export.js';
@@ -93,6 +96,38 @@ const invocation = {
 };
 
 describe('vdiff comment', () => {
+  it('keeps exit 3 and raw JSON evidence after AI filtering, and rejects a preview when its review disappears', async () => {
+    const cwd = await tempDir();
+    const raw = diffWith(1);
+    raw.steps = [makeStepDiff('noise', 'matched', { viewports: {
+      '1280x800': makeViewportDiff('1280x800', { pixelChangedRatio: .02,
+        findings: [makeFinding('f1', { step: 'noise', changes: [], reasons: ['pixels-only'] })] }),
+    } })];
+    const ctx = context(raw, cwd);
+    const store = await ctx.ports.openStore(fakeConfig());
+    const pair = { flow: raw.flow, ...raw.pair };
+    const assessment = { assessment: 'capture-noise' as const, confidence: 'high' as const, reason: 'Only a blinking caret differs.' };
+    const review = fakeReview({ diffFingerprint: significanceFingerprint(raw), changes: [], triage: { version: 1,
+      comparedCells: [{ step: 'noise', viewport: '1280x800' }], findings: [{ findingId: 'f1', ...assessment }],
+      viewports: [{ step: 'noise', viewport: '1280x800', ...assessment }] } });
+    await store.writeReview(pair, review);
+    await mkdir(join(cwd, 'images'));
+    await writeFile(join(cwd, 'images', 'preview.png'), 'fake-image');
+    await writeFile(join(cwd, 'images', 'preview.json'), JSON.stringify({ diffFingerprint: commentFingerprint(raw, review) }));
+    const args = { ...invocation, failOn: 'any' as const, imageBase: 'https://images.test', bundle: cwd };
+    const filtered = await comment(ctx, args);
+    expect(filtered.exitCode).toBe(EXIT.GATE_FAILED);
+    expect(filtered.data.result).toEqual(raw);
+    expect(filtered.data.markdown).toContain('AI classified');
+    expect(filtered.data.markdown).not.toContain('2.0%');
+    expect(filtered.data.preview).toBe(true);
+    await store.invalidateReview(pair);
+    const restored = await comment(ctx, args);
+    expect(restored.exitCode).toBe(EXIT.GATE_FAILED);
+    expect(restored.data.preview).toBe(false);
+    expect(restored.data.markdown).toContain('2.0%');
+  });
+
   it('puts the markdown alone on stdout and exits 0', async () => {
     const result = await comment(context(diffWith(2)), invocation);
     expect(result.exitCode ?? EXIT.OK).toBe(EXIT.OK);
@@ -214,6 +249,9 @@ describe('vdiff comment', () => {
 
     // The light capture alone: a plain <img>, no dark source.
     await writeFile(join(dir, 'bundle', 'images', 'preview.png'), 'png');
+    await writeFile(join(dir, 'bundle', 'images', 'preview.json'), JSON.stringify({
+      diffFingerprint: significanceFingerprint(diffWith(2)),
+    }));
     const light = await comment(context(diffWith(2), dir), {
       ...invocation,
       imageBase: 'https://example.test/base',

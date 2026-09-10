@@ -149,6 +149,8 @@ export interface StorePort {
   readReview(pair: PairRef, engineVersion?: string): Promise<Review | null>;
   /** Persists `review.json` beside the pair's `findings.json`; returns its absolute path. */
   writeReview(pair: PairRef, review: Review): Promise<string>;
+  /** Removes an earlier review before retrying, so a failed attempt cannot reuse its decisions. */
+  invalidateReview(pair: PairRef): Promise<void>;
   /** Exempts a run from retention pruning (spec §6). */
   pinRun(flow: string, runId: RunId): Promise<RunSummary>;
   /** Deletes a run's blobs, keeping meta.json and flow.snapshot.yaml (spec §6). */
