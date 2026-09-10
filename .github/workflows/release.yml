@@ -19,7 +19,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       dry_run:
@@ -147,7 +147,7 @@ jobs:
       # the repo stays empty until one exists. Created after publish so a release never advertises
       # a version the registry does not have.
       - name: Create the GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.dry_run == false)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -156,3 +156,8 @@ jobs:
             exit 0
           fi
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+
+      # Consumers using @v0 (or a later major) follow successful stable releases only.
+      - name: Advance the action major tag
+        if: startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.dry_run == false)
+        run: node scripts/promote-action-tag.mjs

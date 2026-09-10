@@ -122,12 +122,14 @@ head, diffs them, uploads the evidence, and leaves one comment per flow that it 
 every push. The check stays **green**: findings are reported, not enforced, until you set
 `fail-on: high` or `fail-on: any` in the workflow.
 
-The pipeline itself lives in a composite action (`beprajwal/visual-diff@v<version>`) rather than in
-the file you just installed, so a fix reaches you on the next version bump. The installed workflows
-are yours — edit them, and a re-install preserves your edits and says so.
+The pipeline itself lives in a composite action. Use `beprajwal/visual-diff@v0` to receive stable
+minor and patch releases automatically; use a full tag such as `@v0.19.2` to pin a release.
+The installed workflows pin the CLI's current version. They are yours — edit them, and a
+re-install preserves your edits and says so. Leave the action's `version` input unset to use
+the CLI release associated with its tag.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.19.0
+- uses: beprajwal/visual-diff@v0
   with:
     flows: checkout search       # default: every flow in .visual-diff/flows
     fail-on: none                # none | high | any
@@ -166,7 +168,7 @@ judges against, so a PR that says "rename the Pay button" and also moves the hea
 so.
 
 ```yaml
-- uses: beprajwal/visual-diff@v0.19.0
+- uses: beprajwal/visual-diff@v0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}   # or openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     # review-model: claude-opus-5                          # default per provider; gpt-6-astra for OpenAI
@@ -187,7 +189,7 @@ minutes, and nothing is stored or rotated:
 permissions:
   id-token: write
   # …
-- uses: beprajwal/visual-diff@v0.19.0
+- uses: beprajwal/visual-diff@v0
   with:
     anthropic-federation-rule-id: fdrl_…
     anthropic-organization-id: 00000000-0000-0000-0000-000000000000
@@ -502,6 +504,10 @@ the lifecycle script and commit the three files it touches) — the `version` li
 `scripts/sync-version.mjs`, which is the only thing that should ever write `TOOL_VERSION` in
 `src/version.ts` and the `version` input default in `action.yml`. Editing `package.json` by hand
 skips it, and the release then fails on `src/version.test.ts` after publishing nothing.
+
+Push the version tag to publish. After npm publication and the GitHub Release succeed, the
+workflow advances the matching major action tag (`v0`, `v1`, etc.). Prereleases and dry runs
+do not advance it, and rerunning an older release cannot move it backwards.
 
 `build` empties `dist/` first. `tsc` only ever adds to its `outDir`, so without that step the
 compiled remains of a deleted module stay on disk and ship to every consumer — the published tree
