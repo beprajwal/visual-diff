@@ -24,7 +24,8 @@ import { evaluateGate, GATE_NONE } from '../ci.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { PREVIEW_FILES, type CommentInput } from '../../ci/index.js';
 import { PREVIEW_MANIFEST } from '../../ci/preview.js';
-import { hasMinorChanges, significanceFingerprint, significantDiff } from '../../diff/significance.js';
+import { significantDiff } from '../../diff/significance.js';
+import { commentFingerprint, reviewProjection } from '../../ci/review-triage.js';
 import { percent } from '../output.js';
 import { composePairNotices, pairLabels } from '../pair-notices.js';
 import type { CommentData } from '../shapes.js';
@@ -37,6 +38,7 @@ export async function comment(
   invocation: CommentInvocation,
 ): Promise<CommandResult<CommentData>> {
   const { pair, result, review } = await resolveDiff(ctx, invocation);
+  const displayed = reviewProjection(result, review ?? undefined).result;
 
   const composed = composePairNotices(result);
   const notices = [
@@ -72,7 +74,7 @@ export async function comment(
       const fingerprint = await previewFingerprint(bundle);
       if (fingerprint !== undefined) input.previewDiffFingerprint = fingerprint;
       // The renderer applies this check too; doing it here keeps the JSON preview verdict honest.
-      if (!hasMinorChanges(result) || fingerprint === significanceFingerprint(result)) {
+      if (fingerprint === commentFingerprint(result, review ?? undefined)) {
         input.preview = (await present(PREVIEW_FILES.dark))
           ? { light: PREVIEW_FILES.light, dark: PREVIEW_FILES.dark }
           : { light: PREVIEW_FILES.light };
@@ -101,10 +103,10 @@ export async function comment(
   if (document.truncated.images > 0) {
     warnings.push(`comment truncated: ${document.truncated.images} changed shot(s) not shown`);
   }
-  if (invocation.imageBase === undefined && significantDiff(result).summary.maxPixelChangedRatio > 0) {
+  if (invocation.imageBase === undefined && displayed.summary.maxPixelChangedRatio > 0) {
     warnings.push(
       `no --image-base given, so this comment shows no screenshots (max pixel change ` +
-        `${percent(significantDiff(result).summary.maxPixelChangedRatio)}); publish the bundle's images and pass ` +
+        `${percent(displayed.summary.maxPixelChangedRatio)}); publish the bundle's images and pass ` +
         'their URL prefix to embed them',
     );
   }

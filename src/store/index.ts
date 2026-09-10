@@ -102,6 +102,7 @@ export interface Store {
   readReview(pair: PairRef, engineVersion?: string): Promise<Review | null>;
   /** Persists `review.json` beside the pair's `findings.json`; returns its absolute path. */
   writeReview(review: Review): Promise<string>;
+  invalidateReview(pair: PairRef): Promise<void>;
   invalidateDiff(pair: PairRef): Promise<void>;
   listStoredPairs(flow: string): Promise<PairRef[]>;
 
@@ -166,6 +167,7 @@ export function openStore(config: Config): Store {
     readReview: (pair, engineVersion) =>
       diffStore.readReview(root, pair.flow, pair.base, pair.head, engineVersion),
     writeReview: (review) => diffStore.writeReview(root, review),
+    invalidateReview: (pair) => diffStore.invalidateReview(root, pair.flow, pair.base, pair.head),
     invalidateDiff: (pair) => diffStore.invalidateDiff(root, pair.flow, pair.base, pair.head),
     listStoredPairs: (flow) => diffStore.listStoredPairs(root, flow),
 

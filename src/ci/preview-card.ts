@@ -16,7 +16,9 @@ import { SEVERITY_ORDER, type DiffResult, type Finding } from '../types.js';
 import { PRODUCT_NAME } from './comment.js';
 import type { ShotCell } from './layout.js';
 import { shotCells } from './layout.js';
-import { hasMinorChanges, significantDiff, significanceFingerprint } from '../diff/significance.js';
+import { hasMinorChanges } from '../diff/significance.js';
+import { commentFingerprint, reviewProjection } from './review-triage.js';
+import type { Review } from '../types.js';
 
 /** Bundle-relative path of the card. Beside `report.html`, so the same publish step ships it. */
 export const PREVIEW_PAGE = 'preview.html';
@@ -29,6 +31,7 @@ export const PREVIEW_CARD_WIDTH = 1200;
 
 export interface PreviewCardInput {
   result: DiffResult;
+  review?: Review;
   /** The changed cells, every viewport, in the order the comment shows them. The card picks and ranks. */
   cells: readonly ShotCell[];
   /** Bundle-relative image paths that were actually written; a cell whose capture is absent says so. */
@@ -166,10 +169,12 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; display: flex; 
 /** The card as a page. Deterministic for a given input: no dates, no random ids. */
 export function renderPreviewCard(input: PreviewCardInput): string {
   const minor = hasMinorChanges(input.result);
-  const result = significantDiff(input.result);
+  const projection = reviewProjection(input.result, input.review);
+  const result = projection.result;
+  const aiFiltered = projection.omittedFindings > 0 || projection.omittedViewports > 0;
   const summary = result.summary;
   const selected = new Set(input.cells.map(cell => `${cell.step}\0${cell.viewport}`));
-  const cells = minor ? shotCells(result).filter(cell => cell.changed && selected.has(`${cell.step}\0${cell.viewport}`)) : input.cells;
+  const cells = minor || aiFiltered ? shotCells(result).filter(cell => cell.changed && selected.has(`${cell.step}\0${cell.viewport}`)) : input.cells;
   const ranked = rankChanges(onePerStep(cells));
   const max = Math.max(0, input.maxChanges ?? DEFAULT_MAX_CHANGES);
   const shown = ranked.slice(0, max);
@@ -187,7 +192,7 @@ export function renderPreviewCard(input: PreviewCardInput): string {
   const minorOnly = minor && summary.totalFindings === 0 && summary.stepsChanged === 0 && result.steps.every(step => step.status === 'matched');
   const body =
     shown.length === 0
-      ? `<p class="verdict">${minorOnly ? 'No changes above the configured thresholds.' : 'Nothing moved between the two revisions.'}</p>`
+      ? `<p class="verdict">${aiFiltered ? 'AI classified the reviewed visual changes as capture noise. Full evidence remains in the report.' : minorOnly ? 'No changes above the configured thresholds.' : 'Nothing moved between the two revisions.'}</p>`
       : `<ol class="preview-card-list">${shown.map((cell, i) => entry(i + 1, cell, input.available)).join('')}</ol>` +
         (hidden > 0
           ? `<p class="more">and ${hidden} more change${hidden === 1 ? '' : 's'} in the report</p>`
@@ -196,12 +201,13 @@ export function renderPreviewCard(input: PreviewCardInput): string {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8">',
-    `<meta name="vdiff-fingerprint" content="${significanceFingerprint(input.result)}">`,
+    `<meta name="vdiff-fingerprint" content="${commentFingerprint(input.result, input.review)}">`,
     `<title>${escape(PRODUCT_NAME)} — ${escape(result.flow)} ${escape(result.pair.base)}..${escape(result.pair.head)}</title>`,
     `<style>${STYLE}</style>`,
     '</head><body class="preview-card">',
     `<header><h1>${escape(PRODUCT_NAME)}</h1><span class="pair"><code>${escape(result.flow)}</code> · <code>${escape(result.pair.base)}..${escape(result.pair.head)}</code></span></header>`,
     `<p class="verdict"><strong>${verdict}</strong> · ${steps}</p>`,
+    ...projection.captureConcerns.map(concern => `<p class="verdict">Capture readiness: ${escape(concern.step)} @ ${escape(concern.viewport)} — ${escape(concern.reason)}</p>`),
     body,
     `<footer><span>base and head, side by side · ${shown.length} of ${ranked.length} change${ranked.length === 1 ? '' : 's'}</span><span>vdiff ${escape(input.version)}</span></footer>`,
     '</body></html>',

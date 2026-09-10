@@ -17,6 +17,8 @@ import { fakeReview } from '../cli/testing.js';
 import { LOGO_URL } from './comment.js';
 import { exportBundle } from './export.js';
 import { evaluateGate } from './gate.js';
+import { significanceFingerprint } from '../diff/significance.js';
+import { commentFingerprint } from './review-triage.js';
 import type { BundleSummary } from './export.js';
 
 const PIXEL_PATH = 'diffs/checkout/0003..0007/steps/pay-form/1280x800/pixel.png';
@@ -99,6 +101,41 @@ describe('exportBundle', () => {
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
+  });
+
+  it('filters AI noise in PR documents while preserving full findings, review and HTML evidence', async () => {
+    const result = fixtureDiff();
+    const finding = result.steps[0]!.viewports['1280x800']!.findings[0]!;
+    finding.changes = [];
+    finding.reasons = ['pixels-only'];
+    const assessment = { assessment: 'capture-noise' as const, confidence: 'high' as const, reason: 'Only the blinking caret differs.' };
+    const review = fakeReview({ engineVersion: result.engineVersion, diffFingerprint: significanceFingerprint(result), changes: [],
+      triage: { version: 1, comparedCells: [{ step: 'pay-form', viewport: '1280x800' }],
+        findings: [{ findingId: 'f1', ...assessment }],
+        viewports: [{ step: 'pay-form', viewport: '1280x800', ...assessment }] } });
+    const gate = evaluateGate(result.summary, 'any');
+    const report = await exportBundle({ root, result, review, gate, outDir: out, images: 'changed', preview: true,
+      version: 'test', generatedAt: '2026-09-10T00:00:00Z' });
+    expect(report.comment.markdown).toContain('AI classified the reviewed visual changes as capture noise');
+    expect(report.comment.markdown).not.toContain('3.0%');
+    expect(JSON.parse(await readFile(join(out, 'findings.json'), 'utf8'))).toEqual(result);
+    expect(JSON.parse(await readFile(join(out, 'review.json'), 'utf8'))).toEqual(review);
+    const snapshot = snapshotOf(await readFile(join(out, 'report.html'), 'utf8'));
+    expect(snapshot.diff).toEqual(result);
+    expect(snapshot.review).toEqual(review);
+    expect(snapshot.gate?.tripped).toBe(true);
+    expect(Object.keys(snapshot.images)).toHaveLength(4);
+    const preview = await readFile(join(out, 'preview.html'), 'utf8');
+    expect(preview).toContain(commentFingerprint(result, review));
+    expect(preview).not.toContain('3.0%');
+  });
+
+  it('keeps stale review data for audit but does not present it as the current HTML review', async () => {
+    const review = fakeReview({ diffFingerprint: 'old-diff' });
+    await exportBundle({ root, result: fixtureDiff(), review, outDir: out, images: 'none',
+      version: 'test', generatedAt: '2026-09-10T00:00:00Z' });
+    expect(snapshotOf(await readFile(join(out, 'report.html'), 'utf8')).review).toBeUndefined();
+    expect(JSON.parse(await readFile(join(out, 'review.json'), 'utf8'))).toEqual(review);
   });
 
   it('writes the four documents and the changed shots', async () => {

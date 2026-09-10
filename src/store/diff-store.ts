@@ -104,6 +104,11 @@ export async function writeReview(root: string, review: Review): Promise<string>
   return file;
 }
 
+/** A fresh review attempt must not fall back to an older assessment after failure. */
+export async function invalidateReview(root: string, flow: string, base: RunId, head: RunId): Promise<void> {
+  await fsp.rm(paths.diffReviewFile(root, flow, base, head), { force: true });
+}
+
 export async function invalidateDiff(
   root: string,
   flow: string,

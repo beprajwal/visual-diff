@@ -706,6 +706,10 @@ export function createTestStore(state: Partial<TestStoreState> = {}): StorePort 
       store.calls.push(`writeReview ${key(pair)}`);
       return `${dir}/diffs/${key(pair)}/review.json`;
     },
+    invalidateReview: async (pair: PairRef) => {
+      delete store.reviews[key(pair)];
+      store.calls.push(`invalidateReview ${key(pair)}`);
+    },
     pinRun: async (flow: string, runId: RunId) => {
       store.calls.push(`pinRun ${flow} ${runId}`);
       const found = (store.runs[flow] ?? []).find((summary) => summary.runId === runId);

@@ -27,7 +27,8 @@ import {
   type ShotCell,
 } from './layout.js';
 import { reviewLines } from './review-render.js';
-import { hasMinorChanges, significantDiff, significanceFingerprint, significantReview } from '../diff/significance.js';
+import { commentFingerprint, reviewProjection } from './review-triage.js';
+import { hasMinorChanges, significantDiff } from '../diff/significance.js';
 
 /** GitHub's hard limit is 65536 characters; the margin absorbs whatever a transport prepends. */
 export const MAX_COMMENT_BYTES = 65000;
@@ -418,10 +419,11 @@ function artifactHintFor(input: CommentInput): string {
 export function renderComment(input: CommentInput): CommentDocument {
   const raw = input.result;
   const minor = hasMinorChanges(raw);
-  const reviewForComment = significantReview(raw, input.review);
-  input = { ...input, result: significantDiff(raw), review: reviewForComment,
-    ...(minor && input.previewDiffFingerprint !== significanceFingerprint(raw) ? { preview: undefined } : {}) };
-  if (input.gate !== undefined) input = { ...input, gate: evaluateGate(input.result.summary, input.gate.level) };
+  const projection = reviewProjection(raw, input.review);
+  const fingerprint = commentFingerprint(raw, input.review);
+  input = { ...input, result: projection.result, review: projection.review,
+    ...(input.previewDiffFingerprint !== fingerprint ? { preview: undefined } : {}) };
+  if (input.gate !== undefined) input = { ...input, gate: evaluateGate(significantDiff(raw).summary, input.gate.level) };
   const minorOnly = minor && input.result.summary.totalFindings === 0 && input.result.summary.stepsChanged === 0 &&
     input.result.steps.every(step => step.status === 'matched');
   const marker = input.marker ?? markerFor(input.result.flow);
@@ -429,6 +431,20 @@ export function renderComment(input: CommentInput): CommentDocument {
   const hint = artifactHintFor(input);
 
   const head = [marker, ...verdictLines(input, minorOnly)];
+  const aiFiltered = projection.omittedFindings > 0 || projection.omittedViewports > 0;
+  if (aiFiltered) {
+    const onlyNoise = input.result.summary.totalFindings === 0 && input.result.summary.stepsChanged === 0 &&
+      input.result.steps.every(step => step.status === 'matched');
+    if (onlyNoise) {
+      // This is an AI judgement, not evidence that the screenshots were identical.
+      const index = head.findIndex(line => line.startsWith('**No findings.') || line.startsWith('**No changes above'));
+      if (index !== -1) head[index] = '**AI classified the reviewed visual changes as capture noise.**';
+    }
+    head.push('', '_AI omitted likely capture noise from this comment; the full report retains all evidence. The gate still uses measured findings._');
+  }
+  for (const concern of projection.captureConcerns) {
+    head.push('', `> **Capture readiness:** ${code(concern.step)} @ ${cell(concern.viewport)} — ${cell(concern.reason)}`);
+  }
   // The review sits between the verdict and the pictures (D39): it is the sentence the numbers
   // could not write, so it reads before the evidence it is about. Never shrunk away — its own
   // renderer caps the lists — for the same reason the verdict is not.

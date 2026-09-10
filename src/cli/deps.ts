@@ -227,6 +227,7 @@ export function toStorePort(module: StoreModule, config: Config): StorePort {
     writeDiff: (_pair, result) => store.writeDiff(result),
     readReview: (pair, engineVersion) => store.readReview(pair, engineVersion),
     writeReview: (_pair, review) => store.writeReview(review),
+    invalidateReview: (pair) => store.invalidateReview(pair),
     pinRun: async (flow, runId) => {
       await store.pin(flow, runId, true);
       return summaryOf(flow, runId);
