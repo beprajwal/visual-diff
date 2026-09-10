@@ -98,6 +98,11 @@ const diffSchema = z
     minRegionArea: z.number().int().nonnegative().optional(),
     maxRegions: z.number().int().positive().optional(),
     antialiasTolerance: z.number().min(0).max(1).optional(),
+    maxChangedPixelRatio: z.number().finite().min(0).max(1).optional(),
+    layout: z.object({
+      enabled: z.boolean().optional(),
+      tolerancePx: z.number().finite().nonnegative().optional(),
+    }).strict().optional(),
     ignore: z.array(z.string()).optional(),
     // The two report channels (D54). Booleans, not levels: *how much* to report is what `ignore`,
     // `minRegionArea` and the severity order are for.
@@ -292,6 +297,11 @@ export function buildConfig(
       minRegionArea: file.diff?.minRegionArea ?? DEFAULTS.diff.minRegionArea,
       maxRegions: file.diff?.maxRegions ?? DEFAULTS.diff.maxRegions,
       antialiasTolerance: file.diff?.antialiasTolerance ?? DEFAULTS.diff.antialiasTolerance,
+      maxChangedPixelRatio: file.diff?.maxChangedPixelRatio ?? DEFAULTS.diff.maxChangedPixelRatio,
+      layout: {
+        enabled: file.diff?.layout?.enabled ?? DEFAULTS.diff.layout.enabled,
+        tolerancePx: file.diff?.layout?.tolerancePx ?? DEFAULTS.diff.layout.tolerancePx,
+      },
       ignore: [...(file.diff?.ignore ?? DEFAULTS.diff.ignore)],
       findings: file.diff?.findings ?? DEFAULTS.diff.findings,
       warnings: file.diff?.warnings ?? DEFAULTS.diff.warnings,

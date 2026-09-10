@@ -388,6 +388,90 @@ describe('step navigation', () => {
 
 /* ------------------------------------------------------------------ view modes and feedback */
 
+describe('show minor changes', () => {
+  const minor = makeFinding('minor', { kind: 'layout', withinTolerance: true });
+  const actionable = makeFinding('actionable');
+  const diff = makeDiff({
+    flowDiff: [entry('minor', 0), entry('mixed', 1), entry('end', 2)],
+    steps: [
+      makeStepDiff('minor', 'matched', { viewports: {
+        '1280x800': makeViewportDiff('1280x800', {
+          pixelChangedRatio: 0.0004, withinTolerance: true, findings: [minor],
+        }),
+        '390x844': makeViewportDiff('390x844', {
+          pixelChangedRatio: 0.0004, withinTolerance: true, findings: [minor],
+        }),
+      } }),
+      makeStepDiff('mixed', 'matched', { viewports: {
+        '1280x800': makeViewportDiff('1280x800', {
+          pixelChangedRatio: 0.0004, withinTolerance: true, findings: [minor, actionable],
+        }),
+        '390x844': makeViewportDiff('390x844', {
+          pixelChangedRatio: 0.0004, withinTolerance: true, findings: [minor],
+        }),
+      } }),
+      makeStepDiff('end', 'matched', { viewports: {
+        '1280x800': makeViewportDiff('1280x800'),
+        '390x844': makeViewportDiff('390x844'),
+      } }),
+    ],
+  });
+  const withDiff = apply(loaded(), { type: 'diff-loaded', diff });
+
+  it('shows minor changes by default and preserves an explicitly hidden route', () => {
+    expect(initialState().showMinorChanges).toBe(true);
+    expect(initialState({ showMinorChanges: false }).showMinorChanges).toBe(false);
+    expect(routeOf(apply(withDiff, { type: 'toggle-minor-changes' })).showMinorChanges).toBe(false);
+  });
+
+  it('moves selection off hidden cells and navigates only visible steps', () => {
+    const filtered = apply(withDiff,
+      { type: 'select-finding', findingId: 'minor' },
+      { type: 'toggle-minor-changes' },
+    );
+    expect(filtered.step).toBe('mixed');
+    expect(filtered.selectedFinding).toBeNull();
+    expect(navigableSteps(filtered)).toEqual(['mixed', 'end']);
+    const next = apply(filtered, { type: 'step-next' });
+    expect(next.step).toBe('end');
+    expect(apply(next, { type: 'step-prev' }).step).toBe('mixed');
+    expect(navigableSteps(apply(filtered, { type: 'toggle-findings-only' }))).toEqual(['mixed']);
+  });
+
+  it('clears a hidden finding on a surviving step but preserves a visible selection', () => {
+    const mixed = apply(withDiff, { type: 'select-step', step: 'mixed' });
+    expect(apply(mixed,
+      { type: 'select-finding', findingId: 'minor' },
+      { type: 'toggle-minor-changes' },
+    ).selectedFinding).toBeNull();
+    expect(apply(mixed,
+      { type: 'select-finding', findingId: 'actionable' },
+      { type: 'toggle-minor-changes' },
+    ).selectedFinding).toBe('actionable');
+  });
+
+  it('reclamps selection after viewport changes and when loading with minors hidden', () => {
+    const hidden = apply(withDiff, { type: 'toggle-minor-changes' });
+    expect(apply(hidden, { type: 'select-viewport', viewport: '390x844' }).step).toBe('end');
+    const reloaded = apply(initialState({ step: 'minor', showMinorChanges: false }), {
+      type: 'diff-loaded', diff,
+    });
+    expect(reloaded.step).toBe('mixed');
+  });
+
+  it('handles a fully hidden strip and restores a selection when minor changes return', () => {
+    const allMinor = makeDiff({ flowDiff: diff.flowDiff.slice(0, 1), steps: diff.steps.slice(0, 1) });
+    const hidden = apply(withDiff,
+      { type: 'toggle-minor-changes' },
+      { type: 'diff-loaded', diff: allMinor },
+    );
+    expect(hidden.step).toBeNull();
+    expect(navigableSteps(hidden)).toEqual([]);
+    expect(apply(hidden, { type: 'step-next' }).step).toBeNull();
+    expect(apply(hidden, { type: 'toggle-minor-changes' }).step).toBe('minor');
+  });
+});
+
 describe('view modes', () => {
   it('toggles overlay on and back to side-by-side', () => {
     const overlay = apply(initialState(), { type: 'toggle-overlay' });

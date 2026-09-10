@@ -27,6 +27,7 @@ import {
   type ShotCell,
 } from './layout.js';
 import { reviewLines } from './review-render.js';
+import { hasMinorChanges, significantDiff, significanceFingerprint, significantReview } from '../diff/significance.js';
 
 /** GitHub's hard limit is 65536 characters; the margin absorbs whatever a transport prepends. */
 export const MAX_COMMENT_BYTES = 65000;
@@ -71,6 +72,8 @@ export interface CommentInput {
    * images do: a picture nobody can fetch is a broken image, not a preview.
    */
   preview?: { light: string; dark?: string };
+  /** Evidence fingerprint stamped when the preview was actually captured. */
+  previewDiffFingerprint?: string;
   /**
    * A model's reading of the diff (D39), rendered right after the verdict: the headline, a warning
    * when anything is outside the described change or looks broken, then the ranked changes. Absent
@@ -164,7 +167,7 @@ function joinUrl(base: string, relative: string): string {
 
 /* ------------------------------------------------------------------ sections */
 
-function verdictLines(input: CommentInput): string[] {
+function verdictLines(input: CommentInput, minorOnly = false): string[] {
   const { result } = input;
   const summary = result.summary;
   const pair = `${result.pair.base}..${result.pair.head}`;
@@ -193,7 +196,8 @@ function verdictLines(input: CommentInput): string[] {
     (summary.stepsSpecChanged > 0 ? `, ${summary.stepsSpecChanged} spec-changed` : '') +
     (summary.stepsFailed > 0 ? `, ${summary.stepsFailed} failed` : '') +
     (summary.stepsBlocked > 0 ? `, ${summary.stepsBlocked} blocked` : '');
-  lines.push(`${headline} · max pixel change ${percent(summary.maxPixelChangedRatio)} · ${steps}`);
+  lines.push(minorOnly ? '**No changes above the configured thresholds.**' :
+    `${headline} · max pixel change ${percent(summary.maxPixelChangedRatio)} · ${steps}`);
 
   // "No findings" has two causes, and on a pull request the wrong one reads as a clean bill of
   // health: this diff was computed with the findings channel off (D54), so it never looked.
@@ -412,11 +416,19 @@ function artifactHintFor(input: CommentInput): string {
  * smaller comment, it is a different one.
  */
 export function renderComment(input: CommentInput): CommentDocument {
+  const raw = input.result;
+  const minor = hasMinorChanges(raw);
+  const reviewForComment = significantReview(raw, input.review);
+  input = { ...input, result: significantDiff(raw), review: reviewForComment,
+    ...(minor && input.previewDiffFingerprint !== significanceFingerprint(raw) ? { preview: undefined } : {}) };
+  if (input.gate !== undefined) input = { ...input, gate: evaluateGate(input.result.summary, input.gate.level) };
+  const minorOnly = minor && input.result.summary.totalFindings === 0 && input.result.summary.stepsChanged === 0 &&
+    input.result.steps.every(step => step.status === 'matched');
   const marker = input.marker ?? markerFor(input.result.flow);
   const maxBytes = input.maxBytes ?? MAX_COMMENT_BYTES;
   const hint = artifactHintFor(input);
 
-  const head = [marker, ...verdictLines(input)];
+  const head = [marker, ...verdictLines(input, minorOnly)];
   // The review sits between the verdict and the pictures (D39): it is the sentence the numbers
   // could not write, so it reads before the evidence it is about. Never shrunk away — its own
   // renderer caps the lists — for the same reason the verdict is not.
@@ -473,6 +485,6 @@ export function renderCommentWithGate(
   input: Omit<CommentInput, 'gate'>,
   level: GateLevel,
 ): { document: CommentDocument; gate: GateVerdict } {
-  const gate = evaluateGate(input.result.summary, level);
+  const gate = evaluateGate(significantDiff(input.result).summary, level);
   return { document: renderComment({ ...input, gate }), gate };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { shotCells } from './layout.js';
+import { minorDiff } from '../diff/tolerance-testkit.js';
 import {
   DEFAULT_MAX_CHANGES,
   changeKind,
@@ -44,6 +45,16 @@ function fixture() {
 }
 
 describe('the card the picture is taken of (D51)', () => {
+  it('excludes tolerated cells even when supplied in the input selection', () => {
+    const result = minorDiff();
+    const html = renderPreviewCard({ result, cells: shotCells(result), available: new Set(), version: 'test' });
+    expect(html).toContain('No changes above the configured thresholds.');
+    expect(html).not.toContain('minor-step');
+    expect(html).not.toContain('0.3%');
+    expect(html).not.toContain('tiny pixel noise');
+    expect(html).not.toContain('Nothing moved');
+  });
+
   it('ranks additions and removals first, then the worst finding, then the most pixels', () => {
     const { cells } = fixture();
     expect(rankChanges(cells).map((cell) => `${cell.step}:${changeKind(cell)}`)).toEqual([

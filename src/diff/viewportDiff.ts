@@ -44,6 +44,8 @@ import type { ContrastContext, Verdict } from './severity.js';
 import { withoutUnbackedChanges } from './fidelity.js';
 import { changedOutside, pixelDiff, renderPixelOverlay } from './pixel.js';
 import { ignoreSelectorWarnings, matchesAny, selectorFor } from './selector.js';
+import { applyTolerance, hasChangedPixels, sameRelativePixels, sameScaledPixels, toleranceActive, toleratesLayout } from './tolerance.js';
+import { maxLengthDelta } from './severity.js';
 
 export interface ShotSide {
   shot: LoadedShot;
@@ -243,6 +245,7 @@ function emptyDiff(
 export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   const { step, viewport, base, head, options } = input;
   const emitFindings = options.emitFindings !== false;
+  const classifyTolerance = toleranceActive(options);
   // Absent means every kind (D57).
   const kinds = options.kinds === undefined ? undefined : new Set(options.kinds);
   const wantedKind = (finding: Finding): boolean => kinds === undefined || kinds.has(finding.kind);
@@ -326,7 +329,7 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   // Findings turned off (D54): the pixel diff, the regions and the overlay are exactly what they
   // would have been — a project that wants the pictures and not the list gets the pictures — and
   // the stages that only exist to explain a region are not run.
-  if (!emitFindings) {
+  if (!emitFindings && !classifyTolerance) {
     return {
       diff: {
         viewport,
@@ -347,6 +350,7 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
   // ---- stage 5: node matching and classification, before attribution needs `rectChanged`.
   const match = matchNodes(base.shot.dom.nodes, head.shot.dom.nodes);
   const changesByPair = new Map<NodePair, NodeChange[]>();
+  const layoutRects: Rect[] = [];
   const changedNodes = new Set<DomNode>();
   /** Ignored pairs are kept only to attribute a page-size change; they never produce findings. */
   const ignoredPairs: NodePair[] = [];
@@ -360,10 +364,21 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     // on a mixed pair, a high-severity "lost accessible name" for every named element (§4).
     const changes =
       input.degraded === true
-        ? withoutUnbackedChanges(diffNodePair(pair))
-        : diffNodePair(pair);
+        ? withoutUnbackedChanges(diffNodePair(pair, classifyTolerance ? 0 : undefined))
+        : diffNodePair(pair, classifyTolerance ? 0 : undefined);
     if (changes.length > 0) changesByPair.set(pair, changes);
-    if (rectChanged(pair)) {
+    // Only geometry-only pairs can explain tolerated pixels. A simultaneous text/style change
+    // keeps its evidence, even when the same element also moved by a tolerated distance.
+    if (classifyTolerance && pair.base !== null && pair.head !== null && changes.length > 0 && changes.every(change =>
+      (change.kind === 'moved' || change.kind === 'resized') &&
+      toleratesLayout(maxLengthDelta(change.changes), options))) {
+      const from = roundRect(scaleRect(pair.base.rect, scaleFor(base.shot, options.deviceScaleFactor)));
+      const to = roundRect(scaleRect(pair.head.rect, headScale));
+      const scalable = pair.base.tag === 'img' && pair.head.tag === 'img';
+      if (sameRelativePixels(base.image, head.image, from, to, exclude) ||
+        (scalable && sameScaledPixels(base.image, head.image, from, to, exclude))) layoutRects.push(from, to);
+    }
+    if (rectChanged(pair, classifyTolerance ? 0 : undefined)) {
       if (pair.base !== null) changedNodes.add(pair.base);
       if (pair.head !== null) changedNodes.add(pair.head);
     }
@@ -502,6 +517,29 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     }
   }
 
+  // Tolerance cannot discard a confirmed edit just because its pixel region fell below the
+  // clustering floor. Require visible pixel evidence in the changed node's own bounds.
+  if (classifyTolerance) {
+    for (const changes of changesByPair.values()) {
+      for (const change of changes) {
+        if (emitted.has(change)) continue;
+        if ((change.kind === 'moved' || change.kind === 'resized') &&
+          toleratesLayout(maxLengthDelta(change.changes), options)) continue;
+        const rects: Rect[] = [];
+        if (change.base !== null) rects.push(roundRect(scaleRect(change.base.rect, scaleFor(base.shot, options.deviceScaleFactor))));
+        if (change.head !== null) rects.push(roundRect(scaleRect(change.head.rect, headScale)));
+        const region = rects.find(rect => hasChangedPixels(pixels, rect, exclude));
+        if (region === undefined) continue;
+        const verdict = verdicts.get(change) ?? classifyNodeChange(change, contrastCtx);
+        const element = elementFor(change.head ?? change.base);
+        findings.push({ id: '', kind: verdict.kind, severity: verdict.severity, step, viewport,
+          ...(element === undefined ? {} : { element }), region, nodeChange: change.kind,
+          changes: change.changes, label: verdict.label, reasons: verdict.reasons });
+        emitted.add(change);
+      }
+    }
+  }
+
   // ---- the capped remainder, as one entry (spec §8, stage 3).
   if (regionSet.collapsed > 0 && regionSet.collapsedRect !== null) {
     findings.push({
@@ -529,8 +567,11 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     // Filtered here, at the end, rather than at each of the four places a finding is pushed: the
     // stages upstream decide *what changed*, and which kinds a project wants to read about is not
     // their business (D57). Attribution, dedupe and the collapsed remainder are unaffected.
-    findings: sortFindings(findings.filter(wantedKind)),
+    findings: sortFindings(findings),
   };
+
+  applyTolerance(diff, pixels, exclude, options, headScale, layoutRects);
+  diff.findings = emitFindings ? sortFindings(diff.findings.filter(wantedKind)) : [];
 
   return {
     diff,

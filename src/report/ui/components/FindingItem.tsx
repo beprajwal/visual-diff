@@ -57,6 +57,10 @@ export function FindingItem({
         {hasDetail ? <span class="caret">{expanded ? '▾' : '▸'}</span> : null}
       </button>
 
+      {finding.withinTolerance === true ? (
+        <div class="tolerance-label">≈ within tolerance</div>
+      ) : null}
+
       {element ? (
         <div class="sel" title={element.selector}>
           {element.selector}

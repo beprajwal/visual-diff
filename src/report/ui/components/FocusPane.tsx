@@ -105,6 +105,7 @@ export function FocusPane(props: FocusPaneProps) {
           <span class="note">
             {cell.id} · {cell.findingsCount} finding{cell.findingsCount === 1 ? '' : 's'}
             {vd ? ` · ${(vd.pixelChangedRatio * 100).toFixed(2)}% pixels` : ''}
+            {vd?.withinTolerance === true ? ' · within tolerance' : ''}
             {regions.length > 0 ? ` · ${regions.length} region${regions.length === 1 ? '' : 's'}` : ''}
           </span>
         ) : null}

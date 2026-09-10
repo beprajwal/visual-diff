@@ -21,6 +21,38 @@ function parse(source: string) {
 }
 
 describe('parseConfigSource', () => {
+  it('enables pixel and layout tolerances by default', () => {
+    const result = parse(MINIMAL);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.value.diff.maxChangedPixelRatio).toBe(0.003);
+    expect(result.value.diff.layout).toEqual({ enabled: true, tolerancePx: 2 });
+  });
+
+  it('keeps explicit strict settings and defaults omitted layout fields', () => {
+    const strict = parse(`${MINIMAL}\ndiff:\n  maxChangedPixelRatio: 0\n  layout: { tolerancePx: 0.5 }`);
+    if (!strict.ok) throw new Error(JSON.stringify(strict.issues));
+    expect(strict.value.diff.maxChangedPixelRatio).toBe(0);
+    expect(strict.value.diff.layout).toEqual({ enabled: true, tolerancePx: 0.5 });
+    const disabled = parse(`${MINIMAL}\ndiff:\n  layout: { enabled: false }`);
+    if (!disabled.ok) throw new Error(JSON.stringify(disabled.issues));
+    expect(disabled.value.diff.maxChangedPixelRatio).toBe(0.003);
+    expect(disabled.value.diff.layout).toEqual({ enabled: false, tolerancePx: 2 });
+  });
+
+  it('accepts independent pixel and layout tolerance controls', () => {
+    const result = parse(`${MINIMAL}\ndiff:\n  maxChangedPixelRatio: 0.003\n  layout:\n    enabled: false\n    tolerancePx: 2`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.diff.maxChangedPixelRatio).toBe(0.003);
+    expect(result.value.diff.layout).toEqual({ enabled: false, tolerancePx: 2 });
+  });
+
+  it.each(['maxChangedPixelRatio: -1', 'maxChangedPixelRatio: 1.01',
+    'maxChangedPixelRatio: "0.3%"', 'layout: { tolerancePx: -1 }',
+    'layout: { enabled: "false" }', 'layout: { tolerance: 2 }'])('rejects invalid tolerance: %s', setting => {
+    expect(parse(`${MINIMAL}\ndiff:\n  ${setting}`).ok).toBe(false);
+  });
+
   it('resolves browser.storageState against the project root', () => {
     const result = parse(`${MINIMAL}\nbrowser:\n  storageState: .visual-diff/auth/state.json`);
     if (!result.ok) throw new Error(JSON.stringify(result.issues));
@@ -72,6 +104,8 @@ describe('parseConfigSource', () => {
       minRegionArea: 64,
       maxRegions: 40,
       antialiasTolerance: 0.1,
+      maxChangedPixelRatio: 0.003,
+      layout: { enabled: true, tolerancePx: 2 },
       ignore: ['[data-test=session-id]'],
       // Both report channels default on and every kind is emitted; the §6 example names none of
       // them (D54, D57).

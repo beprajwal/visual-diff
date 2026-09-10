@@ -1,3 +1,4 @@
+import { sameTolerance } from '../../diff/tolerance.js';
 /**
  * cli — resolving a pair and getting its diff, once for the three commands that need it.
  *
@@ -97,6 +98,8 @@ export function diffOptions(config: Config, selection?: PairSelection): DiffEngi
     minRegionArea: config.diff.minRegionArea,
     maxRegions: config.diff.maxRegions,
     antialiasTolerance: config.diff.antialiasTolerance,
+    ...(config.diff.maxChangedPixelRatio === undefined ? {} : { maxChangedPixelRatio: config.diff.maxChangedPixelRatio }),
+    ...(config.diff.layout === undefined ? {} : { layout: config.diff.layout }),
     ignore: config.diff.ignore,
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,
@@ -144,6 +147,7 @@ export function emitChannelsOf(result: DiffResult): DiffEmitChannels {
 function answersThisRequest(stored: DiffResult, options: DiffEngineOptions): boolean {
   const emitted = emitChannelsOf(stored);
   return (
+    sameTolerance(stored.tolerance, options) &&
     emitted.findings === (options.emitFindings !== false) &&
     emitted.warnings === (options.emitWarnings !== false) &&
     sameKinds(emitted.kinds ?? FINDING_KINDS, options.kinds ?? FINDING_KINDS)

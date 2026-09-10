@@ -219,6 +219,8 @@ export function fakeConfig(root = '/project', overrides: Partial<Config> = {}): 
       minRegionArea: DEFAULTS.diff.minRegionArea,
       maxRegions: DEFAULTS.diff.maxRegions,
       antialiasTolerance: DEFAULTS.diff.antialiasTolerance,
+      maxChangedPixelRatio: DEFAULTS.diff.maxChangedPixelRatio,
+      layout: { ...DEFAULTS.diff.layout },
       ignore: [...DEFAULTS.diff.ignore],
       findings: DEFAULTS.diff.findings,
       warnings: DEFAULTS.diff.warnings,
@@ -424,6 +426,10 @@ export function emptyDiffSummary(overrides: Partial<DiffSummary> = {}): DiffSumm
 export function fakeDiffResult(overrides: Partial<DiffResult> = {}): DiffResult {
   return {
     engineVersion: DIFF_ENGINE_VERSION,
+    tolerance: {
+      maxChangedPixelRatio: DEFAULTS.diff.maxChangedPixelRatio,
+      layout: { ...DEFAULTS.diff.layout },
+    },
     flow: 'checkout',
     pair: { base: '0003', head: '0007' },
     computedAt: '2026-08-08T10:05:00Z',

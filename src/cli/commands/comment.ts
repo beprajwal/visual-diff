@@ -15,7 +15,7 @@
  *     so the check stays green on a changed UI until a repository decides otherwise.
  */
 
-import { access, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { EXIT } from '../../types.js';
@@ -23,6 +23,8 @@ import type { Invocation } from '../args.js';
 import { evaluateGate, GATE_NONE } from '../ci.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { PREVIEW_FILES, type CommentInput } from '../../ci/index.js';
+import { PREVIEW_MANIFEST } from '../../ci/preview.js';
+import { hasMinorChanges, significanceFingerprint, significantDiff } from '../../diff/significance.js';
 import { percent } from '../output.js';
 import { composePairNotices, pairLabels } from '../pair-notices.js';
 import type { CommentData } from '../shapes.js';
@@ -41,7 +43,7 @@ export async function comment(
     ...composed.notices.map((notice) => notice.sentence),
     ...composed.degraded,
   ];
-  const gate = evaluateGate(result.summary, invocation.failOn);
+  const gate = evaluateGate(significantDiff(result).summary, invocation.failOn);
 
   const input: CommentInput = {
     result,
@@ -67,9 +69,14 @@ export async function comment(
         () => false,
       );
     if (await present(PREVIEW_FILES.light)) {
-      input.preview = (await present(PREVIEW_FILES.dark))
-        ? { light: PREVIEW_FILES.light, dark: PREVIEW_FILES.dark }
-        : { light: PREVIEW_FILES.light };
+      const fingerprint = await previewFingerprint(bundle);
+      if (fingerprint !== undefined) input.previewDiffFingerprint = fingerprint;
+      // The renderer applies this check too; doing it here keeps the JSON preview verdict honest.
+      if (!hasMinorChanges(result) || fingerprint === significanceFingerprint(result)) {
+        input.preview = (await present(PREVIEW_FILES.dark))
+          ? { light: PREVIEW_FILES.light, dark: PREVIEW_FILES.dark }
+          : { light: PREVIEW_FILES.light };
+      }
     }
   }
   if (invocation.marker !== undefined) input.marker = invocation.marker;
@@ -94,10 +101,10 @@ export async function comment(
   if (document.truncated.images > 0) {
     warnings.push(`comment truncated: ${document.truncated.images} changed shot(s) not shown`);
   }
-  if (invocation.imageBase === undefined && result.summary.maxPixelChangedRatio > 0) {
+  if (invocation.imageBase === undefined && significantDiff(result).summary.maxPixelChangedRatio > 0) {
     warnings.push(
       `no --image-base given, so this comment shows no screenshots (max pixel change ` +
-        `${percent(result.summary.maxPixelChangedRatio)}); publish the bundle's images and pass ` +
+        `${percent(significantDiff(result).summary.maxPixelChangedRatio)}); publish the bundle's images and pass ` +
         'their URL prefix to embed them',
     );
   }
@@ -133,4 +140,18 @@ export async function comment(
   return gate.tripped
     ? { data, human, warnings, exitCode: EXIT.GATE_FAILED }
     : { data, human, warnings };
+}
+
+/** Old bundles have no stamp; malformed or partially written metadata grants no identity. */
+async function previewFingerprint(bundle: string): Promise<string | undefined> {
+  try {
+    const manifest: unknown = JSON.parse(await readFile(path.join(bundle, PREVIEW_MANIFEST), 'utf8'));
+    if (manifest === null || typeof manifest !== 'object' || !('diffFingerprint' in manifest)) {
+      return undefined;
+    }
+    const value = manifest.diffFingerprint;
+    return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }

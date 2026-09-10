@@ -21,6 +21,7 @@ import type {
 import { DEFAULTS, DIFF_ENGINE_VERSION, FINDING_KINDS } from '../../types.js';
 import type { ComputeDiffFn, ReportStore } from './deps.js';
 import { HttpError } from './http.js';
+import { sameTolerance } from '../../diff/tolerance.js';
 
 export interface DiffServiceOptions {
   store: ReportStore;
@@ -62,6 +63,8 @@ export function createDiffService(options: DiffServiceOptions): DiffService {
     minRegionArea: config.diff.minRegionArea,
     maxRegions: config.diff.maxRegions,
     antialiasTolerance: config.diff.antialiasTolerance,
+    ...(config.diff.maxChangedPixelRatio === undefined ? {} : { maxChangedPixelRatio: config.diff.maxChangedPixelRatio }),
+    ...(config.diff.layout === undefined ? {} : { layout: config.diff.layout }),
     ignore: config.diff.ignore,
     engineVersion,
     deviceScaleFactor:
@@ -105,7 +108,7 @@ export function createDiffService(options: DiffServiceOptions): DiffService {
     }
 
     const stored = await store.readCachedDiff(flow, base, head);
-    if (stored && stored.engineVersion === engineVersion) {
+    if (stored && stored.engineVersion === engineVersion && sameTolerance(stored.tolerance, config.diff)) {
       cache.set(key(flow, base, head), stored);
       return stored;
     }
@@ -145,7 +148,7 @@ export function createDiffService(options: DiffServiceOptions): DiffService {
     async get(flow, base, head) {
       const k = key(flow, base, head);
       const memo = cache.get(k);
-      if (memo) return memo;
+      if (memo && sameTolerance(memo.tolerance, config.diff)) return memo;
 
       const pending = inFlight.get(k);
       if (pending) return pending;

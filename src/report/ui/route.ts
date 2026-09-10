@@ -36,6 +36,7 @@ export interface RouteState {
   viewport?: ViewportId;
   view?: ViewMode;
   findingsOnly?: boolean;
+  showMinorChanges?: boolean;
 }
 
 /** Parses a location hash (with or without the leading `#`) into a route. Unknown keys are ignored. */
@@ -74,6 +75,9 @@ export function parseHash(hash: string): RouteState {
   const findings = params.get('findings');
   if (findings !== null) route.findingsOnly = findings === '1' || findings === 'true';
 
+  const minor = params.get('minor');
+  if (minor !== null) route.showMinorChanges = minor !== '0' && minor !== 'false';
+
   return route;
 }
 
@@ -91,6 +95,7 @@ export function formatHash(route: RouteState): string {
   if (route.viewport) params.set('viewport', route.viewport);
   if (route.view && route.view !== 'side-by-side') params.set('view', route.view);
   if (route.findingsOnly) params.set('findings', '1');
+  if (route.showMinorChanges === false) params.set('minor', '0');
   const query = params.toString();
   return query.length > 0 ? `#${query}` : '';
 }

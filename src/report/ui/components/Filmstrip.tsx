@@ -24,6 +24,7 @@ const VARIANT_TITLE: Record<FilmstripCell['variant'], string> = {
   removed: 'step removed since the base run',
   'spec-changed': 'step definition drifted',
   changed: 'visual or semantic change',
+  'within-tolerance': 'within tolerance',
   identical: 'identical',
 };
 
@@ -55,7 +56,9 @@ export function Filmstrip({ cells, selected, thumbUrl, onSelect }: FilmstripProp
               {cell.id}
             </span>
             <span class="sub">
-              {cell.variant === 'changed' || cell.variant === 'spec-changed'
+              {cell.variant === 'within-tolerance'
+                ? `within tolerance · ${(cell.pixelChangedRatio * 100).toFixed(2)}% px`
+                : cell.variant === 'changed' || cell.variant === 'spec-changed'
                 ? `${(cell.pixelChangedRatio * 100).toFixed(1)}% px`
                 : VARIANT_TITLE[cell.variant]}
             </span>

@@ -16,7 +16,7 @@
  *     is a courtesy. `vdiff export --preview` on a machine with no Chromium exports and says so.
  */
 
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -30,6 +30,9 @@ export const PREVIEW_FILES = {
   light: 'images/preview.png',
   dark: 'images/preview-dark.png',
 } as const;
+
+/** Written only after both captures succeed, so an old PNG cannot borrow a new page's identity. */
+export const PREVIEW_MANIFEST = 'images/preview.json';
 
 export type PreviewScheme = keyof typeof PREVIEW_FILES;
 
@@ -63,9 +66,13 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 export async function capturePreview(request: PreviewRequest): Promise<PreviewReport> {
   const pageFile = path.join(request.outDir, request.page ?? PREVIEW_PAGE);
+  const manifestFile = path.join(request.outDir, PREVIEW_MANIFEST);
+  // Invalidate before launch too: a machine without Chromium can still hold yesterday's stamp.
+  await rm(manifestFile, { force: true });
   const launch = request.launch ?? launchChromium;
   const browser = await launch();
   const files: string[] = [];
+  let fingerprint: string | null | undefined;
   try {
     await mkdir(path.join(request.outDir, 'images'), { recursive: true });
     for (const scheme of ['light', 'dark'] as const) {
@@ -90,6 +97,17 @@ export async function capturePreview(request: PreviewRequest): Promise<PreviewRe
             timeout: 5_000,
           })
           .catch(() => undefined);
+        const renderedFingerprint = await page.evaluate(
+          () => document.querySelector('meta[name="vdiff-fingerprint"]')?.getAttribute('content') ?? null,
+        ).catch(() => null);
+        const validFingerprint = renderedFingerprint !== null && /^[a-f0-9]{64}$/.test(renderedFingerprint)
+          ? renderedFingerprint
+          : null;
+        // Both colour schemes must describe the same rendered diff. Missing metadata is normal
+        // for old bundles and custom pages: still capture them, but grant no tolerance binding.
+        fingerprint = fingerprint === undefined
+          ? validFingerprint
+          : fingerprint === validFingerprint ? fingerprint : null;
         const relative = PREVIEW_FILES[scheme];
         await page.screenshot({ path: path.join(request.outDir, relative), fullPage: true });
         files.push(relative);
@@ -99,6 +117,9 @@ export async function capturePreview(request: PreviewRequest): Promise<PreviewRe
     }
   } finally {
     await browser.close();
+  }
+  if (fingerprint) {
+    await writeFile(manifestFile, `${JSON.stringify({ diffFingerprint: fingerprint })}\n`, 'utf8');
   }
   return { files };
 }

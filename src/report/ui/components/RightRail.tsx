@@ -19,6 +19,8 @@ import { FindingItem } from './FindingItem.js';
 export interface RightRailProps {
   findings: Finding[];
   selectedFinding: string | null;
+  /** Minor findings hidden by the report's explicit tolerance filter. */
+  hiddenFindings?: number;
   /** Layers this pair could not run, each already a whole sentence. Empty for a replay pair. */
   unavailable?: readonly string[];
   cropUrl: (finding: Finding) => string | null;
@@ -35,6 +37,7 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 export function RightRail({
   findings,
   selectedFinding,
+  hiddenFindings = 0,
   unavailable = [],
   cropUrl,
   onSelect,
@@ -48,8 +51,17 @@ export function RightRail({
           findings
           {findings.length > 0 ? ` (${findings.length})` : ''}
         </h2>
+        {hiddenFindings > 0 ? (
+          <p class="empty">
+            {hiddenFindings} minor finding{hiddenFindings === 1 ? '' : 's'} hidden (within tolerance).
+          </p>
+        ) : null}
         {groups.length === 0 ? (
-          <p class="empty">No findings for this step.</p>
+          <p class="empty">
+            {hiddenFindings > 0
+              ? 'No findings outside tolerance for this step.'
+              : 'No findings for this step.'}
+          </p>
         ) : (
           groups.map((group) => (
             <div class={`sev-group ${group.severity}`} key={group.severity}>

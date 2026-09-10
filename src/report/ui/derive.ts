@@ -62,6 +62,7 @@ export type CellVariant =
   | 'removed'
   | 'spec-changed'
   | 'changed'
+  | 'within-tolerance'
   | 'identical';
 
 export interface FilmstripCell {
@@ -138,7 +139,11 @@ export function viewportDiffOf(
  * the step-scoped ones (console, network), which have no viewport of their own and must not vanish
  * when a viewport tab is selected.
  */
-export function findingsForStep(step: StepDiff | undefined, viewport: ViewportId | null): Finding[] {
+export function findingsForStep(
+  step: StepDiff | undefined,
+  viewport: ViewportId | null,
+  showMinorChanges = true,
+): Finding[] {
   if (!step) return [];
   const out: Finding[] = [];
   if (viewport === null) {
@@ -151,7 +156,7 @@ export function findingsForStep(step: StepDiff | undefined, viewport: ViewportId
     if (vd) out.push(...vd.findings);
   }
   out.push(...step.findings);
-  return out;
+  return showMinorChanges ? out : out.filter((finding) => finding.withinTolerance !== true);
 }
 
 /** Sorts by severity, then by kind, then by id, so the list order is stable across renders. */
@@ -228,6 +233,8 @@ function badgeFor(variant: CellVariant, findingsCount: number): string {
       return '−';
     case 'identical':
       return '=';
+    case 'within-tolerance':
+      return '≈';
     case 'spec-changed':
       return findingsCount > 0 ? String(findingsCount) : '≠';
     case 'changed':
@@ -237,19 +244,34 @@ function badgeFor(variant: CellVariant, findingsCount: number): string {
 }
 
 /** Builds one cell per aligned step, in display order. */
-export function buildFilmstrip(diff: DiffResult, viewport: ViewportId | null): FilmstripCell[] {
+export function buildFilmstrip(
+  diff: DiffResult,
+  viewport: ViewportId | null,
+  showMinorChanges = true,
+): FilmstripCell[] {
   const byId = new Map<StepId, StepDiff>();
   for (const step of diff.steps) byId.set(step.id, step);
 
   return alignFlowDiff(diff.flowDiff).map((entry, order) => {
     const step = byId.get(entry.id);
-    const findings = findingsForStep(step, viewport);
+    const allFindings = findingsForStep(step, viewport);
+    const findings = showMinorChanges
+      ? allFindings
+      : allFindings.filter((finding) => finding.withinTolerance !== true);
     const vd = viewportDiffOf(step, viewport);
     const ratio = vd ? vd.pixelChangedRatio : 0;
     const status = step?.status ?? entry.status;
     // A dimension change counts: the image is a different size, which is a visual change even when
     // every pixel of the common area matched.
-    const variant = variantFor(status, ratio > 0 || (vd?.dimensionsChanged ?? false));
+    const pixelMoved = ratio > 0 || (vd?.dimensionsChanged ?? false);
+    // A tolerated viewport must not hide a step-level console/network finding. Classification
+    // uses the complete evidence so toggling the list cannot change what the cell means.
+    const minor =
+      vd?.withinTolerance === true &&
+      allFindings.every((finding) => finding.withinTolerance === true) &&
+      (pixelMoved || allFindings.length > 0);
+    const variant =
+      status === 'matched' && minor ? 'within-tolerance' : variantFor(status, pixelMoved);
     return {
       id: entry.id,
       status,
@@ -272,11 +294,15 @@ export function buildFilmstrip(diff: DiffResult, viewport: ViewportId | null): F
 export function visibleCells(
   cells: readonly FilmstripCell[],
   findingsOnly: boolean,
+  showMinorChanges = true,
 ): FilmstripCell[] {
-  if (!findingsOnly) return cells.slice();
-  const filtered = cells.filter((c) => c.findingsCount > 0 || c.variant === 'failed');
-  // Never filter down to nothing: an empty strip has no navigation affordance at all.
-  return filtered.length > 0 ? filtered : cells.slice();
+  const eligible = showMinorChanges
+    ? cells.slice()
+    : cells.filter((cell) => cell.variant !== 'within-tolerance');
+  if (!findingsOnly) return eligible;
+  const filtered = eligible.filter((c) => c.findingsCount > 0 || c.variant === 'failed');
+  // Keep the existing findings-only fallback, without bringing deliberately hidden minors back.
+  return filtered.length > 0 ? filtered : eligible;
 }
 
 /** Every viewport present in the diff, in the head run's declared order. */

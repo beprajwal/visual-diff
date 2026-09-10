@@ -302,6 +302,8 @@ select {
 .cell-badge.b-added { border-color: var(--added); color: var(--added); }
 .cell-badge.b-removed { border-style: dashed; }
 .cell-badge.b-identical { color: var(--identical); }
+.cell-badge.b-within-tolerance { color: var(--fg-dim); border-style: dotted; }
+.cell.v-within-tolerance .sub { color: var(--fg-dim); }
 
 /* ---------------------------------------------------------------- body layout */
 
@@ -505,6 +507,7 @@ select {
   white-space: nowrap;
 }
 .finding .label { flex: 1 1 auto; }
+.finding .tolerance-label { color: var(--fg-dim); font-size: 11px; margin-top: 3px; }
 .finding .caret { color: var(--fg-faint); }
 
 .changes {

@@ -16,9 +16,9 @@
  * has two controls, not three: `pixelmatch` exposes a single YIQ colour-delta `threshold`, which
  * doubles as its antialias sensitivity, and `pixel.ts` already surfaces it under the spec's own
  * name `antialiasTolerance` (with `includeAA: false`). §5's first two rows are therefore one knob
- * here. A third setting is deliberately *not* invented: the only shape it could take — a floor on a
- * shot's changed-pixel ratio — would hide small real changes, since one changed word on an 798×532
- * trace frame is roughly 0.2% of it, well under any ratio worth calling a floor.
+ * here. The shared `diff.maxChangedPixelRatio` allowance applies separately to unexplained pixels;
+ * confirmed semantic edits remain significant. A trace without element geometry can only use pixel
+ * evidence, so its allowance can hide small real edits as well as capture noise.
  *
  * ## What was measured, and what was merely chosen
  *
@@ -52,8 +52,8 @@
  * `0×0` and subtracts nothing. Measured, not assumed: `e2e-config.test.ts` shows the same selector
  * suppressing a finding on a replay pair and none of it on the same pair ingested.
  *
- * These two thresholds are therefore the *only* noise control an ingested pair has, which raises what
- * rests on them. `store/e2e-map.ts` refuses the `ignore` key rather than accepting a list that would
+ * These thresholds and the shared pixel allowance control noise for ingested pairs.
+ * `store/e2e-map.ts` refuses the `ignore` key rather than accepting a list that would
  * mask nothing while the user believes the clock is covered.
  */
 
@@ -255,6 +255,8 @@ export function diffOptionsFromConfig(
     minRegionArea: config.diff.minRegionArea,
     maxRegions: config.diff.maxRegions,
     antialiasTolerance: config.diff.antialiasTolerance,
+    ...(config.diff.maxChangedPixelRatio === undefined ? {} : { maxChangedPixelRatio: config.diff.maxChangedPixelRatio }),
+    ...(config.diff.layout === undefined ? {} : { layout: config.diff.layout }),
     ignore: config.diff.ignore,
     engineVersion: DIFF_ENGINE_VERSION,
     deviceScaleFactor: DEFAULTS.deviceScaleFactor,

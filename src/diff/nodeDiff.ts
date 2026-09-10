@@ -64,8 +64,10 @@ export function attrChanges(base: DomNode, head: DomNode): PropChange[] {
   return out;
 }
 
-export function diffNodePair(pair: NodePair): NodeChange[] {
+export function diffNodePair(pair: NodePair, epsilon = RECT_EPSILON): NodeChange[] {
   const { base, head, key, keyKind } = pair;
+  // Explicit tolerance decisions need the actual geometry, before presentation rounding.
+  const value = epsilon === 0 ? (n: number): number => n : round;
   const changes: NodeChange[] = [];
   const make = (kind: NodeChange['kind'], props: PropChange[]): NodeChange => ({
     kind,
@@ -106,20 +108,20 @@ export function diffNodePair(pair: NodePair): NodeChange[] {
   if (bText !== hText) changes.push(make('text', [{ prop: 'text', from: bText, to: hText }]));
 
   const moved: PropChange[] = [];
-  if (Math.abs(b.rect.x - h.rect.x) > RECT_EPSILON) {
-    moved.push({ prop: 'x', from: round(b.rect.x), to: round(h.rect.x) });
+  if (Math.abs(b.rect.x - h.rect.x) > epsilon) {
+    moved.push({ prop: 'x', from: value(b.rect.x), to: value(h.rect.x) });
   }
-  if (Math.abs(b.rect.y - h.rect.y) > RECT_EPSILON) {
-    moved.push({ prop: 'y', from: round(b.rect.y), to: round(h.rect.y) });
+  if (Math.abs(b.rect.y - h.rect.y) > epsilon) {
+    moved.push({ prop: 'y', from: value(b.rect.y), to: value(h.rect.y) });
   }
   if (moved.length > 0) changes.push(make('moved', moved));
 
   const resized: PropChange[] = [];
-  if (Math.abs(b.rect.w - h.rect.w) > RECT_EPSILON) {
-    resized.push({ prop: 'width', from: round(b.rect.w), to: round(h.rect.w) });
+  if (Math.abs(b.rect.w - h.rect.w) > epsilon) {
+    resized.push({ prop: 'width', from: value(b.rect.w), to: value(h.rect.w) });
   }
-  if (Math.abs(b.rect.h - h.rect.h) > RECT_EPSILON) {
-    resized.push({ prop: 'height', from: round(b.rect.h), to: round(h.rect.h) });
+  if (Math.abs(b.rect.h - h.rect.h) > epsilon) {
+    resized.push({ prop: 'height', from: value(b.rect.h), to: value(h.rect.h) });
   }
   if (resized.length > 0) changes.push(make('resized', resized));
 
@@ -137,12 +139,12 @@ export function diffNodePairs(pairs: readonly NodePair[]): NodeChange[] {
 }
 
 /** True when a pair's own rect moved or resized — the DOM-attribution preference (spec §8). */
-export function rectChanged(pair: NodePair): boolean {
+export function rectChanged(pair: NodePair, epsilon = RECT_EPSILON): boolean {
   if (pair.base === null || pair.head === null) return true;
   return (
-    Math.abs(pair.base.rect.x - pair.head.rect.x) > RECT_EPSILON ||
-    Math.abs(pair.base.rect.y - pair.head.rect.y) > RECT_EPSILON ||
-    Math.abs(pair.base.rect.w - pair.head.rect.w) > RECT_EPSILON ||
-    Math.abs(pair.base.rect.h - pair.head.rect.h) > RECT_EPSILON
+    Math.abs(pair.base.rect.x - pair.head.rect.x) > epsilon ||
+    Math.abs(pair.base.rect.y - pair.head.rect.y) > epsilon ||
+    Math.abs(pair.base.rect.w - pair.head.rect.w) > epsilon ||
+    Math.abs(pair.base.rect.h - pair.head.rect.h) > epsilon
   );
 }

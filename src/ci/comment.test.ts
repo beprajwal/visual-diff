@@ -16,6 +16,7 @@ import {
   renderCommentWithGate,
 } from './comment.js';
 import { fakeReview } from '../cli/testing.js';
+import { minorDiff } from '../diff/tolerance-testkit.js';
 
 function diffWithFindings(count: number, patch: Partial<DiffResult> = {}): DiffResult {
   const findings = Array.from({ length: count }, (_, index) =>
@@ -61,6 +62,24 @@ describe('markerFor', () => {
 });
 
 describe('renderComment', () => {
+  it('omits minor changes from all PR surfaces and does not reuse an unfiltered AI review', () => {
+    const result = minorDiff();
+    const { document, gate } = renderCommentWithGate({ result, version: 'test',
+      imageBase: 'https://example.test/images', reportUrl: 'https://example.test/report',
+      review: fakeReview({ headline: 'tiny pixel noise' }),
+      preview: { light: 'stale-preview.png' },
+    }, 'any');
+    expect(document.markdown).toContain('No changes above the configured thresholds.');
+    expect(document.markdown).toContain('Open the full report');
+    expect(document.markdown).not.toContain('minor-step');
+    expect(document.markdown).not.toContain('0.3%');
+    expect(document.markdown).not.toContain('tiny pixel noise');
+    expect(document.markdown).not.toContain('stale-preview.png');
+    expect(document.images).toBe(0);
+    expect(gate.tripped).toBe(false);
+    expect(result.summary.totalFindings).toBe(1);
+  });
+
   it('opens with the marker and then the answer', () => {
     const doc = renderComment({ result: diffWithFindings(3), version: '0.6.0' });
     const lines = doc.markdown.split('\n');

@@ -334,6 +334,40 @@ and `.visual-diff/config.yaml` must be committed; runs, diffs, cache and feedbac
 
 ### Turning the noise down
 
+Pixel and layout tolerances keep minor differences in the HTML report while leaving them out of
+the PR comment, its counts and previews, the AI review, and `--fail-on` gates. These controls are
+enabled by default, with these settings:
+
+```yaml
+diff:
+  maxChangedPixelRatio: 0.003 # allow up to and including 0.3% unexplained changed pixels
+  layout:
+    enabled: true           # false tolerates geometry changes of any size
+    tolerancePx: 2          # allow movement/resizing up to 2 CSS pixels on each axis
+```
+
+Set `maxChangedPixelRatio: 0` and `layout.tolerancePx: 0.5` to restore the previous sensitivity, or
+use `layout.tolerancePx: 0` to flag any movement or resize. The percentage is measured outside masks
+and ignored elements, against the whole compared screenshot area. It is separate from `antialiasTolerance`, which controls how
+different two pixel colors must be to count as changed. Both boundaries are inclusive.
+
+Confirmed text, style, structural, and accessibility edits remain significant even below the pixel
+allowance. Layout is evaluated independently: movement above its tolerance still flags a change
+with a small pixel footprint. Pixels explained by tolerated geometry are removed from the PR's
+percentage; an unexplained repaint inside a moved element still counts. This check is conservative:
+resampling or rasterization differences that cannot be explained by the captured geometry remain
+subject to the pixel allowance. Trace imports without element geometry use pixel evidence only.
+
+The HTML report retains raw percentages, findings, and overlays, labels minor changes “within
+tolerance,” and has a **show minor changes** toggle (on by default). When only minor changes remain,
+the PR comment says **No changes above the configured thresholds** and links to the full report.
+After changing the configuration, rerun the diff/export/review commands; cached comparisons are
+invalidated, and previews or AI reviews from an older tolerance decision are not reused in the PR.
+
+Loading states need a readiness condition: use a step's `waitFor` or an `expect` visibility check
+for the intended screen. A stable skeleton can still be the wrong state to capture; the percentage
+alone cannot identify that condition. Capture warnings about outstanding requests remain visible.
+
 Findings are claims about a change you can be shown, so a step whose two screenshots are identical
 reports none: the pixel-free accessibility pass and the page-size check are gated on the pixels
 moving, and `steps changed` counts pixel movement rather than findings. A new console error on an

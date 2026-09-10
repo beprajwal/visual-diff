@@ -353,7 +353,14 @@ export interface AppConfig {
   stepTimeoutMs?: number;
 }
 
-export interface DiffConfig {
+export interface VisualToleranceOptions {
+  /** Allowed unexplained changed pixels / compared area. Inclusive; default 0.003 (0.3%). */
+  maxChangedPixelRatio?: number;
+  /** Geometry uses CSS pixels. Defaults: enabled, 2px. */
+  layout?: { enabled?: boolean; tolerancePx?: number };
+}
+
+export interface DiffConfig extends VisualToleranceOptions {
   minRegionArea: number;
   maxRegions: number;
   antialiasTolerance: number;
@@ -900,6 +907,8 @@ export interface FindingElement {
 }
 
 export interface Finding {
+  /** Retained in detailed reports, omitted from significant-change summaries. */
+  withinTolerance?: boolean;
   /** "f1", "f2", ... unique within one DiffResult. */
   id: string;
   kind: FindingKind;
@@ -941,6 +950,11 @@ export interface FlowDiffEntry {
 }
 
 export interface ViewportDiff {
+  /** PR-facing measurements with tolerated geometry removed. Raw measurements remain intact. */
+  significantPixelChangedRatio?: number;
+  significantDimensionsChanged?: boolean;
+  /** A measured visual change with no change exceeding the configured tolerances. */
+  withinTolerance?: boolean;
   viewport: ViewportId;
   pixelChangedRatio: number;
   baseSize: Size | null;
@@ -1009,6 +1023,8 @@ export interface PairScenarios {
 
 /** findings.json */
 export interface DiffResult {
+  /** Effective tolerance policy; absent on strict/legacy comparisons. */
+  tolerance?: VisualToleranceOptions;
   engineVersion: string;
   flow: string;
   pair: { base: RunId; head: RunId };
@@ -1084,6 +1100,8 @@ export interface ReviewChange {
  * needs to weigh it is on the object: which model wrote it, what it was shown, and when.
  */
 export interface Review {
+  /** Exact evidence and tolerance classification used to produce this review. */
+  diffFingerprint?: string;
   flow: string;
   pair: { base: RunId; head: RunId };
   /** Engine version of the `findings.json` this review read. Mismatch means the review is stale. */
@@ -1110,7 +1128,7 @@ export interface Review {
   evidence: { cells: number; images: number; contextProvided: boolean };
 }
 
-export interface DiffEngineOptions {
+export interface DiffEngineOptions extends VisualToleranceOptions {
   minRegionArea: number;
   maxRegions: number;
   antialiasTolerance: number;
@@ -1497,6 +1515,8 @@ export const DEFAULTS = {
     minRegionArea: 64,
     maxRegions: 40,
     antialiasTolerance: 0.1,
+    maxChangedPixelRatio: 0.003,
+    layout: { enabled: true, tolerancePx: 2 },
     ignore: [] as string[],
     /** Both channels are on: turning one off is a choice a project makes explicitly (D54). */
     findings: true,

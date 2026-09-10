@@ -1,3 +1,4 @@
+import { significantDiff } from '../../diff/significance.js';
 /**
  * `vdiff export <flow> [base] [head]` — write the portable evidence bundle (CI spec §5).
  *
@@ -37,7 +38,7 @@ export async function exportCommand(
 
   const composed = composePairNotices(result);
   const notices = [...composed.notices.map((notice) => notice.sentence), ...composed.degraded];
-  const gate = evaluateGate(result.summary, invocation.failOn);
+  const gate = evaluateGate(significantDiff(result).summary, invocation.failOn);
 
   // `--out` is resolved against the invocation directory, not the project root: a workflow writes
   // the bundle into the runner's workspace, which is not necessarily inside `.visual-diff/`.
