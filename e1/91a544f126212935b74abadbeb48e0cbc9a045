@@ -1,0 +1,23 @@
+action.yml
+  s_fe7f581b3ba39c::t_22aec91a0fd539 156
+package.json
+  s_fe7f581b3ba39c::t_6ea2197464c051 3
+src/version.ts
+  s_fe7f581b3ba39c::t_b1d8ff307be32d 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e191a544f126212935b74abadbeb48e0cbc9a045",
+  "prompts": {},
+  "sessions": {
+    "s_fe7f581b3ba39c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0897c-be4e-7d31-b0bf-a0e417682789",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
