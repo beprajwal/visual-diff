@@ -118,7 +118,8 @@ export function markerFor(flow: string, kind = 'pr'): string {
 
 /* ------------------------------------------------------------------ small renderers */
 
-const percent = (ratio: number): string => `${(ratio * 100).toFixed(1)}%`;
+const percent = (ratio: number): string =>
+  ratio > 0 && ratio < 0.001 ? '<0.1%' : `${(ratio * 100).toFixed(1)}%`;
 
 /** Table-cell safe: no newline can break the row, no pipe can invent a column. */
 function cell(value: string): string {

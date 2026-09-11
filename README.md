@@ -354,8 +354,10 @@ and ignored elements, against the whole compared screenshot area. It is separate
 different two pixel colors must be to count as changed. Both boundaries are inclusive.
 
 Confirmed text, style, structural, and accessibility edits remain significant even below the pixel
-allowance. Layout is evaluated independently: movement above its tolerance still flags a change
-with a small pixel footprint. Pixels explained by tolerated geometry are removed from the PR's
+allowance when their finding kinds are enabled. Disabled or excluded semantic findings cannot
+override the pixel allowance; with `findings: false`, attribute churn cannot promote a minor
+repaint into a changed step. Layout is evaluated independently: movement above its tolerance still
+flags a change with a small pixel footprint. Pixels explained by tolerated geometry are removed from the PR's
 percentage; an unexplained repaint inside a moved element still counts. This check is conservative:
 resampling or rasterization differences that cannot be explained by the captured geometry remain
 subject to the pixel allowance. Trace imports without element geometry use pixel evidence only.

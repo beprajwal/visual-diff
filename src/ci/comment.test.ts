@@ -63,6 +63,16 @@ describe('markerFor', () => {
 });
 
 describe('renderComment', () => {
+  it('does not round a small significant pixel change down to zero', () => {
+    const result = diffWithFindings(0);
+    result.steps[0]!.viewports['1280x800']!.pixelChangedRatio = 0.000002685546875;
+    result.summary.maxPixelChangedRatio = 0.000002685546875;
+    const { markdown } = renderComment({ result, version: 'test', imageBase: 'https://example.test/images' });
+    expect(markdown).toContain('max pixel change <0.1%');
+    expect(markdown).toContain('<strong><0.1% of pixels changed</strong>');
+    expect(markdown).not.toContain('0.0% of pixels changed');
+  });
+
   it('omits minor changes from all PR surfaces and does not reuse an unfiltered AI review', () => {
     const result = minorDiff();
     const { document, gate } = renderCommentWithGate({ result, version: 'test',

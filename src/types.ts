@@ -1519,7 +1519,7 @@ export interface Adapter {
 /* ------------------------------------------------------------------ defaults (§6, §12) */
 
 /** Bumped whenever diff output could change; part of the diff cache key (spec §8). */
-export const DIFF_ENGINE_VERSION = '3';
+export const DIFF_ENGINE_VERSION = '4';
 
 /**
  * Single source of truth for every default named in the spec. config/defaults.ts re-exports these
