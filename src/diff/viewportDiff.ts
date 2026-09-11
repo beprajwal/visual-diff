@@ -564,10 +564,10 @@ export function diffViewport(input: ViewportDiffInput): ViewportDiffOutput {
     headSize: pixels.head,
     dimensionsChanged: pixels.dimensionsChanged,
     regions,
-    // Filtered here, at the end, rather than at each of the four places a finding is pushed: the
-    // stages upstream decide *what changed*, and which kinds a project wants to read about is not
-    // their business (D57). Attribution, dedupe and the collapsed remainder are unaffected.
-    findings: sortFindings(findings),
+    // Disabled semantic findings must not override the pixel allowance before being discarded.
+    // Geometry still enforces the independent layout tolerance, even with finding output off.
+    findings: sortFindings(findings.filter(finding =>
+      finding.kind === 'layout' || (emitFindings && wantedKind(finding)))),
   };
 
   applyTolerance(diff, pixels, exclude, options, headScale, layoutRects);

@@ -207,7 +207,7 @@ describe('defaults (spec §6, §7, §12)', () => {
     // '3': the pixel gate (D53) changed what the engine emits, and the excluded-aware pixel count
     // (D56) changed the number it reports, so a diff computed under either older version has to
     // stop being reused.
-    expect(DIFF_ENGINE_VERSION).toBe('3');
+    expect(DIFF_ENGINE_VERSION).toBe('4');
     expect(typeof DIFF_ENGINE_VERSION).toBe('string');
   });
 });

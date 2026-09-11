@@ -117,6 +117,40 @@ describe('visual tolerance', () => {
     expect(diff.findings.some(f => f.nodeChange === 'text' && !f.withinTolerance)).toBe(true);
   });
 
+  it.each(['src', 'aria-label'])('does not let a disabled %s finding override pixel tolerance', (prop) => {
+    const rect = { x: 10, y: 10, w: 20, h: 20 };
+    const node = (value: string) => domNode({ path: 'img', tag: 'img', rect, attrs: { [prop]: value } });
+    const diff = compare(side(solidImage(100, 100), [node('before')]),
+      side(paintRect(solidImage(100, 100), { ...rect, w: 1, h: 11 }, RED), [node('after')]),
+      { emitFindings: false });
+    expect(diff.pixelChangedRatio).toBe(0.0011);
+    expect(diff.findings).toEqual([]);
+    expect(diff.regions.length).toBeGreaterThan(0);
+    expect(diff.withinTolerance).toBe(true);
+    expect(diff.significantPixelChangedRatio).toBe(0);
+  });
+
+  it('does not let an excluded finding kind override pixel tolerance', () => {
+    const rect = { x: 10, y: 10, w: 20, h: 20 };
+    const node = (src: string) => domNode({ path: 'img', tag: 'img', rect, attrs: { src } });
+    const diff = compare(side(solidImage(100, 100), [node('before')]),
+      side(paintRect(solidImage(100, 100), { ...rect, w: 1, h: 11 }, RED), [node('after')]),
+      { kinds: ['layout'] });
+    expect(diff.findings).toEqual([]);
+    expect(diff.withinTolerance).toBe(true);
+  });
+
+  it('keeps a repaint above pixel tolerance when findings are disabled', () => {
+    const rect = { x: 10, y: 10, w: 20, h: 20 };
+    const node = (src: string) => domNode({ path: 'img', tag: 'img', rect, attrs: { src } });
+    const diff = compare(side(solidImage(100, 100), [node('before')]),
+      side(paintRect(solidImage(100, 100), rect, RED), [node('after')]),
+      { emitFindings: false });
+    expect(diff.findings).toEqual([]);
+    expect(diff.withinTolerance).not.toBe(true);
+    expect(diff.significantPixelChangedRatio).toBe(0.04);
+  });
+
   const moved = (distance: number, extraPixels = false) => {
     const rect = { x: 10, y: 10, w: 40, h: 20 };
     const to = { ...rect, x: rect.x + distance };
@@ -187,6 +221,14 @@ describe('visual tolerance', () => {
     const diff = compare(...moved(3), { maxChangedPixelRatio: 1 });
     expect(diff.withinTolerance).not.toBe(true);
     expect(diff.findings.some(f => f.kind === 'layout' && !f.withinTolerance)).toBe(true);
+  });
+
+  it('honors layout tolerance independently when findings are disabled', () => {
+    const options = { emitFindings: false, maxChangedPixelRatio: 1 };
+    expect(compare(...moved(2), options).withinTolerance).toBe(true);
+    const significant = compare(...moved(3), options);
+    expect(significant.findings).toEqual([]);
+    expect(significant.withinTolerance).not.toBe(true);
   });
 
   it('can disable layout flags and still classify when findings are off', () => {
