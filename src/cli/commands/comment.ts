@@ -123,12 +123,13 @@ export async function comment(
 
   const data: CommentData = {
     flow: pair.flow,
+    unchanged: document.unchanged,
     pair,
     markdown: document.markdown,
     marker: document.marker,
     bytes: document.bytes,
     images: document.images,
-    preview: input.preview !== undefined,
+    preview: !document.unchanged && input.preview !== undefined,
     truncated: document.truncated,
     path: written,
     gate,

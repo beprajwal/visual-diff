@@ -824,8 +824,7 @@ runs:
         echo "comment_file=$first" >> "$GITHUB_OUTPUT"
         echo "report_url=$report_url" >> "$GITHUB_OUTPUT"
 
-    # One comment per flow, found by its marker and updated in place, so a pull request with fourteen
-    # pushes has one visual-diff comment per flow rather than fourteen (D33).
+    # Unchanged flows share a small summary. Changed or incomplete flows keep their own reports.
     - name: Post the comment
       if: inputs.mode == 'pr' && inputs.comment == 'true' && github.event.pull_request.number
       uses: actions/github-script@v7
@@ -834,6 +833,7 @@ runs:
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         # The app's login, `<slug>[bot]`, when the comment is signed by one (D49). Empty otherwise.
         APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        REPORT_BASE: ${{ steps.publish.outputs.report_base }}
       with:
         github-token: ${{ steps.app.outputs.token || inputs.github-token }}
         script: |
@@ -846,7 +846,10 @@ runs:
             owner, repo, issue_number, per_page: 100,
           });
 
-          for (const flow of process.env.FLOWS.trim().split(/\s+/).filter(Boolean)) {
+          const flows = process.env.FLOWS.trim().split(/\s+/).filter(Boolean);
+          const unchanged = [];
+          const reports = [];
+          for (const flow of flows) {
             const file = path.join(process.env.BUNDLE_ROOT, flow, 'comment.md');
             if (!fs.existsSync(file)) {
               core.warning(`no rendered comment for flow ${flow}`);
@@ -859,7 +862,25 @@ runs:
               core.warning(`comment for ${flow} carries no marker; posting without upsert`);
             }
 
-            const previous = existing.find((comment) => comment.body?.includes(marker));
+            const json = path.join(process.env.BUNDLE_ROOT, flow, 'comment.json');
+            const quiet = fs.existsSync(json) &&
+              JSON.parse(fs.readFileSync(json, 'utf8')).data?.unchanged === true;
+            (quiet ? unchanged : reports).push({ flow, marker, body });
+          }
+
+          // Key by the selected flows so independent action jobs do not overwrite each other.
+          const summaryMarker = `<!-- vdiff:unchanged-flows:${[...flows].sort().join(',')} -->`;
+          if (unchanged.length > 0) {
+            const base = process.env.REPORT_BASE?.replace(/\/+$/, '');
+            const names = unchanged.map(({ flow }) =>
+              base ? `[${flow}](${base}/${flow}/report.html)` : `\`${flow}\``);
+            const body = `${summaryMarker}\n**Visual Diff:** No visual changes above configured thresholds ` +
+              `in ${unchanged.length} flow${unchanged.length === 1 ? '' : 's'}: ${names.join(', ')}.\n`;
+            reports.push({ flow: 'unchanged flows', marker: summaryMarker, body });
+          }
+
+          for (const { flow, marker, body } of reports) {
+            const previous = existing.find((comment) => comment.body?.split('\n', 1)[0].trim() === marker);
             // An edit keeps the original author. When the comment is signed by an app (D49) and the
             // one on the thread was posted by someone else — github-actions, or a person, from before
             // the app was set up — it is replaced, once, so the thread shows the app's name and mark.
@@ -875,6 +896,15 @@ runs:
             } else {
               const created = await github.rest.issues.createComment({ owner, repo, issue_number, body });
               core.info(`created comment ${created.data.id} for flow ${flow}`);
+            }
+          }
+
+          // Remove obsolete reports only after the replacement comments have been published.
+          const obsolete = new Set(unchanged.map(({ marker }) => marker));
+          if (unchanged.length === 0) obsolete.add(summaryMarker);
+          for (const comment of existing) {
+            if (obsolete.has(comment.body?.split('\n', 1)[0].trim())) {
+              await github.rest.issues.deleteComment({ owner, repo, comment_id: comment.id });
             }
           }
 
