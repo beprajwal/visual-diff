@@ -118,6 +118,7 @@ describe('vdiff comment', () => {
     const filtered = await comment(ctx, args);
     expect(filtered.exitCode).toBe(EXIT.GATE_FAILED);
     expect(filtered.data.result).toEqual(raw);
+    expect(filtered.data.unchanged).toBe(false);
     expect(filtered.data.markdown).toContain('AI classified');
     expect(filtered.data.markdown).not.toContain('2.0%');
     expect(filtered.data.preview).toBe(true);
@@ -287,7 +288,7 @@ describe('vdiff comment', () => {
     expect(result.data.bytes).toBeGreaterThan(0);
   });
 
-  it('forwards a captured preview fingerprint so a filtered preview remains usable', async () => {
+  it('omits even a current preview from an unchanged result and reports that in JSON', async () => {
     const dir = await tempDir();
     const raw = minorDiff();
     const diff = fakeDiffResult({ steps: raw.steps, summary: raw.summary });
@@ -308,8 +309,9 @@ describe('vdiff comment', () => {
       ...invocation, bundle: 'bundle', imageBase: 'https://example.test/base',
     });
     expect(forwarded).toBe(fingerprint);
-    expect(result.data.preview).toBe(true);
-    expect(result.data.markdown).toContain('https://example.test/base/images/preview.png');
+    expect(result.data.unchanged).toBe(true);
+    expect(result.data.preview).toBe(false);
+    expect(result.data.markdown).not.toContain('https://example.test/base/images/preview.png');
   });
 
   it.each([
@@ -422,6 +424,7 @@ describe('vdiff export', () => {
             missing: [],
             comment: {
               markdown: '',
+              unchanged: false,
               marker: '<!-- vdiff:checkout:pr -->',
               bytes: 0,
               images: 0,

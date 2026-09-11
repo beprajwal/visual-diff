@@ -145,6 +145,8 @@ export interface DiffData {
  */
 export interface CommentData {
   flow: string;
+  /** Complete comparison with no changes above tolerance, suitable for a grouped CI summary. */
+  unchanged: boolean;
   pair: PairRef;
   markdown: string;
   /** The HTML comment an upserting transport searches for (D33). Always the first line of `markdown`. */

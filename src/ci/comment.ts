@@ -10,7 +10,7 @@
  *
  *  1. **The document opens with the answer.** A reviewer who reads one line learns how many findings
  *     there are, how severe, how much moved, and whether the pairing is an ordinary
- *     revision-to-revision comparison. Everything else is elaboration.
+ *     revision-to-revision comparison. Unchanged comparisons need only a short verdict and link.
  *  2. **It never lies about its own size.** GitHub rejects a body over 65536 characters, so rows and
  *     images are capped — and every cap states the number it dropped and where the whole set lives.
  *     A silent truncation misreports the size of the change, which is the one thing this feature
@@ -97,6 +97,8 @@ export interface CommentInput {
 
 export interface CommentDocument {
   markdown: string;
+  /** A complete, quiet comparison with no changes above tolerance; safe for CI to summarize. */
+  unchanged: boolean;
   /** The HTML comment an upserting transport searches for. Always the first line of `markdown`. */
   marker: string;
   bytes: number;
@@ -414,20 +416,49 @@ function artifactHintFor(input: CommentInput): string {
  *
  * Sections are assembled in priority order and shrunk from the bottom when the body will not fit:
  * the step table goes first, then screenshots, then finding rows. The verdict, the notices, the gate
- * line and the footer are never dropped — a comment that fits by removing the answer is not a
- * smaller comment, it is a different one.
+ * line and the footer stay on detailed reports. Complete, unchanged comparisons return a single
+ * text line instead of the report layout.
  */
 export function renderComment(input: CommentInput): CommentDocument {
   const raw = input.result;
+  const measured = significantDiff(raw);
   const minor = hasMinorChanges(raw);
   const projection = reviewProjection(raw, input.review);
   const fingerprint = commentFingerprint(raw, input.review);
   input = { ...input, result: projection.result, review: projection.review,
     ...(input.previewDiffFingerprint !== fingerprint ? { preview: undefined } : {}) };
-  if (input.gate !== undefined) input = { ...input, gate: evaluateGate(significantDiff(raw).summary, input.gate.level) };
+  if (input.gate !== undefined) input = { ...input, gate: evaluateGate(measured.summary, input.gate.level) };
   const minorOnly = minor && input.result.summary.totalFindings === 0 && input.result.summary.stepsChanged === 0 &&
     input.result.steps.every(step => step.status === 'matched');
   const marker = input.marker ?? markerFor(input.result.flow);
+  const summary = measured.summary;
+  // Use measured evidence, not AI triage: capture noise classified by a model is still a review.
+  const unchanged =
+    summary.stepsCompared > 0 &&
+    summary.totalFindings === 0 && summary.stepsChanged === 0 && summary.maxPixelChangedRatio === 0 &&
+    summary.stepsAdded === 0 && summary.stepsRemoved === 0 && summary.stepsSpecChanged === 0 &&
+    summary.stepsFailed === 0 && summary.stepsBlocked === 0 &&
+    measured.steps.every(step =>
+      step.status === 'matched' && step.findings.length === 0 &&
+      Object.values(step.viewports).every(vp =>
+        vp.missing === undefined && !vp.dimensionsChanged &&
+        vp.pixelChangedRatio === 0 && vp.findings.length === 0,
+      ),
+    ) &&
+    raw.warnings.length === 0 && (input.notices?.length ?? 0) === 0 &&
+    projection.captureConcerns.length === 0;
+  if (unchanged) {
+    const verdict = minor ? 'No visual changes above configured thresholds' : 'No visual changes';
+    const url = input.reportUrl ?? input.artifactUrl;
+    const link = url === undefined ? '' : ` [Report](${url})`;
+    const markdown = `${marker}\n**${PRODUCT_NAME}:** ${verdict} in ${code(raw.flow)}.${link}\n`;
+    return {
+      markdown, marker, unchanged,
+      bytes: Buffer.byteLength(markdown, 'utf8'),
+      images: 0,
+      truncated: { images: 0, steps: false },
+    };
+  }
   const maxBytes = input.maxBytes ?? MAX_COMMENT_BYTES;
   const hint = artifactHintFor(input);
 
@@ -487,6 +518,7 @@ export function renderComment(input: CommentInput): CommentDocument {
   const markdown = `${built.lines.join('\n')}\n`;
   return {
     markdown,
+    unchanged,
     marker,
     bytes: Buffer.byteLength(markdown, 'utf8'),
     images: built.images,

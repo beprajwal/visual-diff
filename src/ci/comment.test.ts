@@ -80,8 +80,8 @@ describe('renderComment', () => {
       review: fakeReview({ headline: 'tiny pixel noise' }),
       preview: { light: 'stale-preview.png' },
     }, 'any');
-    expect(document.markdown).toContain('No changes above the configured thresholds.');
-    expect(document.markdown).toContain('Open the full report');
+    expect(document.markdown).toContain('No visual changes above configured thresholds');
+    expect(document.markdown).toContain('[Report](https://example.test/report)');
     expect(document.markdown).not.toContain('minor-step');
     expect(document.markdown).not.toContain('0.3%');
     expect(document.markdown).not.toContain('tiny pixel noise');
@@ -107,10 +107,59 @@ describe('renderComment', () => {
   });
 
   it('says so plainly when nothing changed', () => {
-    const doc = renderComment({ result: makeDiff({}), version: '0.6.0' });
-    expect(doc.markdown).toContain('**No findings.**');
-    expect(doc.markdown).not.toContain('#### Findings');
+    const result = makeDiff({ summary: makeSummary({ stepsCompared: 1 }),
+      steps: [makeStepDiff('cart', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800') } })],
+      emit: { findings: false, warnings: false },
+    });
+    const doc = renderComment({ result, version: '0.6.0', imageBase: 'https://example.test/images',
+      preview: { light: 'preview.png' }, previewDiffFingerprint: commentFingerprint(result),
+      reportUrl: 'https://example.test/report', repro: ['vdiff diff checkout'],
+    });
+    expect(doc.markdown).toBe('<!-- vdiff:checkout:pr -->\n**Visual Diff:** No visual changes in `checkout`. [Report](https://example.test/report)\n');
+    expect(doc.unchanged).toBe(true);
     expect(doc.images).toBe(0);
+  });
+
+  it('keeps threshold-only results compact even with a current report preview', () => {
+    const result = minorDiff();
+    const doc = renderComment({ result, version: 'test', imageBase: 'https://example.test/images',
+      preview: { light: 'preview.png' }, previewDiffFingerprint: commentFingerprint(result),
+    });
+    expect(doc.unchanged).toBe(true);
+    expect(doc.markdown.trim().split('\n')).toHaveLength(2);
+    expect(doc.markdown).toContain('No visual changes above configured thresholds');
+    expect(doc.markdown).not.toMatch(/<img|<picture|<details/);
+  });
+
+  it.each([
+    { summary: makeSummary({ stepsCompared: 0 }) },
+    { summary: makeSummary({ stepsCompared: 1, stepsFailed: 1 }) },
+    { summary: makeSummary({ stepsCompared: 1, stepsBlocked: 1 }) },
+    { summary: makeSummary({ stepsCompared: 1, stepsAdded: 1 }) },
+    { summary: makeSummary({ stepsCompared: 1, stepsRemoved: 1 }) },
+    { summary: makeSummary({ stepsCompared: 1, stepsSpecChanged: 1 }) },
+    { warnings: ['The capture was unstable.'] },
+    { steps: [makeStepDiff('cart', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'head' }) } })] },
+  ])('does not call an incomplete or warned comparison unchanged: %j', (patch) => {
+    const result = makeDiff({ summary: makeSummary({ stepsCompared: 1 }), ...patch });
+    const doc = renderComment({ result, version: 'test' });
+    expect(doc.unchanged).toBe(false);
+    expect(doc.markdown).not.toContain('No visual changes');
+  });
+
+  it('retains comparison notices instead of collapsing them', () => {
+    const doc = renderComment({ result: minorDiff(), version: 'test', notices: ['The base capture is degraded.'] });
+    expect(doc.unchanged).toBe(false);
+    expect(doc.markdown).toContain('The base capture is degraded.');
+  });
+
+  it('does not confuse disabled findings with an unchanged screenshot', () => {
+    const doc = renderComment({ result: diffWithFindings(0, { emit: { findings: false, warnings: false } }),
+      version: 'test', imageBase: 'https://example.test/images',
+    });
+    expect(doc.unchanged).toBe(false);
+    expect(doc.images).toBe(1);
+    expect(doc.markdown).toContain('1/2 steps changed');
   });
 
   it('renders no images without an image base, and images with one', () => {
