@@ -1,0 +1,48 @@
+tests/packaging/action-comments.test.ts
+  s_9731adc88656ee::t_aff628c1b79cfa 1-103
+src/cli/commands/comment.ts
+  s_9731adc88656ee::t_c9a2121bd5aaf4 126,132
+README.md
+  s_9731adc88656ee::t_5ad1e2a590159e 121-124
+src/cli/commands/comment.test.ts
+  s_9731adc88656ee::t_5ad1e2a590159e 427
+  s_9731adc88656ee::t_d8c9eec7a2d7a1 121
+  s_9731adc88656ee::t_36c018aae6fa7b 291,312-314
+src/cli/shapes.ts
+  s_9731adc88656ee::t_c9a2121bd5aaf4 148-149
+src/ci/comment.test.ts
+  s_9731adc88656ee::t_c9a2121bd5aaf4 83-84
+  s_9731adc88656ee::t_52daa311131f2e 110-119,123-163
+  s_b19a6983a9f22d::t_83291963190543 164
+src/ci/comment.ts
+  s_9731adc88656ee::t_d8c9eec7a2d7a1 13,419-420,430,436-438,441-447,455-460
+  s_9731adc88656ee::t_c9a2121bd5aaf4 100-101,424,434-435,439-440,448-454,461,521
+action.yml
+  s_9731adc88656ee::t_c9a2121bd5aaf4 827,836,849-852,865,868-874,879-883,902-907,909
+  s_9731adc88656ee::t_d8c9eec7a2d7a1 866-867,875-878
+  s_9731adc88656ee::t_fd9b2e6abcdc02 908,910
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "49cdee666779f1f5ac2fa885561358e084ec41de",
+  "prompts": {},
+  "sessions": {
+    "s_9731adc88656ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a090dc-13e9-7fc2-bcb9-0445509578ca",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_b19a6983a9f22d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e68c55d2-8561-481b-9678-a28f37b6f9c9",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
