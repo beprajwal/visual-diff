@@ -1,0 +1,23 @@
+action.yml
+  s_6283929487563d::t_24035707868c02 157
+package.json
+  s_6283929487563d::t_273c16aba69a02 3
+src/version.ts
+  s_6283929487563d::t_d97d3125860f7d 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "79d0373219ad56665f5e56d1ded480ce42636c9e",
+  "prompts": {},
+  "sessions": {
+    "s_6283929487563d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1091e233-1cb2-496d-86ee-2cc0be897cd1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
