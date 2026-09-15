@@ -1,0 +1,37 @@
+README.md
+  s_6283929487563d::t_a220939ed16450 314-331
+action.yml
+  s_6283929487563d::t_1814ac70bb6dde 28-29,263-268,272-280,284
+skills/visual-diff-flows/SKILL.md
+  s_6283929487563d::t_a11b7afcc20156 52-68
+src/flow/parse.test.ts
+  s_6283929487563d::t_c37d1090b51957 134-179
+src/flow/parse.ts
+  s_6283929487563d::t_770d844b20a399 19,133-135
+src/flow/schema.ts
+  s_6283929487563d::t_d3ff699739e992 92-94
+src/runner/run.test.ts
+  s_6283929487563d::t_afd58d54ac5645 287-306,439-457
+src/runner/run.ts
+  s_6283929487563d::t_66ee251c536d07 425,428-438,485-499,501,548,630-633,635-636,638
+src/types.ts
+  s_6283929487563d::t_9c193e3b662038 138-158
+tests/packaging/action.test.ts
+  s_6283929487563d::t_662bac7a20ed84 16-19,529-625
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c41e78fdb64883bcf92175e6f71b8648f917fcf2",
+  "prompts": {},
+  "sessions": {
+    "s_6283929487563d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1091e233-1cb2-496d-86ee-2cc0be897cd1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
