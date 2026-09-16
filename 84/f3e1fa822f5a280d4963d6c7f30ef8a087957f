@@ -1,0 +1,19 @@
+src/runner/env-template.test.ts
+  s_d2d13761440d6a::t_0b730d9cfc647c 110,112,126,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "84f3e1fa822f5a280d4963d6c7f30ef8a087957f",
+  "prompts": {},
+  "sessions": {
+    "s_d2d13761440d6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "890bb422-b351-4959-8455-e0a233720fe0",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
