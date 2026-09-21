@@ -631,6 +631,66 @@ select {
 .feedback .row { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .feedback img { max-width: 100%; border: 1px solid var(--line); }
 
+/*
+ * Fullscreen shot viewer. A fixed sheet rather than the Fullscreen API: the report is often one
+ * pane of a split screen, and a reviewer comparing it against an editor or a browser does not want
+ * the OS to take the whole display for it. Opaque, because a screenshot judged against whatever
+ * shows through it is a screenshot judged wrong.
+ */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg);
+}
+.lightbox:focus { outline: none; }
+.lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+.lightbox-bar .group { display: flex; gap: 4px; align-items: center; }
+.lightbox-bar .note { color: var(--fg-dim); }
+.lightbox-stage {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  touch-action: none;
+  user-select: none;
+}
+.lightbox-stage.grabbable { cursor: grab; }
+.lightbox-stage.grabbable:active { cursor: grabbing; }
+/* Sized in pixels by the viewer, so the region boxes' percentages land on the drawn image. */
+.lightbox-frame {
+  position: relative;
+  background: var(--shot-bg);
+  transform-origin: center center;
+}
+.lightbox-frame img { display: block; width: 100%; height: 100%; }
+/* Past a few times life size, show the pixels rather than a guess at what is between them. */
+.lightbox-frame.crisp img { image-rendering: pixelated; }
+.lightbox-hint {
+  padding: 4px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--fg-faint);
+}
+
+/* The "open fullscreen" glyph in a shot's caption. */
+.caption-end { display: inline-flex; align-items: center; gap: 6px; }
+button.expand {
+  padding: 0 4px;
+  line-height: 16px;
+  color: var(--fg-dim);
+}
+
 .notice {
   margin: 10px;
   padding: 8px 10px;

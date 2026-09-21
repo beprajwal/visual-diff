@@ -12,6 +12,7 @@ import { Filmstrip } from './components/Filmstrip.js';
 import { FeedbackBox } from './components/FeedbackBox.js';
 import { FocusPane } from './components/FocusPane.js';
 import { Header } from './components/Header.js';
+import { Lightbox } from './components/Lightbox.js';
 import { PairBanner } from './components/PairBanner.js';
 import { RightRail } from './components/RightRail.js';
 import { ScenarioNotes } from './components/ScenarioNotes.js';
@@ -36,6 +37,7 @@ import {
   reduce,
   routeOf,
   variantAttributionForRun,
+  type ShotSide,
 } from './state.js';
 import { STYLES } from './styles.js';
 
@@ -252,6 +254,35 @@ export function App({ client }: AppProps) {
     return match ? match.id : null;
   }, [state.selectedFinding, viewportDiff, findings]);
 
+  /**
+   * What the fullscreen viewer is showing: the URL of the chosen shot and the pixel space its
+   * region boxes are drawn in. The mask is computed from the head, so it shares the head's size
+   * and its boxes; the base has neither.
+   */
+  const fullscreenShot = useMemo(() => {
+    const side: ShotSide | null = state.fullscreen;
+    if (!side) return null;
+    const src = side === 'base' ? baseUrl : side === 'head' ? headUrl : pixelUrl;
+    if (!src) return null;
+    const headSpace = side !== 'base';
+    return {
+      side,
+      src,
+      label: side === 'pixel' ? 'pixel mask' : side,
+      imageSize: (headSpace ? viewportDiff?.headSize : viewportDiff?.baseSize) ?? null,
+      regions: headSpace ? (viewportDiff?.regions ?? []) : [],
+    };
+  }, [state.fullscreen, baseUrl, headUrl, pixelUrl, viewportDiff]);
+
+  // A shot that is no longer there — the reviewer stepped to a step this run does not have, or
+  // switched viewport — closes the viewer rather than leaving an empty black window open.
+  useEffect(() => {
+    if (state.fullscreen && !fullscreenShot) dispatch({ type: 'close-fullscreen' });
+  }, [state.fullscreen, fullscreenShot]);
+
+  /** The shot `z` opens when nothing is open yet: the head, or the base when there is no head. */
+  const defaultFullscreenSide: ShotSide | null = headUrl ? 'head' : baseUrl ? 'base' : null;
+
   /* ------------------------------------------------------------ interactions */
 
   const openFindingFeedback = useCallback(
@@ -332,33 +363,42 @@ export function App({ client }: AppProps) {
   // One table of actions, reached two ways: a key press, or a click on the same entry in the
   // legend. A reviewer on a touch device, or one who never reads shortcut hints, gets every
   // binding as a button; the legend stops being documentation and becomes the control.
-  const performKeyAction = useCallback((action: KeyActionType): void => {
-    switch (action) {
-      case 'step-next':
-        dispatch({ type: 'step-next' });
-        break;
-      case 'step-prev':
-        dispatch({ type: 'step-prev' });
-        break;
-      case 'run-older':
-        dispatch({ type: 'run-older' });
-        break;
-      case 'run-newer':
-        dispatch({ type: 'run-newer' });
-        break;
-      case 'toggle-overlay':
-        dispatch({ type: 'toggle-overlay' });
-        break;
-      case 'toggle-findings-only':
-        dispatch({ type: 'toggle-findings-only' });
-        break;
-      case 'dismiss':
-        dispatch({ type: 'dismiss' });
-        break;
-      default:
-        break;
-    }
-  }, []);
+  const performKeyAction = useCallback(
+    (action: KeyActionType): void => {
+      switch (action) {
+        case 'step-next':
+          dispatch({ type: 'step-next' });
+          break;
+        case 'step-prev':
+          dispatch({ type: 'step-prev' });
+          break;
+        case 'run-older':
+          dispatch({ type: 'run-older' });
+          break;
+        case 'run-newer':
+          dispatch({ type: 'run-newer' });
+          break;
+        case 'toggle-overlay':
+          dispatch({ type: 'toggle-overlay' });
+          break;
+        case 'toggle-findings-only':
+          dispatch({ type: 'toggle-findings-only' });
+          break;
+        case 'toggle-annotations':
+          dispatch({ type: 'toggle-annotations' });
+          break;
+        case 'toggle-fullscreen':
+          dispatch({ type: 'toggle-fullscreen', side: defaultFullscreenSide });
+          break;
+        case 'dismiss':
+          dispatch({ type: 'dismiss' });
+          break;
+        default:
+          break;
+      }
+    },
+    [defaultFullscreenSide],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -382,6 +422,8 @@ export function App({ client }: AppProps) {
   const legendPressed = (action: KeyActionType): boolean | undefined => {
     if (action === 'toggle-overlay') return state.view === 'overlay';
     if (action === 'toggle-findings-only') return state.findingsOnly;
+    if (action === 'toggle-annotations') return state.showRegions;
+    if (action === 'toggle-fullscreen') return state.fullscreen !== null;
     return undefined;
   };
 
@@ -499,6 +541,9 @@ export function App({ client }: AppProps) {
               headUrl={headUrl}
               pixelUrl={pixelUrl}
               selectedRegionId={selectedRegionId}
+              showRegions={state.showRegions}
+              onToggleRegions={() => dispatch({ type: 'toggle-annotations' })}
+              onOpenFullscreen={(side) => dispatch({ type: 'open-fullscreen', side })}
               onSetView={(view) => dispatch({ type: 'set-view', view })}
               onSetOverlayOpacity={(value) => dispatch({ type: 'set-overlay-opacity', value })}
               onSetSwipe={(value) => dispatch({ type: 'set-swipe', value })}
@@ -545,6 +590,24 @@ export function App({ client }: AppProps) {
           ) : null}
         </aside>
       </div>
+
+      {fullscreenShot ? (
+        <Lightbox
+          label={fullscreenShot.label}
+          src={fullscreenShot.src}
+          imageSize={fullscreenShot.imageSize}
+          regions={fullscreenShot.regions}
+          showRegions={state.showRegions}
+          selectedRegionId={selectedRegionId}
+          onSelectRegion={(region) => {
+            // The comment box belongs to the page underneath, so commenting from the viewer
+            // leaves it rather than stacking a dialog on a dialog.
+            dispatch({ type: 'close-fullscreen' });
+            onSelectRegion(region);
+          }}
+          onClose={() => dispatch({ type: 'close-fullscreen' })}
+        />
+      ) : null}
 
       {state.feedback && flow && state.base && state.head ? (
         <FeedbackBox

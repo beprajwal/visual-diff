@@ -22,6 +22,12 @@ describe('KEY_BINDINGS', () => {
     expect(map['o']).toBe('toggle-overlay');
     expect(map['f']).toBe('toggle-findings-only');
   });
+
+  it('binds the viewing toggles', () => {
+    const map = Object.fromEntries(KEY_BINDINGS.map((b) => [b.key, b.action]));
+    expect(map['a']).toBe('toggle-annotations');
+    expect(map['z']).toBe('toggle-fullscreen');
+  });
 });
 
 describe('resolveKey', () => {
@@ -32,6 +38,8 @@ describe('resolveKey', () => {
     expect(resolveKey({ key: ']' })).toBe('run-newer');
     expect(resolveKey({ key: 'o' })).toBe('toggle-overlay');
     expect(resolveKey({ key: 'f' })).toBe('toggle-findings-only');
+    expect(resolveKey({ key: 'a' })).toBe('toggle-annotations');
+    expect(resolveKey({ key: 'z' })).toBe('toggle-fullscreen');
     expect(resolveKey({ key: 'Escape' })).toBe('dismiss');
   });
 

@@ -37,6 +37,8 @@ export interface RouteState {
   view?: ViewMode;
   findingsOnly?: boolean;
   showMinorChanges?: boolean;
+  /** Region boxes over the changed pixels; on by default, so only "off" travels. */
+  showRegions?: boolean;
 }
 
 /** Parses a location hash (with or without the leading `#`) into a route. Unknown keys are ignored. */
@@ -78,6 +80,9 @@ export function parseHash(hash: string): RouteState {
   const minor = params.get('minor');
   if (minor !== null) route.showMinorChanges = minor !== '0' && minor !== 'false';
 
+  const regions = params.get('regions');
+  if (regions !== null) route.showRegions = regions !== '0' && regions !== 'false';
+
   return route;
 }
 
@@ -96,6 +101,7 @@ export function formatHash(route: RouteState): string {
   if (route.view && route.view !== 'side-by-side') params.set('view', route.view);
   if (route.findingsOnly) params.set('findings', '1');
   if (route.showMinorChanges === false) params.set('minor', '0');
+  if (route.showRegions === false) params.set('regions', '0');
   const query = params.toString();
   return query.length > 0 ? `#${query}` : '';
 }
