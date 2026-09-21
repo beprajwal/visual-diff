@@ -56,6 +56,12 @@ export interface FeedbackTarget {
   label: string;
 }
 
+/**
+ * Which screenshot a fullscreen view is showing. `pixel` is the change mask, which lives in the
+ * head's pixel space and so carries the same region boxes.
+ */
+export type ShotSide = 'base' | 'head' | 'pixel';
+
 export interface AppState {
   flows: FlowsResponse['flows'];
   flow: string | null;
@@ -100,6 +106,14 @@ export interface AppState {
   findingsOnly: boolean;
   /** Detailed reports show raw minor changes by default; reviewers can hide them explicitly. */
   showMinorChanges: boolean;
+  /**
+   * Region boxes over the changed pixels. On by default — they are how a reviewer finds the change
+   * — but they sit on top of the thing being judged, so anyone comparing colour or spacing has to
+   * be able to take them off without losing the diff that drew them.
+   */
+  showRegions: boolean;
+  /** The screenshot opened in the fullscreen viewer, or null when the viewer is closed. */
+  fullscreen: ShotSide | null;
   selectedFinding: string | null;
   feedback: FeedbackTarget | null;
   feedbackSaving: boolean;
@@ -134,6 +148,8 @@ export function initialState(route: RouteState = {}): AppState {
     swipeAt: 0.5,
     findingsOnly: route.findingsOnly ?? false,
     showMinorChanges: route.showMinorChanges ?? true,
+    showRegions: route.showRegions ?? true,
+    fullscreen: null,
     selectedFinding: null,
     feedback: null,
     feedbackSaving: false,
@@ -171,6 +187,10 @@ export type Action =
   | { type: 'set-swipe'; value: number }
   | { type: 'toggle-findings-only' }
   | { type: 'toggle-minor-changes' }
+  | { type: 'toggle-annotations' }
+  | { type: 'open-fullscreen'; side: ShotSide }
+  | { type: 'close-fullscreen' }
+  | { type: 'toggle-fullscreen'; side: ShotSide | null }
   | { type: 'select-finding'; findingId: string | null }
   | { type: 'open-feedback'; target: FeedbackTarget }
   | { type: 'close-feedback' }
@@ -579,6 +599,21 @@ export function reduce(state: AppState, action: Action): AppState {
       return next.diff ? clampSelection(next, next.diff) : next;
     }
 
+    case 'toggle-annotations':
+      return { ...state, showRegions: !state.showRegions };
+
+    case 'open-fullscreen':
+      return { ...state, fullscreen: action.side };
+
+    case 'close-fullscreen':
+      return { ...state, fullscreen: null };
+
+    case 'toggle-fullscreen': {
+      if (state.fullscreen) return { ...state, fullscreen: null };
+      // The caller names the shot worth opening; null means there is none to open.
+      return action.side ? { ...state, fullscreen: action.side } : state;
+    }
+
     case 'select-finding':
       return { ...state, selectedFinding: action.findingId };
 
@@ -603,6 +638,9 @@ export function reduce(state: AppState, action: Action): AppState {
       return { ...state, feedbackSaving: false, error: action.message };
 
     case 'dismiss': {
+      // Innermost surface first: Escape closes what is covering the page before it clears what is
+      // merely selected underneath it.
+      if (state.fullscreen) return { ...state, fullscreen: null };
       if (state.feedback) return { ...state, feedback: null, feedbackSaving: false };
       if (state.selectedFinding) return { ...state, selectedFinding: null };
       if (state.error) return { ...state, error: null };
@@ -711,6 +749,7 @@ function helloFlow(name: string): FlowsResponse['flows'][number] {
 export function routeOf(state: AppState): RouteState {
   const route: RouteState = { view: state.view, findingsOnly: state.findingsOnly };
   if (!state.showMinorChanges) route.showMinorChanges = false;
+  if (!state.showRegions) route.showRegions = false;
   if (state.flow) route.flow = state.flow;
   if (state.scenario !== ALL_SCENARIOS) route.scenario = state.scenario;
   if (state.variant !== ALL_VARIANTS) route.variant = state.variant;

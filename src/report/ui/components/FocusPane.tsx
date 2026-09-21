@@ -1,7 +1,11 @@
 /**
  * Focus pane (spec §9, D7): side-by-side by default, toggleable to overlay (onion-skin with a
  * slider) and swipe (draggable divider). Region boxes are drawn over the head image in every mode
- * and are clickable.
+ * and are clickable — unless the reviewer has turned the annotations off, which is the only way to
+ * see the pixels the boxes sit on top of.
+ *
+ * Each shot also opens fullscreen, where it can be zoomed and panned: the pane itself can only ever
+ * show a screenshot at half the window's width, which is not the size anybody's users see it at.
  */
 
 import { useState } from 'preact/hooks';
@@ -9,6 +13,7 @@ import { useState } from 'preact/hooks';
 import type { Region, ViewportDiff } from '../../../types.js';
 import type { FilmstripCell } from '../derive.js';
 import type { ViewMode } from '../route.js';
+import type { ShotSide } from '../state.js';
 import { OverlayView } from './OverlayView.js';
 import { RegionLayer } from './RegionLayer.js';
 import { SwipeView } from './SwipeView.js';
@@ -23,6 +28,10 @@ export interface FocusPaneProps {
   headUrl: string | null;
   pixelUrl: string | null;
   selectedRegionId: string | null;
+  /** Region boxes over the changed pixels. */
+  showRegions: boolean;
+  onToggleRegions: () => void;
+  onOpenFullscreen: (side: ShotSide) => void;
   onSetView: (view: ViewMode) => void;
   onSetOverlayOpacity: (value: number) => void;
   onSetSwipe: (value: number) => void;
@@ -41,17 +50,18 @@ export function FocusPane(props: FocusPaneProps) {
 
   const regions = vd?.regions ?? [];
   const headSize = vd?.headSize ?? null;
-  const layer = (
+  const layer = props.showRegions ? (
     <RegionLayer
       regions={regions}
       imageSize={headSize}
       selectedRegionId={props.selectedRegionId}
       onSelect={props.onSelectRegion}
     />
-  );
+  ) : null;
 
   const missing = vd?.missing;
-  const basePane = showPixels && props.pixelUrl ? props.pixelUrl : props.baseUrl;
+  const pixelPane = showPixels && props.pixelUrl !== null;
+  const basePane = pixelPane ? props.pixelUrl : props.baseUrl;
 
   return (
     <>
@@ -86,6 +96,27 @@ export function FocusPane(props: FocusPaneProps) {
             />
             <span class="note">{Math.round(props.overlayOpacity * 100)}%</span>
           </label>
+        ) : null}
+
+        {regions.length > 0 ? (
+          <button
+            type="button"
+            aria-pressed={props.showRegions}
+            title="region boxes over the changed pixels (a)"
+            onClick={props.onToggleRegions}
+          >
+            annotations
+          </button>
+        ) : null}
+
+        {props.view !== 'side-by-side' && props.headUrl ? (
+          <button
+            type="button"
+            title="open the head screenshot fullscreen, with zoom and pan (z)"
+            onClick={() => props.onOpenFullscreen('head')}
+          >
+            fullscreen
+          </button>
         ) : null}
 
         {props.view === 'side-by-side' && props.pixelUrl ? (
@@ -153,8 +184,16 @@ export function FocusPane(props: FocusPaneProps) {
                 {missing === 'base' || missing === 'both' ? null : (
                   <figure class="shot">
                     <figcaption>
-                      <span>{showPixels ? 'pixel mask' : 'base'}</span>
-                      <span>{formatSize(vd?.baseSize ?? null)}</span>
+                      <span>{pixelPane ? 'pixel mask' : 'base'}</span>
+                      <span class="caption-end">
+                        {formatSize((pixelPane ? vd?.headSize : vd?.baseSize) ?? null)}
+                        {basePane ? (
+                          <ExpandButton
+                            label={pixelPane ? 'pixel mask' : 'base'}
+                            onClick={() => props.onOpenFullscreen(pixelPane ? 'pixel' : 'base')}
+                          />
+                        ) : null}
+                      </span>
                     </figcaption>
                     <div class="canvas">
                       {basePane ? (
@@ -169,7 +208,15 @@ export function FocusPane(props: FocusPaneProps) {
                   <figure class="shot">
                     <figcaption>
                       <span>head</span>
-                      <span>{formatSize(vd?.headSize ?? null)}</span>
+                      <span class="caption-end">
+                        {formatSize(vd?.headSize ?? null)}
+                        {props.headUrl ? (
+                          <ExpandButton
+                            label="head"
+                            onClick={() => props.onOpenFullscreen('head')}
+                          />
+                        ) : null}
+                      </span>
                     </figcaption>
                     <div class="canvas">
                       {props.headUrl ? (
@@ -196,6 +243,21 @@ export function FocusPane(props: FocusPaneProps) {
         )}
       </div>
     </>
+  );
+}
+
+/** The one-glyph "open this shot fullscreen" control that sits in a shot's caption. */
+function ExpandButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      class="expand"
+      title={`open the ${label} screenshot fullscreen, with zoom and pan (z)`}
+      aria-label={`open the ${label} screenshot fullscreen`}
+      onClick={onClick}
+    >
+      ⤢
+    </button>
   );
 }
 

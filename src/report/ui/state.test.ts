@@ -495,6 +495,56 @@ describe('view modes', () => {
   });
 });
 
+describe('pixel annotations', () => {
+  it('draws the region boxes until the reviewer says otherwise, and shares that in the hash', () => {
+    expect(initialState().showRegions).toBe(true);
+    expect(routeOf(initialState()).showRegions).toBeUndefined();
+    const hidden = apply(initialState(), { type: 'toggle-annotations' });
+    expect(hidden.showRegions).toBe(false);
+    expect(routeOf(hidden).showRegions).toBe(false);
+    expect(apply(hidden, { type: 'toggle-annotations' }).showRegions).toBe(true);
+    expect(initialState({ showRegions: false }).showRegions).toBe(false);
+  });
+});
+
+describe('the fullscreen viewer', () => {
+  it('opens on a named shot and closes again', () => {
+    expect(initialState().fullscreen).toBeNull();
+    const open = apply(initialState(), { type: 'open-fullscreen', side: 'head' });
+    expect(open.fullscreen).toBe('head');
+    expect(apply(open, { type: 'open-fullscreen', side: 'pixel' }).fullscreen).toBe('pixel');
+    expect(apply(open, { type: 'close-fullscreen' }).fullscreen).toBeNull();
+  });
+
+  it('toggles shut whatever is open, and stays shut when there is no shot to open', () => {
+    const open = apply(initialState(), { type: 'toggle-fullscreen', side: 'head' });
+    expect(open.fullscreen).toBe('head');
+    expect(apply(open, { type: 'toggle-fullscreen', side: 'head' }).fullscreen).toBeNull();
+    expect(apply(initialState(), { type: 'toggle-fullscreen', side: null }).fullscreen).toBeNull();
+  });
+
+  it('never travels in the hash: a link is a review position, not a window', () => {
+    const open = apply(initialState(), { type: 'open-fullscreen', side: 'head' });
+    expect(routeOf(open)).not.toHaveProperty('fullscreen');
+  });
+
+  it('is what Escape closes first, before the comment box and the selection', () => {
+    const stacked = apply(
+      initialState(),
+      { type: 'select-finding', findingId: 'f1' },
+      { type: 'open-feedback', target: { label: 'region r1' } },
+      { type: 'open-fullscreen', side: 'head' },
+    );
+    const closedViewer = apply(stacked, { type: 'dismiss' });
+    expect(closedViewer.fullscreen).toBeNull();
+    expect(closedViewer.feedback).not.toBeNull();
+    const closedBox = apply(closedViewer, { type: 'dismiss' });
+    expect(closedBox.feedback).toBeNull();
+    expect(closedBox.selectedFinding).toBe('f1');
+    expect(apply(closedBox, { type: 'dismiss' }).selectedFinding).toBeNull();
+  });
+});
+
 describe('feedback', () => {
   const target = { step: 'pay-form', viewport: '1280x800', findingId: 'f1', label: 'f1' };
 

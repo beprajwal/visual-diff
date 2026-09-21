@@ -96,6 +96,20 @@ describe('minor changes in the hash', () => {
   });
 });
 
+describe('pixel annotations in the hash', () => {
+  it('round-trips the boxes being switched off', () => {
+    const route = { flow: 'checkout', showRegions: false };
+    expect(formatHash(route)).toBe('#flow=checkout&regions=0');
+    expect(parseHash(formatHash(route))).toEqual(route);
+  });
+
+  it('omits the default of drawing them', () => {
+    expect(formatHash({ showRegions: true })).toBe('');
+    expect(parseHash('#regions=1').showRegions).toBe(true);
+    expect(parseHash('').showRegions).toBeUndefined();
+  });
+});
+
 describe('isViewMode', () => {
   it('accepts exactly the three view modes', () => {
     expect(isViewMode('side-by-side')).toBe(true);

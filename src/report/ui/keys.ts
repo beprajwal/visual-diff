@@ -5,6 +5,8 @@
  *   [ / ]   iteration navigation (older / newer run)
  *   o       overlay view toggle
  *   f       findings-only filter
+ *   a       pixel annotation (region boxes) toggle
+ *   z       fullscreen the screenshot
  *
  * `Escape` is added beyond the spec list purely to dismiss the feedback box and the finding
  * selection; it is the one binding that also fires while the user is typing.
@@ -17,6 +19,8 @@ export type KeyActionType =
   | 'run-newer'
   | 'toggle-overlay'
   | 'toggle-findings-only'
+  | 'toggle-annotations'
+  | 'toggle-fullscreen'
   | 'dismiss';
 
 export interface KeyBinding {
@@ -62,10 +66,24 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
     whileTyping: false,
   },
   {
+    key: 'a',
+    action: 'toggle-annotations',
+    label: 'a',
+    description: 'pixel annotations',
+    whileTyping: false,
+  },
+  {
+    key: 'z',
+    action: 'toggle-fullscreen',
+    label: 'z',
+    description: 'fullscreen shot',
+    whileTyping: false,
+  },
+  {
     key: 'Escape',
     action: 'dismiss',
     label: 'esc',
-    description: 'close comment / clear selection',
+    description: 'close fullscreen / comment, clear selection',
     whileTyping: true,
   },
 ];
