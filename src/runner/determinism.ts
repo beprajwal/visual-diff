@@ -4,7 +4,8 @@
  * These are not polish: without them every run produces findings and the tool is worthless. Applied
  * to every browser context.
  *
- * - injected CSS killing animation, transition and the caret
+ * - injected CSS killing animation, transition, the caret and smooth scrolling on every element
+ * - `behavior: 'smooth'` on a scripted scroll made instant, which CSS cannot reach
  * - `prefers-reduced-motion: reduce` (a context option, see browser.ts)
  * - `TZ=UTC`, locale `en-US`, a clock frozen to a fixed epoch and a seeded `Math.random`, installed
  *   by an init script that runs **before any application code**
@@ -28,11 +29,12 @@ export const DETERMINISM_STYLE_ID = 'vdiff-determinism';
 
 /**
  * The kill-switch stylesheet from spec §7, extended to pseudo-elements (which carry their own
- * animations) and to smooth scrolling, which is the same class of time-dependent motion.
+ * animations) and to smooth scrolling, which is the same class of time-dependent motion. On every
+ * element, not just the root: a chat transcript or a table is its own scroller, and one styled
+ * `scroll-behavior: smooth` animates every programmatic scroll a capture can land in the middle of.
  */
 export const DETERMINISM_CSS =
-  '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' +
-  'html{scroll-behavior:auto!important}';
+  '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}';
 
 /**
  * Chromium launch arguments. `--disable-features=OverlayScrollbar,...` plus `--hide-scrollbars`
@@ -119,6 +121,28 @@ export function buildInitScript(options: InitScriptOptions = {}): string {
   };
   FrozenDate.now = function () { return EPOCH; };
   g.Date = FrozenDate;
+
+  // A script that asks for behavior: 'smooth' bypasses the stylesheet; make it land at once.
+  var instant = function (target, name) {
+    var original = target && target[name];
+    if (typeof original !== 'function') { return; }
+    target[name] = function (options) {
+      if (options && typeof options === 'object' && options.behavior === 'smooth') {
+        var copy = {};
+        for (var key in options) { copy[key] = options[key]; }
+        copy.behavior = 'instant';
+        arguments[0] = copy;
+      }
+      return original.apply(this, arguments);
+    };
+  };
+  var scrollers = [g.Element && g.Element.prototype, g];
+  for (var i = 0; i < scrollers.length; i++) {
+    instant(scrollers[i], 'scrollTo');
+    instant(scrollers[i], 'scroll');
+    instant(scrollers[i], 'scrollBy');
+  }
+  instant(g.Element && g.Element.prototype, 'scrollIntoView');
 
   var install = function () {
     var doc = g.document;
