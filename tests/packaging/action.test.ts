@@ -105,6 +105,7 @@ describe('action.yml', () => {
         'baseline',
         'base-failures',
         'cli',
+        'concurrency',
         'comment',
         'fail-on',
         'flows',
@@ -414,7 +415,7 @@ describe('the head side records by default (D48)', () => {
     expect(action.inputs['head-network']?.default).toBe('record');
     const head = action.runs.steps.find((s) => s.name === 'Replay the working tree');
     expect(head?.env?.['HEAD_NETWORK']).toBe('${{ inputs.head-network }}');
-    expect(head?.run).toContain('$cli run "$flow" --record');
+    expect(head?.run).toContain('record=--record');
     const resolve = action.runs.steps.find((s) => s.id === 'resolve');
     expect(resolve?.run).toContain('head-network must be record or replay');
     // The base side still replays whatever the cache restored: only the head has new traffic.
@@ -424,15 +425,18 @@ describe('the head side records by default (D48)', () => {
 });
 
 describe('a denied token exchange never fails the job (D43)', () => {
-  it('fails on a base replay unless base-failures says warn, and validates the input', () => {
+  it('reads base-failures on the base side only, and validates it and concurrency', () => {
     expect(action.inputs['base-failures']?.default).toBe('fail');
+    expect(action.inputs['concurrency']?.default).toBe('1');
     const base = action.runs.steps.find((step) => step.name === 'Replay the base revision');
     expect(base?.env?.['BASE_FAILURES']).toBe('${{ inputs.base-failures }}');
-    expect(base?.run).toContain('if [ "$BASE_FAILURES" != "warn" ]; then exit 1; fi');
+    expect(base?.env?.['CONCURRENCY']).toBe('${{ inputs.concurrency }}');
     const head = action.runs.steps.find((step) => step.name === 'Replay the working tree');
     expect(head?.run).not.toContain('BASE_FAILURES');
+    expect(head?.env?.['CONCURRENCY']).toBe('${{ inputs.concurrency }}');
     const resolve = action.runs.steps.find((step) => step.id === 'resolve');
     expect(resolve?.run).toContain('base-failures must be fail or warn');
+    expect(resolve?.run).toContain('concurrency must be a whole number of at least 1');
   });
 
   it('warns and leaves the token empty instead of calling setFailed', () => {
@@ -577,6 +581,7 @@ describe('the resolve step, run as written', () => {
           IMAGES: 'changed',
           HEAD_NETWORK: 'replay',
           BASE_FAILURES: 'fail',
+          CONCURRENCY: '1',
           PAGES_URL: '',
           PUBLISH_BRANCH: '',
           FLOWS_INPUT: flowsInput,
@@ -636,3 +641,107 @@ describe('the resolve step, run as written', () => {
     expect(result.flows).toBe('alpha beta')
   })
 })
+
+/* --------------------------------------------------- the replay loops, run as written */
+
+/**
+ * Both sides replay through `xargs -P`, inside a `bash -c` inside YAML: three layers of quoting a
+ * reader can approve and a typo can defeat. These execute the steps against a fake CLI that fails
+ * for the flows named in FAIL_FLOWS and records what it was asked to run.
+ */
+describe('the replay loops, run as written', () => {
+  async function replay(
+    stepName: string,
+    env: Record<string, string>,
+  ): Promise<{ status: number | null; stdout: string; calls: string[] }> {
+    const action = parseYaml(await readFile(actionPath, 'utf8'));
+    const step = action.runs.steps.find((entry: { name?: string }) => entry.name === stepName);
+    expect(step, `the action still has a step named "${stepName}"`).toBeDefined();
+    const dir = await mkdtemp(join(tmpdir(), 'vdiff-replay-'));
+    try {
+      const log = join(dir, 'calls.log');
+      const cli = join(dir, 'fake-vdiff');
+      await writeFile(
+        cli,
+        '#!/usr/bin/env bash\n' +
+          'echo "$*" >> "$CALLS"\n' +
+          'echo "replayed $2"\n' +
+          'for f in $FAIL_FLOWS; do [ "$f" = "$2" ] && exit 1; done\n' +
+          'exit 0\n',
+        { mode: 0o755 },
+      );
+      await writeFile(log, '', 'utf8');
+      const result = spawnSync('bash', ['-c', step.run], {
+        cwd: dir,
+        encoding: 'utf8',
+        env: { ...process.env, CLI: cli, CALLS: log, BASE_SHA: 'abc123', BASELINE: 'auto', ...env },
+      });
+      const calls = (await readFile(log, 'utf8')).split('\n').filter(Boolean).sort();
+      return { status: result.status, stdout: result.stdout, calls };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('replays every base flow at the base, concurrently, prefixing each line with its flow', async () => {
+    const result = await replay('Replay the base revision', {
+      FLOWS: 'alpha beta gamma',
+      CONCURRENCY: '3',
+      BASE_FAILURES: 'fail',
+      FAIL_FLOWS: '',
+    });
+    expect(result.status).toBe(0);
+    expect(result.calls).toEqual(['run alpha --at abc123', 'run beta --at abc123', 'run gamma --at abc123']);
+    expect(result.stdout).toContain('[beta] replayed beta');
+  });
+
+  it('fails the base side on a failed flow, but only after every other flow has run', async () => {
+    const result = await replay('Replay the base revision', {
+      FLOWS: 'alpha beta gamma',
+      CONCURRENCY: '1',
+      BASE_FAILURES: 'fail',
+      FAIL_FLOWS: 'alpha',
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.calls).toHaveLength(3);
+  });
+
+  it('warns past a base flow that cannot capture when base-failures says warn', async () => {
+    const result = await replay('Replay the base revision', {
+      FLOWS: 'alpha beta',
+      CONCURRENCY: '2',
+      BASE_FAILURES: 'warn',
+      FAIL_FLOWS: 'beta',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("::warning::the base side of 'beta' could not be captured");
+  });
+
+  it('records the head by default, and fails it when any flow fails', async () => {
+    const ok = await replay('Replay the working tree', {
+      FLOWS: 'alpha beta',
+      CONCURRENCY: '2',
+      HEAD_NETWORK: 'record',
+      FAIL_FLOWS: '',
+    });
+    expect(ok.status).toBe(0);
+    expect(ok.calls).toEqual(['run alpha --record', 'run beta --record']);
+
+    const replayed = await replay('Replay the working tree', {
+      FLOWS: 'alpha',
+      CONCURRENCY: '1',
+      HEAD_NETWORK: 'replay',
+      FAIL_FLOWS: '',
+    });
+    expect(replayed.calls).toEqual(['run alpha']);
+
+    const failed = await replay('Replay the working tree', {
+      FLOWS: 'alpha beta',
+      CONCURRENCY: '2',
+      HEAD_NETWORK: 'record',
+      FAIL_FLOWS: 'alpha',
+    });
+    expect(failed.status).not.toBe(0);
+    expect(failed.calls).toHaveLength(2);
+  });
+});

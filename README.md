@@ -269,6 +269,11 @@ A deployed base can lack what the pull request adds, a new page or a surface swi
 In the action, `base-failures: warn` keeps such a flow from failing the job: it is reported with
 whatever the base captured, and the head side still fails the job when it cannot capture.
 
+`concurrency: N` replays N flows at a time on each side, each line of output prefixed with its flow.
+Every flow runs even when one fails, and the step fails at the end if any did. Past 1, the app must
+be attached or started by an `app.dev` that takes the `$PORT` it is given, since N servers cannot
+share one port.
+
 A cold dev server is the other thing a runner has that a laptop does not: `next dev` compiles a
 route on its first hit, often past the replayer's 15-second per-action default. Give steps longer
 with `app.stepTimeout: 60s` in `config.yaml`, `vdiff run --step-timeout 60s`, or
