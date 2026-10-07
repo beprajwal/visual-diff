@@ -73,10 +73,12 @@ export function ruleMatches(
   rule: ScenarioRule,
   request: MockRequest,
   occurrence: number,
+  matched: ReadonlySet<string> = new Set(),
 ): boolean {
-  const { method, url, nth } = rule.match;
+  const { method, url, nth, after } = rule.match;
   if (method !== undefined && method.toUpperCase() !== request.method.toUpperCase()) return false;
   if (nth !== undefined && nth !== occurrence) return false;
+  if (after !== undefined && !matched.has(after)) return false;
   return matchesGlob(url, request.url);
 }
 
@@ -85,10 +87,11 @@ export function selectRule(
   rules: readonly ScenarioRule[],
   request: MockRequest,
   occurrence: number,
+  matched: ReadonlySet<string> = new Set(),
 ): SelectedRule | null {
   for (let index = 0; index < rules.length; index += 1) {
     const rule = rules[index] as ScenarioRule;
-    if (ruleMatches(rule, request, occurrence)) return { rule, index, occurrence };
+    if (ruleMatches(rule, request, occurrence, matched)) return { rule, index, occurrence };
   }
   return null;
 }

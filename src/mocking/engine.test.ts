@@ -596,3 +596,36 @@ describe('resolveDecision is pure', () => {
     expect(recorded).toEqual(snapshot);
   });
 });
+
+describe('after', () => {
+  const READ = 'https://api.example.test/v1/items?project=1';
+  const SAVE = 'https://api.example.test/v1/items/1';
+  const rules: ScenarioRule[] = [
+    { id: 'save', match: { method: 'PATCH', url: '**/v1/items/1' }, respond: { status: 200 } },
+    {
+      id: 'read-after-save',
+      match: { method: 'GET', url: '**/v1/items?**', after: 'save' },
+      respond: { status: 200, body: { saved: true } },
+    },
+    { id: 'read', match: { method: 'GET', url: '**/v1/items?**' }, respond: { status: 200, body: { saved: false } } },
+  ];
+
+  it('holds a rule back until the rule it names has matched, however many requests came first', () => {
+    const engine = new ScenarioEngine(spec(rules, 'mock'));
+    // A production build reads once before the save, a development build twice: either way every
+    // read before the save gets the unsaved state and every read after it the saved one.
+    expect(engine.select({ method: 'GET', url: READ })?.rule.id).toBe('read');
+    expect(engine.select({ method: 'GET', url: READ })?.rule.id).toBe('read');
+    expect(engine.select({ method: 'PATCH', url: SAVE })?.rule.id).toBe('save');
+    expect(engine.select({ method: 'GET', url: READ })?.rule.id).toBe('read-after-save');
+    expect(engine.select({ method: 'GET', url: READ })?.rule.id).toBe('read-after-save');
+  });
+
+  it('counts the named rule per engine, so one viewport saving never releases another', () => {
+    const desktop = new ScenarioEngine(spec(rules, 'mock'));
+    const mobile = new ScenarioEngine(spec(rules, 'mock'));
+    desktop.select({ method: 'PATCH', url: SAVE });
+    expect(desktop.select({ method: 'GET', url: READ })?.rule.id).toBe('read-after-save');
+    expect(mobile.select({ method: 'GET', url: READ })?.rule.id).toBe('read');
+  });
+});

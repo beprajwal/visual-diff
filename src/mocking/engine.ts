@@ -315,7 +315,7 @@ export class ScenarioEngine {
    */
   select(request: MockRequest): SelectedRule | null {
     const occurrence = this.#counter.next(request);
-    const selected = selectRule(this.spec.rules, request, occurrence);
+    const selected = selectRule(this.spec.rules, request, occurrence, this.#matched);
     if (selected !== null) this.#matched.add(selected.rule.id);
     return selected;
   }

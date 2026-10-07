@@ -152,8 +152,14 @@ modifier and composes with any of them, including on its own (pass the recorded 
 late). Two verbs on one rule is a validation error rather than an invented precedence order.
 
 **Matching**: `method` optional, defaulting to any; `url` glob required; `nth` optional, selecting
-the *n*th occurrence of an otherwise identical request. First match wins in file order. Unmatched
-requests pass through.
+the *n*th occurrence of an otherwise identical request; `after` optional, naming another rule that
+must have matched first in the viewport. First match wins in file order. Unmatched requests pass
+through.
+
+`after` exists because `nth` counts requests, and how many a page makes depends on the build: a
+development build under React StrictMode mounts twice and reads twice, a production build once. A
+sequence such as "reads after the save return the saved row" is stated by the event it hangs on, so
+one scenario serves both builds.
 
 **Patching**: JSON merge patch (RFC 7386) by default, because it reads naturally in YAML and covers
 the common case of changing a field. `patchOps` (RFC 6902) is available for array indices and

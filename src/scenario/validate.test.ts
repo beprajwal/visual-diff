@@ -184,6 +184,33 @@ describe('match (mocking spec §5, §8)', () => {
     );
   });
 
+  it('rejects an after that names no rule, or the rule itself', () => {
+    const missing = only(
+      parse(withRules('  - id: a\n    match: { url: "**", after: nope }\n    abort: true\n')),
+    );
+    expect(missing.code).toBe('invalid-after');
+    expect(missing.message).toContain("match.after names 'nope', which is no rule in this scenario");
+    expect(missing.at.key).toBe('rules[0].match.after');
+
+    const self = only(
+      parse(withRules('  - id: a\n    match: { url: "**", after: a }\n    abort: true\n')),
+    );
+    expect(self.code).toBe('invalid-after');
+    expect(self.message).toContain("rule 'a' names itself in match.after");
+  });
+
+  it('accepts an after that names another rule, and does not call a later plain rule unreachable', () => {
+    const result = parse(
+      withRules(
+        '  - id: save\n    match: { method: PATCH, url: "**/items/1" }\n    respond: { status: 200 }\n' +
+          '  - id: later\n    match: { url: "**/items**", after: save }\n    respond: { status: 200 }\n' +
+          '  - id: first\n    match: { url: "**/items**" }\n    respond: { status: 200 }\n',
+      ),
+    );
+    expect(result.ok).toBe(true);
+    expect(warningsOf(result).map((w) => w.code)).not.toContain('unreachable-rule');
+  });
+
   it('rejects nth below 1 and explains that it counts from one', () => {
     for (const nth of [0, -3]) {
       const issue = only(

@@ -39,6 +39,7 @@ import {
 import { ScenarioSpecError } from './errors.js';
 import { locateInDoc, locateOffset, type Locate } from './locate.js';
 import {
+  MATCH_KEYS,
   RULE_KEYS,
   SCENARIO_KEYS,
   hasKey,
@@ -192,6 +193,7 @@ function normalizeRule(input: ScenarioRuleInput): ScenarioRule {
   const match: RuleMatch = { url: input.match.url };
   if (input.match.method !== undefined) match.method = input.match.method;
   if (input.match.nth !== undefined) match.nth = input.match.nth;
+  if (input.match.after !== undefined) match.after = input.match.after;
 
   const base = { id: input.id, match } as { id: string; match: RuleMatch; delay?: number };
   if (input.delay !== undefined) base.delay = input.delay;
@@ -258,7 +260,7 @@ function mapZodIssue(issue: ZodIssue, locate: Locate): ValidationIssue[] {
         if (where === 'match') {
           return {
             code: 'unknown-key',
-            message: `unknown key '${key}' in match. A match is written with: method, url, nth`,
+            message: `unknown key '${key}' in match. A match is written with: ${MATCH_KEYS.join(', ')}`,
             at,
           };
         }

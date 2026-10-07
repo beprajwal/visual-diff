@@ -275,7 +275,7 @@ describe('parseScenarioSource — unknown keys (mocking spec §8)', () => {
     );
     const issue = issueWith(result, 'unknown-key');
     expect(issue.message).toBe(
-      "unknown key 'header' in match. A match is written with: method, url, nth",
+      "unknown key 'header' in match. A match is written with: method, url, nth, after",
     );
     expect(issue.at.key).toBe('rules[0].match.header');
   });

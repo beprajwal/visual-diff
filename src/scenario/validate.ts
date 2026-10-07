@@ -84,6 +84,7 @@ export function validateScenarioSpec(
   input.rules.forEach((rule, index) => {
     validateRuleId(rule, index, locate, seenIds, issues);
     validateMatch(rule, index, locate, issues);
+    validateAfter(input.rules, rule, index, locate, issues);
     validateDelay(rule, index, locate, issues);
     validateVerbs(rule, index, mode, locate, issues, warnings);
     validateShadowing(input.rules, rule, index, locate, warnings);
@@ -246,6 +247,35 @@ function validateMatch(
         at,
       });
     }
+  }
+}
+
+function validateAfter(
+  rules: readonly ScenarioRuleInput[],
+  rule: ScenarioRuleInput,
+  index: number,
+  locate: Locate,
+  issues: ValidationIssue[],
+): void {
+  const { after } = rule.match;
+  if (after === undefined) return;
+  const at = locate(['rules', index, 'match', 'after']);
+  if (after === rule.id) {
+    issues.push({
+      code: 'invalid-after',
+      message:
+        `rule '${rule.id}' names itself in match.after: after holds a rule back until another ` +
+        'rule has matched, and a rule cannot match before it has matched',
+      at,
+    });
+  } else if (!rules.some((other) => other.id === after)) {
+    issues.push({
+      code: 'invalid-after',
+      message:
+        `match.after names '${after}', which is no rule in this scenario: after holds a rule back ` +
+        "until the named rule has matched, so it must be another rule's id",
+      at,
+    });
   }
 }
 
@@ -705,6 +735,7 @@ function validateShadowing(
       continue;
     }
     if (earlier.match.nth !== undefined && earlier.match.nth !== rule.match.nth) continue;
+    if (earlier.match.after !== undefined && earlier.match.after !== rule.match.after) continue;
 
     warnings.push({
       code: 'unreachable-rule',
