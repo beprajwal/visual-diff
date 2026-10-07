@@ -1,0 +1,41 @@
+docs/superpowers/specs/2026-08-10-api-mocking-design.md
+  s_0c6a287b32f3c1::t_d59fe90b8cf0b0 155-162
+src/mocking/engine.test.ts
+  s_0c6a287b32f3c1::t_72b1b42d21984f 599-631
+src/mocking/engine.ts
+  s_0c6a287b32f3c1::t_2316af8d38516f 318
+src/mocking/match.ts
+  s_0c6a287b32f3c1::t_ac40ecde8eb90e 76,78,81,90,94
+src/scenario/parse.test.ts
+  s_0c6a287b32f3c1::t_04445b4f8ae696 278
+src/scenario/parse.ts
+  s_0c6a287b32f3c1::t_9add1cdb543d5c 42,196,263
+src/scenario/schema.ts
+  s_0c6a287b32f3c1::t_3b94854ffc9147 32,50-51
+src/scenario/serialize.ts
+  s_0c6a287b32f3c1::t_b916a6d47b820d 19
+src/scenario/structural-diff.ts
+  s_0c6a287b32f3c1::t_abce9272c61c0e 56
+src/scenario/validate.test.ts
+  s_0c6a287b32f3c1::t_b2e27c3d3adf05 187-213
+src/scenario/validate.ts
+  s_0c6a287b32f3c1::t_73ac72b47510a0 87,253-281,738
+src/types.ts
+  s_0c6a287b32f3c1::t_943af9caab1068 229-234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01e92f4a79676d5d438bd4f59d81baeb272e10f1",
+  "prompts": {},
+  "sessions": {
+    "s_0c6a287b32f3c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84ead77c-7325-446a-845d-34424e6494dc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
