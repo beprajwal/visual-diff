@@ -226,6 +226,12 @@ export interface RuleMatch {
    * `(method, url)` within a run (mocking spec §5, §11). Below 1 is a validation error (§8).
    */
   nth?: number;
+  /**
+   * Id of another rule in the scenario. This rule applies only once that one has matched a request
+   * in the viewport: state a sequence ("reads after the save return the saved row") by the event it
+   * hangs on, where `nth` would count requests and so depend on how many the build happens to make.
+   */
+  after?: string;
 }
 
 /** A binary `respond.body`, distinguished from a JSON body by the `base64` key (mocking spec §5). */

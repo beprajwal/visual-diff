@@ -16,7 +16,7 @@ import { RESPONSE_VERBS, type JsonPatchOperation, type ScenarioRule, type Scenar
 import { hasKey } from './schema.js';
 
 /** Key order inside `match`. */
-const MATCH_ORDER = ['method', 'url', 'nth'] as const;
+const MATCH_ORDER = ['method', 'url', 'nth', 'after'] as const;
 /** Key order inside `respond`. */
 const RESPOND_ORDER = ['status', 'headers', 'body'] as const;
 /** Key order inside one RFC 6902 operation. */

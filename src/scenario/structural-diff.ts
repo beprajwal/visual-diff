@@ -53,7 +53,7 @@ export interface ScenarioDiffInput {
 }
 
 /** Fields compared on every rule, in report order. */
-const MATCH_FIELDS = ['method', 'url', 'nth'] as const;
+const MATCH_FIELDS = ['method', 'url', 'nth', 'after'] as const;
 
 /**
  * Align two scenarios by rule id.

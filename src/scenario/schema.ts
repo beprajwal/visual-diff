@@ -29,7 +29,7 @@ export const SAFE_SCENARIO_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const RULE_KEYS = ['id', 'match', 'patch', 'patchOps', 'respond', 'abort', 'delay'] as const;
 
 /** The complete `match` vocabulary (mocking spec §5). */
-export const MATCH_KEYS = ['method', 'url', 'nth'] as const;
+export const MATCH_KEYS = ['method', 'url', 'nth', 'after'] as const;
 
 /** The complete `respond` vocabulary (mocking spec §5). */
 export const RESPOND_KEYS = ['status', 'headers', 'body'] as const;
@@ -47,6 +47,8 @@ const zMatch = z
     url: z.string(),
     // Range and integrality are checked in validate.ts: "nth below 1" deserves its own sentence.
     nth: z.number().optional(),
+    // That it names another rule of this scenario is checked in validate.ts.
+    after: z.string().optional(),
   })
   .strict();
 
