@@ -1,0 +1,23 @@
+README.md
+  s_0c6a287b32f3c1::t_7337938f46db35 268-271
+action.yml
+  s_0c6a287b32f3c1::t_1da38b390563e5 56-63,247,264,433,450-453
+tests/packaging/action.test.ts
+  s_0c6a287b32f3c1::t_9cdd61b2fb8dcc 106,427-437,579
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c9caacf2fc22bb85d9844eca40a072a7251f72f",
+  "prompts": {},
+  "sessions": {
+    "s_0c6a287b32f3c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84ead77c-7325-446a-845d-34424e6494dc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
