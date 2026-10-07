@@ -78,6 +78,8 @@ export type Invocation =
       readyOn?: string;
       /** Accept a self-signed certificate. Also `VDIFF_IGNORE_HTTPS_ERRORS=1`. */
       ignoreHttpsErrors?: true;
+      /** Drive an app already served at the base URL; never install or spawn. Also `VDIFF_ATTACH=1`. */
+      attach?: true;
       /** Per-action timeout inside a step, from `--step-timeout 60s`. Also `VDIFF_STEP_TIMEOUT`. */
       stepTimeoutMs?: number;
       json: boolean;
@@ -342,7 +344,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
   },
   run: {
     usage:
-      'vdiff run <flow> [--at <ref>] [--scenario <name>] [--variant <name>] [--keep] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub]',
+      'vdiff run <flow> [--at <ref>] [--scenario <name>] [--variant <name>] [--keep] [--viewport <WxH>] [--record|--no-net] [--continue-on-error] [--no-scrub] [--base-url <url> [--attach]]',
     summary: 'replay a flow at the working tree or a historical revision',
     flags: flags({
       at: { type: 'string' },
@@ -357,6 +359,7 @@ export const COMMANDS: Record<string, CommandSpec> = {
       'base-url': { type: 'string' },
       'ready-on': { type: 'string' },
       'ignore-https-errors': { type: 'boolean' },
+      attach: { type: 'boolean' },
       'step-timeout': { type: 'string' },
     }),
     minPositionals: 1,
@@ -1089,6 +1092,7 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       const readyOn = values['ready-on'];
       if (typeof readyOn === 'string') invocation.readyOn = readyOn;
       if (bool(values, 'ignore-https-errors')) invocation.ignoreHttpsErrors = true;
+      if (bool(values, 'attach')) invocation.attach = true;
       const stepTimeout = values['step-timeout'];
       if (typeof stepTimeout === 'string') {
         const ms = durationToMs(stepTimeout);

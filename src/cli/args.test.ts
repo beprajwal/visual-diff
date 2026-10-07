@@ -908,6 +908,14 @@ describe('run — CI overrides (D41)', () => {
     expect('readyOn' in plain).toBe(false);
     expect('ignoreHttpsErrors' in plain).toBe(false);
   });
+
+  it('parses --attach, and leaves it absent otherwise', () => {
+    expect(ok(['run', 'checkout', '--attach', '--base-url', 'https://pr-42.example.test/'])).toMatchObject({
+      attach: true,
+      baseUrl: 'https://pr-42.example.test/',
+    });
+    expect('attach' in ok(['run', 'checkout'])).toBe(false);
+  });
 });
 
 describe('run --step-timeout', () => {

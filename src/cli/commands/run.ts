@@ -115,6 +115,7 @@ export async function run(
   if (invocation.ignoreHttpsErrors === true || isTruthy(env['VDIFF_IGNORE_HTTPS_ERRORS'])) {
     options.ignoreHTTPSErrors = true;
   }
+  if (invocation.attach === true || isTruthy(env['VDIFF_ATTACH'])) options.attach = true;
   const stepTimeout = invocation.stepTimeoutMs ?? envDuration(env['VDIFF_STEP_TIMEOUT']);
   if (stepTimeout !== undefined) options.stepTimeoutMs = stepTimeout;
 

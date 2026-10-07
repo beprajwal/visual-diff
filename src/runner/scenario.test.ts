@@ -654,6 +654,36 @@ describe('ScenarioRuntime in mock mode', () => {
     expect(route.verdict.kind).not.toBe('none');
   });
 
+  describe('attached to a deployed app', () => {
+    const APP_ORIGIN = 'https://pr-42.example.test';
+    const attached = (rules: ScenarioSpec['rules'] = []): ScenarioRuntime =>
+      buildScenarioRuntime({
+        plan: { name: 'no-backend', mode: 'mock', spec: mockSpec(rules), file: 'no-backend.yaml' },
+        appOrigin: APP_ORIGIN,
+      });
+
+    it("lets the deployed app's own requests through, as loopback is for a spawned one", async () => {
+      const runtime = attached();
+      const url = `${APP_ORIGIN}/_next/static/chunks/main.js`;
+      const { route } = await drive(runtime, url);
+      expect(route.verdict).toEqual({ kind: 'continue' });
+      expect(runtime.attributionFor({}, 'GET', url)?.action).toBe('passthrough');
+    });
+
+    it('still aborts every other host', async () => {
+      const { route } = await drive(attached(), FORECAST_URL);
+      expect(route.verdict).toEqual({ kind: 'abort', errorCode: 'blockedbyclient' });
+    });
+
+    it("still lets a rule claim the deployed app's own URL", async () => {
+      const runtime = attached([
+        { id: 'app-api', match: { url: '**/api/**' }, respond: { status: 200, body: { items: [] } } },
+      ]);
+      const { route } = await drive(runtime, `${APP_ORIGIN}/api/items`);
+      expect(route.verdict).toMatchObject({ kind: 'fulfill', status: 200 });
+    });
+  });
+
   it('attributes a delay-only rule that had nothing to serve to the rule, not to the glob', async () => {
     const runtime = runtimeFor(mockSpec([{ id: 'slow', match: { url: '**/v1/**' }, delay: 1 }]), {
       sleep: async () => undefined,
@@ -832,6 +862,16 @@ describe('isAppOriginUrl', () => {
     expect(isAppOriginUrl('https://api.example.test/v1/forecast')).toBe(false);
     // Not a loopback host merely because the name starts with one.
     expect(isAppOriginUrl('https://localhost.evil.test/')).toBe(false);
+  });
+
+  it('adds an attached app by exact origin, never by host prefix or another scheme or port', () => {
+    const origin = 'https://pr-42.example.test';
+    expect(isAppOriginUrl('https://pr-42.example.test/core/projects', origin)).toBe(true);
+    expect(isAppOriginUrl('https://pr-42.example.test.evil.test/', origin)).toBe(false);
+    expect(isAppOriginUrl('http://pr-42.example.test/', origin)).toBe(false);
+    expect(isAppOriginUrl('https://pr-42.example.test:8443/', origin)).toBe(false);
+    expect(isAppOriginUrl('https://api.example.test/v1', origin)).toBe(false);
+    expect(isAppOriginUrl('not a url', origin)).toBe(false);
   });
 });
 
