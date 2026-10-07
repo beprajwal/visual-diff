@@ -53,6 +53,13 @@ inputs:
       but fails any step whose requests the base never made.
     required: false
     default: record
+  concurrency:
+    description: >-
+      How many flows replay at once on each side. Each flow is its own browser, so this is bounded
+      by the runner's cores and by what the app can serve: past 1, the app must either be attached
+      (`VDIFF_ATTACH`, a deployment) or started by an `app.dev` that takes the `$PORT` it is given.
+    required: false
+    default: '1'
   base-failures:
     description: >-
       fail | warn — what a base replay that cannot capture does to the job. `fail` (the default) stops
@@ -245,6 +252,7 @@ runs:
         IMAGES: ${{ inputs.images }}
         HEAD_NETWORK: ${{ inputs.head-network }}
         BASE_FAILURES: ${{ inputs.base-failures }}
+        CONCURRENCY: ${{ inputs.concurrency }}
         PUBLISH_BRANCH: ${{ inputs.publish-branch }}
         PAGES_URL: ${{ inputs.pages-url }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -262,6 +270,7 @@ runs:
         case "$IMAGES" in changed|all|none) ;; *) echo "::error::images must be changed, all or none, got '$IMAGES'"; exit 2 ;; esac
         case "$HEAD_NETWORK" in record|replay) ;; *) echo "::error::head-network must be record or replay, got '$HEAD_NETWORK'"; exit 2 ;; esac
         case "$BASE_FAILURES" in fail|warn) ;; *) echo "::error::base-failures must be fail or warn, got '$BASE_FAILURES'"; exit 2 ;; esac
+        case "$CONCURRENCY" in ''|*[!0-9]*|0) echo "::error::concurrency must be a whole number of at least 1, got '$CONCURRENCY'"; exit 2 ;; esac
 
         if [ ! -d .visual-diff ]; then
           echo "::error::no .visual-diff directory in $(pwd) — run \`vdiff init\` and commit it"
@@ -431,6 +440,7 @@ runs:
         BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
         BASELINE: ${{ inputs.baseline }}
         BASE_FAILURES: ${{ inputs.base-failures }}
+        CONCURRENCY: ${{ inputs.concurrency }}
         CLI: ${{ inputs.cli }}
         # A first run records the flow's HAR and reads it back whole to scrub it; a large app's
         # recording is hundreds of megabytes of JSON, more than Node's default heap. The runner has
@@ -446,12 +456,18 @@ runs:
         # A missing baseline is a slower job, never a failed one — the same posture the store takes
         # when a diff needs a run that does not exist.
         echo "::notice::no cached baseline for $BASE_SHA; replaying the base revision (slower)"
-        for flow in $FLOWS; do
-          if ! $cli run "$flow" --at "$BASE_SHA"; then
+        # Flows replay $CONCURRENCY at a time; each line of a flow's output carries its name, since
+        # several interleave. A failed flow does not stop the others: xargs runs them all and exits
+        # non-zero at the end if any failed, so every failure is in the log at once.
+        export cli BASE_SHA BASE_FAILURES
+        printf '%s\n' $FLOWS | xargs -r -P "$CONCURRENCY" -I{} bash -c '
+          set -o pipefail
+          flow="$1"
+          if ! $cli run "$flow" --at "$BASE_SHA" 2>&1 | sed -u "s/^/[$flow] /"; then
             if [ "$BASE_FAILURES" != "warn" ]; then exit 1; fi
-            echo "::warning::the base side of '$flow' could not be captured; it is reported with what the base did capture"
+            echo "::warning::the base side of '"'"'$flow'"'"' could not be captured; it is reported with what the base did capture"
           fi
-        done
+        ' _ {}
 
     # ---------------------------------------------------------------- the head side
     - name: Replay the working tree
@@ -461,6 +477,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         CLI: ${{ inputs.cli }}
         HEAD_NETWORK: ${{ inputs.head-network }}
+        CONCURRENCY: ${{ inputs.concurrency }}
         NODE_OPTIONS: --max-old-space-size=6144
       run: |
         set -euo pipefail
@@ -469,13 +486,16 @@ runs:
         # a step ago — has no answer for a request the pull request added, and a replay that aborts
         # it fails the step for the wrong reason. `replay` is for a flow whose traffic is known not
         # to change.
-        for flow in $FLOWS; do
-          if [ "${HEAD_NETWORK:-record}" = "record" ]; then
-            $cli run "$flow" --record
-          else
-            $cli run "$flow"
-          fi
-        done
+        record=--record
+        if [ "${HEAD_NETWORK:-record}" != "record" ]; then record=''; fi
+        # As on the base side: $CONCURRENCY at a time, prefixed output, every flow runs, any failure
+        # fails the step.
+        export cli record
+        printf '%s\n' $FLOWS | xargs -r -P "$CONCURRENCY" -I{} bash -c '
+          set -o pipefail
+          flow="$1"
+          $cli run "$flow" $record 2>&1 | sed -u "s/^/[$flow] /"
+        ' _ {}
 
     # A replay that failed leaves its evidence — the failure screenshot, the DOM at the moment,
     # server.log, install.log — in a run directory on a runner nobody can open. Keep it, so the reason
