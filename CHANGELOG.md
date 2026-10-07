@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.0](https://github.com/beprajwal/visual-diff/compare/v0.23.0...v0.24.0) (2026-10-07)
+
+
+### Features
+
+* **action:** replay flows concurrently on each side with a concurrency input ([f13717d](https://github.com/beprajwal/visual-diff/commit/f13717d35dce9755840a12903aa3d4843fa7be76))
+* **scenario:** let a rule wait for another rule to match with match.after ([d467a59](https://github.com/beprajwal/visual-diff/commit/d467a595f975c219920a9418a81228830674cba7))
+
 ## [0.23.0](https://github.com/beprajwal/visual-diff/compare/v0.22.0...v0.23.0) (2026-10-07)
 
 
