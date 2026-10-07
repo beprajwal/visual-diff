@@ -265,6 +265,10 @@ VDIFF_ATTACH=1 VDIFF_BASE_URL=https://staging.example.test/ vdiff run checkout -
 VDIFF_ATTACH=1 VDIFF_BASE_URL=https://pr-42.example.test/ vdiff run checkout
 ```
 
+A deployed base can lack what the pull request adds, a new page or a surface switched off there.
+In the action, `base-failures: warn` keeps such a flow from failing the job: it is reported with
+whatever the base captured, and the head side still fails the job when it cannot capture.
+
 A cold dev server is the other thing a runner has that a laptop does not: `next dev` compiles a
 route on its first hit, often past the replayer's 15-second per-action default. Give steps longer
 with `app.stepTimeout: 60s` in `config.yaml`, `vdiff run --step-timeout 60s`, or
