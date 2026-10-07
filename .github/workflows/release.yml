@@ -1,9 +1,16 @@
 name: Release
 
-# Dormant until you push a version tag. Nothing here runs on a normal push.
+# release-please keeps a "chore: release vX.Y.Z" pull request open against main, collecting every
+# conventional commit since the last release: feat bumps the minor (the patch while below 1.0 only
+# for fixes), and it writes the CHANGELOG.md section and the version into package.json,
+# src/version.ts and action.yml (the `x-release-please-version` lines). Merging that pull request is
+# how a version is cut: release-please tags it and drafts the GitHub Release, and the publish job
+# below takes it from there.
 #
-#   pnpm version minor       # bumps package.json, runs sync-version.mjs, creates the tag
-#   git push --follow-tags   # this workflow takes it from there
+# Publishing runs in this workflow rather than on the tag: a tag created with GITHUB_TOKEN starts no
+# other workflow, and npm's trusted publisher is registered to this file. The release pull request
+# is opened with GITHUB_TOKEN too, so ci.yml does not run on it; it only moves version numbers and
+# the changelog, and the publish job runs the full suite before anything reaches the registry.
 #
 # Publishing uses npm provenance: the registry records a signed, verifiable link from the
 # published tarball back to this workflow run and commit. That requires `id-token: write`
@@ -19,7 +26,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*.*.*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -28,16 +35,49 @@ on:
         default: true
 
 permissions:
-  # `contents: write` so the workflow can create the GitHub Release for the tag.
-  contents: write
-  id-token: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  release-please:
+    # A manual dispatch is the publish dry run; it has nothing to cut.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    # `always()` so a dispatch, which skips release-please, still reaches the dry run.
+    if: >-
+      always()
+      && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      # write: advancing the action's major tag.
+      contents: write
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release commit itself, which main may already have moved past.
+          ref: ${{ needs.release-please.outputs.tag_name || github.ref }}
 
       # Before setup-node: `cache: pnpm` shells out to pnpm to find the store, so pnpm must exist.
       - uses: pnpm/action-setup@v4
@@ -53,9 +93,9 @@ jobs:
       # A tag that disagrees with package.json publishes a version nobody can trace back to a
       # commit, which is exactly what provenance is supposed to prevent.
       - name: Verify tag matches package.json version
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.RELEASE_TAG != ''
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${RELEASE_TAG#v}"
           PKG=$(node -p "require('./package.json').version")
           echo "tag=$TAG package.json=$PKG"
           if [ "$TAG" != "$PKG" ]; then
@@ -143,21 +183,15 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
         run: npm publish --provenance --access public --dry-run
 
-      # A git tag is not a GitHub Release — they are separate objects, and the Releases section of
-      # the repo stays empty until one exists. Created after publish so a release never advertises
-      # a version the registry does not have.
-      - name: Create the GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.dry_run == false)
+      # release-please opens the GitHub Release as a draft, so it never advertises a version the
+      # registry does not have; it goes public only once the publish above has succeeded.
+      - name: Publish the GitHub Release
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "::notice::release $GITHUB_REF_NAME already exists — leaving it alone"
-            exit 0
-          fi
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
 
       # Consumers using @v0 (or a later major) follow successful stable releases only.
       - name: Advance the action major tag
-        if: startsWith(github.ref, 'refs/tags/') && (github.event_name == 'push' || inputs.dry_run == false)
+        if: env.RELEASE_TAG != ''
         run: node scripts/promote-action-tag.mjs
