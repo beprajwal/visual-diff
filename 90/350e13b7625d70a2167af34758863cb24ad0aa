@@ -1,0 +1,23 @@
+src/runner/determinism.browser.test.ts
+  s_0c6a287b32f3c1::t_9978c7931e5d89 1-68
+src/runner/determinism.test.ts
+  s_0c6a287b32f3c1::t_272a765cd50fc1 124,128-161
+src/runner/determinism.ts
+  s_0c6a287b32f3c1::t_3fd3f8e359ad9e 7-8,32-34,37,125-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90350e13b7625d70a2167af34758863cb24ad0aa",
+  "prompts": {},
+  "sessions": {
+    "s_0c6a287b32f3c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84ead77c-7325-446a-845d-34424e6494dc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
