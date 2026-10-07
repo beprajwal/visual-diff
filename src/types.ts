@@ -1431,6 +1431,13 @@ export interface RunOptions {
   readyOn?: string;
   /** Overrides `browser.ignoreHTTPSErrors` for this run. */
   ignoreHTTPSErrors?: boolean;
+  /**
+   * The app is already served at `baseUrl` — a deployed build, say — so nothing is installed or
+   * spawned, a historical replay reads only its flow and scenario from git, and every flow drives
+   * that origin, `mode: mock` included, whose rules still answer everything but the app's own
+   * requests.
+   */
+  attach?: boolean;
   /** Overrides `app.stepTimeoutMs` for this run — the per-action timeout inside a step. */
   stepTimeoutMs?: number;
   /** Write an unscrubbed HAR. Requires an explicit flag (spec §6). */

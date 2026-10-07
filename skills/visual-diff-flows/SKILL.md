@@ -61,6 +61,9 @@ Give a `mode: mock` flow its `scenario` here. Its only backend is that scenario'
 declaring the mode without naming the scenario is one forgotten argument away from aborting every
 request it makes. Declaring it also tells the runner this flow is served locally: the job-wide
 `VDIFF_BASE_URL` / `VDIFF_READY_ON` are not applied to it, and a blanket `--record` leaves it alone.
+The exception is an attached run (`--attach` / `VDIFF_ATTACH=1`, the app already deployed): there
+the mock flow drives the deployed origin, whose own requests pass through while the scenario still
+answers everything else.
 
 `baseUrl` and `readyOn` interpolate `${VAR}` the way a `goto` does, so one flow can address a
 deployment that serves the app under a base path and one that serves it at the root:

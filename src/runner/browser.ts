@@ -107,6 +107,8 @@ export interface ContextOptions {
    * honest: a module the dev server served is `bypassed`, not a HAR `hit`.
    */
   onAppOriginServed?: (url: string) => void;
+  /** The attached app's origin, let through alongside loopback (see {@link isAppOriginUrl}). */
+  appOrigin?: string;
 }
 
 /**
@@ -252,11 +254,12 @@ function assertNetworkPlan(options: ContextOptions): void {
  */
 async function routeAppOriginOnly(
   context: BrowserContext,
+  appOrigin: string | undefined,
   onAppOriginServed?: (url: string) => void,
 ): Promise<void> {
   await context.route('**/*', (route) => {
     const url = route.request().url();
-    if (isAppOriginUrl(url)) {
+    if (isAppOriginUrl(url, appOrigin)) {
       onAppOriginServed?.(url);
       return route.continue();
     }
@@ -291,10 +294,10 @@ export async function newContext(browser: Browser, options: ContextOptions): Pro
       // registered unconditionally and aborts everything that is not app-origin, so `fallback`
       // always has somewhere to land. Bare `notFound: 'fallback'` with no handler beneath it would
       // be the live-network fallthrough D13 names.
-      await routeAppOriginOnly(context, options.onAppOriginServed);
+      await routeAppOriginOnly(context, options.appOrigin, options.onAppOriginServed);
       await context.routeFromHAR(requireHarPath(options), { notFound: 'fallback', update: false });
     } else if (options.network === 'off') {
-      await routeAppOriginOnly(context);
+      await routeAppOriginOnly(context, options.appOrigin);
     }
     // 'record' falls through to the live network on purpose — and only because `contextOptions`
     // already attached the `recordHar` that captures every byte of it.

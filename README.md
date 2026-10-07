@@ -254,6 +254,17 @@ The action calls `vdiff run` without flags, so the same three are read from the 
 run in the job, base and head, uses them. `browser.ignoreHTTPSErrors: true` in `config.yaml` is the
 permanent form of the last one. Flag beats environment beats file.
 
+When the app is already deployed — a pull request's preview, a staging environment — add `--attach`
+(or `VDIFF_ATTACH=1`): nothing is installed or spawned, the run waits for `--ready-on` (or the base
+URL itself) and drives that origin. A historical replay then reads only its flow and scenario from
+git, so the base side of a diff can be a deployment of the base branch. Set `VDIFF_BASE_URL` per
+side to diff two deployments:
+
+```sh
+VDIFF_ATTACH=1 VDIFF_BASE_URL=https://staging.example.test/ vdiff run checkout --at main
+VDIFF_ATTACH=1 VDIFF_BASE_URL=https://pr-42.example.test/ vdiff run checkout
+```
+
 A cold dev server is the other thing a runner has that a laptop does not: `next dev` compiles a
 route on its first hit, often past the replayer's 15-second per-action default. Give steps longer
 with `app.stepTimeout: 60s` in `config.yaml`, `vdiff run --step-timeout 60s`, or
@@ -323,7 +334,9 @@ ci: false                  # keep this flow out of the CI action's automatic dis
 the mode in one file and pass the scenario somewhere else, and a caller who forgets the second half
 gets a flow whose every request is aborted. Such a flow is also driven on loopback, so the job-wide
 `VDIFF_BASE_URL` / `VDIFF_READY_ON` a runner sets for the real server are not applied to it, and a
-blanket `--record` leaves it on `mock` rather than asking a flow with no HAR to produce one.
+blanket `--record` leaves it on `mock` rather than asking a flow with no HAR to produce one. Under
+`--attach` it drives the attached origin instead: the app's own requests go to that deployment,
+and everything else is still answered by the scenario or aborted.
 
 `baseUrl` and `readyOn` interpolate `${VAR}` as a `goto` does, so a flow can address both a
 deployment that serves the app under a base path and one that serves it at the root.

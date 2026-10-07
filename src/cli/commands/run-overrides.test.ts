@@ -75,6 +75,20 @@ describe('vdiff run — CI overrides', () => {
     expect(options.readyOn).toBe('http://flag.test/');
     expect(options.ignoreHTTPSErrors).toBe(true);
   });
+
+  it('attaches from --attach or a truthy VDIFF_ATTACH, and not otherwise', async () => {
+    const fromEnv = harness({ VDIFF_ATTACH: '1' });
+    await run(fromEnv.ctx, invocation);
+    expect(fromEnv.calls[0]?.attach).toBe(true);
+
+    const flag = harness({});
+    await run(flag.ctx, { ...invocation, attach: true });
+    expect(flag.calls[0]?.attach).toBe(true);
+
+    const off = harness({ VDIFF_ATTACH: '0' });
+    await run(off.ctx, invocation);
+    expect('attach' in off.calls[0]!).toBe(false);
+  });
 });
 
 describe('vdiff run — step timeout', () => {

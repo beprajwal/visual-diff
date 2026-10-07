@@ -101,6 +101,8 @@ export interface ReplayOptions {
   viewport: Viewport;
   flow: FlowSpec;
   baseUrl: string;
+  /** The attached app's origin, which the network routes treat as the app (`--attach`). */
+  appOrigin?: string;
   network: NetworkMode;
   har?: string;
   continueOnError?: boolean;
@@ -529,6 +531,7 @@ export async function replayViewport(options: ReplayOptions): Promise<ViewportRe
     viewport,
     network: options.network,
     baseUrl: options.baseUrl,
+    ...(options.appOrigin === undefined ? {} : { appOrigin: options.appOrigin }),
     ...(options.har === undefined ? {} : { har: options.har }),
     ...(options.deviceScaleFactor === undefined ? {} : { deviceScaleFactor: options.deviceScaleFactor }),
     ...(options.storageState === undefined ? {} : { storageState: options.storageState }),

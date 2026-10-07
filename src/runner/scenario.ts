@@ -184,8 +184,21 @@ export interface RouteLike {
  */
 const LOOPBACK_URL = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i;
 
-export function isAppOriginUrl(url: string): boolean {
-  return url.startsWith('data:') || url.startsWith('blob:') || LOOPBACK_URL.test(url);
+/**
+ * `appOrigin` is the origin of an app the run attached to rather than spawned (`--attach`): a
+ * deployed build is still the code under test, so its own requests count as the app's.
+ */
+export function isAppOriginUrl(url: string, appOrigin?: string): boolean {
+  if (url.startsWith('data:') || url.startsWith('blob:') || LOOPBACK_URL.test(url)) return true;
+  return appOrigin !== undefined && originOf(url) === appOrigin;
+}
+
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -198,6 +211,8 @@ export interface ScenarioRuntimeOptions {
   engine: ScenarioEngine;
   /** Recorded responses, consulted only by `patch`/`patchOps`. Absent in `mock` mode. */
   har?: HarIndex;
+  /** The attached app's origin, which `mock` lets through like loopback (see {@link isAppOriginUrl}). */
+  appOrigin?: string;
   /** Injectable so a `delay` test does not actually wait. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -219,6 +234,7 @@ export class ScenarioRuntime {
 
   private readonly engine: ScenarioEngine;
   private readonly har: HarIndex | undefined;
+  private readonly appOrigin: string | undefined;
   private readonly sleep: (ms: number) => Promise<void>;
 
   /** Keyed on the Playwright `Request` object, which the route and the page event share. */
@@ -233,6 +249,7 @@ export class ScenarioRuntime {
     this.scenario = options.engine.scenario;
     this.mode = options.engine.mode;
     this.har = options.har;
+    this.appOrigin = options.appOrigin;
     this.sleep = options.sleep ?? defaultSleep;
   }
 
@@ -296,7 +313,7 @@ export class ScenarioRuntime {
       // `resolve` so these never enter the miss bookkeeping: a page's own scripts and stylesheets
       // are not what the mock-miss warning is about. A rule that *does* claim a same-origin URL
       // still wins, because `select` ran first.
-      if (selected === null && this.mode === 'mock' && isAppOriginUrl(url)) {
+      if (selected === null && this.mode === 'mock' && isAppOriginUrl(url, this.appOrigin)) {
         this.record(raw, method, url, {
           scenario: this.scenario,
           ruleId: null,
@@ -401,6 +418,7 @@ export interface BuildRuntimeOptions {
   /** Absent for a `mock` run with no scenario, which still needs a runtime. */
   plan?: ScenarioPlan;
   har?: HarIndex;
+  appOrigin?: string;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -418,6 +436,7 @@ export function buildScenarioRuntime(options: BuildRuntimeOptions = {}): Scenari
   return new ScenarioRuntime({
     engine: new ScenarioEngine(spec),
     ...(options.har === undefined ? {} : { har: options.har }),
+    ...(options.appOrigin === undefined ? {} : { appOrigin: options.appOrigin }),
     ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
   });
 }

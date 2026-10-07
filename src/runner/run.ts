@@ -58,6 +58,7 @@ import {
   probe,
   spawnedBaseUrl,
   substitutePort,
+  waitForReady,
   type DevServerHandle,
 } from './devserver.js';
 import { RunnerError, errorMessage } from './errors.js';
@@ -373,6 +374,20 @@ async function resolveFlowSource(
     });
   }
 
+  // Attached, the revision supplies only the flow and its scenario, both read straight out of git:
+  // there is no server to start in it, so there is nothing to check out.
+  if (options.attach === true) {
+    return {
+      mode: 'spawn',
+      projectDir: root,
+      revision: { sha, ref: options.at === sha ? null : options.at, dirty: false },
+      flowSource: source,
+      flowFile: `${repoPath}@${sha.slice(0, 7)}`,
+      gitRoot,
+      sha,
+    };
+  }
+
   await reapWorktrees(gitRoot, paths.worktreesRoot(root));
   const worktree = await addWorktree({
     repoRoot: gitRoot,
@@ -435,7 +450,10 @@ async function bindServer(
   // mode serves on loopback alone. A job-wide origin is not merely irrelevant there — it aims the
   // flow at a host the scenario never answers for, and every request is aborted. The job sets that
   // origin once for flows that need the real server; this keeps it off the flows that do not.
-  const jobOrigin = spec.network.mode !== 'mock';
+  //
+  // Attached, the app is a deployed build and not this machine's, so a mock flow's assets come from
+  // that origin too and the job's origin applies to every flow.
+  const jobOrigin = spec.network.mode !== 'mock' || options.attach === true;
   // Both are interpolated like a `goto` path: one deployment serves the app under a base path and
   // another at the root, and a flow naming that path in its origin has to say so the way its steps
   // already do.
@@ -449,6 +467,25 @@ async function bindServer(
     process.env,
   );
   const insecureTls = options.ignoreHTTPSErrors ?? config.browser?.ignoreHTTPSErrors ?? false;
+
+  if (options.attach === true) {
+    if (configuredBase === undefined) {
+      throw new RunnerError({
+        code: 'attach-without-origin',
+        message: 'attach needs the origin the app is served at, and none was given',
+        exitCode: EXIT.CONFIG_ERROR,
+        kind: 'server-not-ready',
+        hint: 'pass --base-url (or VDIFF_BASE_URL), or set baseUrl on the flow',
+      });
+    }
+    // `app.readyOn` describes the local dev server and may carry `$PORT`; an attached app is only
+    // probed where the run says, or at its own origin.
+    await waitForReady(options.readyOn === undefined ? configuredBase : readyOn, {
+      timeoutMs: config.app.readyTimeoutMs,
+      insecure: insecureTls,
+    });
+    return { mode: 'attach', baseUrl: configuredBase };
+  }
 
   if (target.mode === 'attach' && configuredBase !== undefined) {
     const port = portOfUrl(configuredBase);
@@ -712,7 +749,7 @@ export async function runFlow(
         ...(options.keep === true ? { kept: true } : {}),
         flowHash,
         revision: (target as ResolvedTarget).revision,
-        mode: (target as ResolvedTarget).mode,
+        mode: options.attach === true ? 'attach' : (target as ResolvedTarget).mode,
         network: har.mode,
         harHits: 0,
         harMisses: 0,
@@ -738,7 +775,7 @@ export async function runFlow(
     };
 
     // Slow path dependencies, before anything is spawned.
-    if (target.mode === 'spawn' && options.at !== undefined) {
+    if (target.mode === 'spawn' && options.at !== undefined && options.attach !== true) {
       try {
         const deps = await ensureDeps({
           projectDir: target.projectDir,
@@ -802,10 +839,12 @@ export async function runFlow(
 
       // One runtime per viewport (see `ScenarioRuntime`): `nth` counts per request, and viewports
       // replay concurrently, so a shared counter would make the result depend on scheduling.
+      const appOrigin = options.attach === true ? new URL(server.baseUrl).origin : undefined;
       const newScenarioRuntime = (): ScenarioRuntime =>
         buildScenarioRuntime({
           ...(scenario === undefined ? {} : { plan: scenario }),
           ...(recorded === undefined ? {} : { har: recorded }),
+          ...(appOrigin === undefined ? {} : { appOrigin }),
         });
 
       const runtimes = new Map<ViewportId, ScenarioRuntime>();
@@ -832,6 +871,7 @@ export async function runFlow(
           viewport,
           flow: spec,
           baseUrl: (server as ServerBinding).baseUrl,
+          ...(appOrigin === undefined ? {} : { appOrigin }),
           network: har.mode,
           ...(harPath === undefined ? {} : { har: harPath }),
           ...(runtime === undefined ? {} : { scenario: runtime }),
