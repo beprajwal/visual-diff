@@ -121,10 +121,44 @@ describe('buildInitScript', () => {
     expect(global.__vdiff).toEqual({ epoch: FROZEN_EPOCH_MS, seed: RANDOM_SEED >>> 0 });
   });
 
-  it('kills animation, transition and the caret', () => {
+  it('kills animation, transition, the caret and smooth scrolling on every element', () => {
     expect(DETERMINISM_CSS).toContain('animation:none!important');
     expect(DETERMINISM_CSS).toContain('transition:none!important');
     expect(DETERMINISM_CSS).toContain('caret-color:transparent!important');
+    expect(DETERMINISM_CSS).toMatch(/^\*,\*::before,\*::after\{[^}]*scroll-behavior:auto!important/);
+  });
+
+  it("turns a scripted behavior: 'smooth' scroll into an instant one, and leaves others alone", () => {
+    const calls: unknown[] = [];
+    const record = function (this: unknown, ...args: unknown[]): void {
+      calls.push(args[0]);
+    };
+    const element = { scrollTo: record, scroll: record, scrollBy: record, scrollIntoView: record };
+    const { global } = makeStub();
+    const withScrollers = Object.assign(global, {
+      Element: { prototype: element },
+      scrollTo: record,
+      scroll: record,
+      scrollBy: record,
+    });
+    runInitScript(withScrollers);
+
+    const smooth = { top: 120, behavior: 'smooth' };
+    element.scrollTo(smooth);
+    element.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    withScrollers.scrollTo({ top: 5, behavior: 'smooth' });
+    element.scrollBy({ top: 1, behavior: 'auto' });
+    element.scroll(0, 40);
+
+    expect(calls).toEqual([
+      { top: 120, behavior: 'instant' },
+      { behavior: 'instant', block: 'end' },
+      { top: 5, behavior: 'instant' },
+      { top: 1, behavior: 'auto' },
+      0,
+    ]);
+    // The caller's object is not rewritten under it.
+    expect(smooth.behavior).toBe('smooth');
   });
 
   it('survives a global with no document at install time', () => {
