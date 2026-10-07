@@ -537,15 +537,17 @@ The workspace is declared in `pnpm-workspace.yaml`, and it lists `fixtures/app` 
 is deliberately left out: the dogfood pipeline points `vdiff` at it as if it were a stranger's project
 and lets the tool install its dependencies, which is the code path every real consumer takes.
 
-Bump a version with `pnpm version <patch|minor|major>` (`npm version` behaves identically — both run
-the lifecycle script and commit the three files it touches) — the `version` lifecycle script runs
-`scripts/sync-version.mjs`, which is the only thing that should ever write `TOOL_VERSION` in
-`src/version.ts` and the `version` input default in `action.yml`. Editing `package.json` by hand
-skips it, and the release then fails on `src/version.test.ts` after publishing nothing.
+Releases are cut by release-please. Write commits as Conventional Commits (`feat(runner): …`,
+`fix(report): …`) and it keeps a `chore: release vX.Y.Z` pull request open with the next version
+and its CHANGELOG.md section. Merging that pull request tags the release, and
+`.github/workflows/release.yml` publishes it to npm, makes the drafted GitHub Release public and
+advances the matching major action tag (`v0`, `v1`, etc.). Prereleases and dry runs do not advance
+it, and rerunning an older release cannot move it backwards.
 
-Push the version tag to publish. After npm publication and the GitHub Release succeed, the
-workflow advances the matching major action tag (`v0`, `v1`, etc.). Prereleases and dry runs
-do not advance it, and rerunning an older release cannot move it backwards.
+The version lives in four places — `package.json`, `.release-please-manifest.json`, `TOOL_VERSION`
+in `src/version.ts` and the `version` input default in `action.yml` — and release-please writes all
+of them; the last two are found by their `x-release-please-version` comment. Do not edit them by
+hand: `src/version.test.ts` and `tests/packaging/action.test.ts` fail when they disagree.
 
 `build` empties `dist/` first. `tsc` only ever adds to its `outDir`, so without that step the
 compiled remains of a deleted module stay on disk and ship to every consumer — the published tree

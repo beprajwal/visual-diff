@@ -31,10 +31,10 @@ function release(version: string): string {
   return git('rev-parse', 'HEAD');
 }
 
-function promote(version: string): string {
+function promote(version: string, variable = 'GITHUB_REF_NAME'): string {
   return execFileSync(process.execPath, [script], {
-    cwd: repo, env: { ...process.env, GITHUB_REF_NAME: `v${version}` }, encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: repo, env: { ...process.env, RELEASE_TAG: '', GITHUB_REF_NAME: '', [variable]: `v${version}` },
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
 
@@ -47,6 +47,12 @@ it('creates a major tag and advances it across patch and minor releases', () => 
     expect(target('0')).toBe(commit);
     expect(git('rev-parse', `v${version}^{commit}`)).toBe(commit);
   }
+});
+
+it('takes the tag from RELEASE_TAG when the release is cut from a branch push', () => {
+  const commit = release('0.22.0');
+  promote('0.22.0', 'RELEASE_TAG');
+  expect(target('0')).toBe(commit);
 });
 
 it('does not let old or repeated releases move the major tag backwards', () => {

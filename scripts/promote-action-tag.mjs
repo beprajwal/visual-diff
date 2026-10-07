@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const stable = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const releaseTag = process.env.GITHUB_REF_NAME ?? '';
+// RELEASE_TAG when the release is cut from a branch push, where GITHUB_REF_NAME is the branch.
+const releaseTag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME || '';
 const version = stable.exec(releaseTag);
 if (!version) {
   console.log(`Skipping major tag promotion for non-stable ref: ${releaseTag}`);
