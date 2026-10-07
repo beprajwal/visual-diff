@@ -103,6 +103,7 @@ describe('action.yml', () => {
         'artifact-name',
         'base-ref',
         'baseline',
+        'base-failures',
         'cli',
         'comment',
         'fail-on',
@@ -423,6 +424,17 @@ describe('the head side records by default (D48)', () => {
 });
 
 describe('a denied token exchange never fails the job (D43)', () => {
+  it('fails on a base replay unless base-failures says warn, and validates the input', () => {
+    expect(action.inputs['base-failures']?.default).toBe('fail');
+    const base = action.runs.steps.find((step) => step.name === 'Replay the base revision');
+    expect(base?.env?.['BASE_FAILURES']).toBe('${{ inputs.base-failures }}');
+    expect(base?.run).toContain('if [ "$BASE_FAILURES" != "warn" ]; then exit 1; fi');
+    const head = action.runs.steps.find((step) => step.name === 'Replay the working tree');
+    expect(head?.run).not.toContain('BASE_FAILURES');
+    const resolve = action.runs.steps.find((step) => step.id === 'resolve');
+    expect(resolve?.run).toContain('base-failures must be fail or warn');
+  });
+
   it('warns and leaves the token empty instead of calling setFailed', () => {
     const mint = action.runs.steps.find((s) => s.id === 'oidc');
     const script = String(mint?.with?.['script']);
@@ -564,6 +576,7 @@ describe('the resolve step, run as written', () => {
           FAIL_ON: 'none',
           IMAGES: 'changed',
           HEAD_NETWORK: 'replay',
+          BASE_FAILURES: 'fail',
           PAGES_URL: '',
           PUBLISH_BRANCH: '',
           FLOWS_INPUT: flowsInput,

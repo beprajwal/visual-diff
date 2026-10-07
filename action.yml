@@ -53,6 +53,14 @@ inputs:
       but fails any step whose requests the base never made.
     required: false
     default: record
+  base-failures:
+    description: >-
+      fail | warn — what a base replay that cannot capture does to the job. `fail` (the default) stops
+      it. `warn` reports the flow with whatever the base captured and carries on: for a base that is
+      a deployment rather than a checkout, which legitimately lacks a page the pull request adds or a
+      surface switched off there. The head side always fails the job.
+    required: false
+    default: fail
   fail-on:
     description: >-
       none | high | any. Default none: findings are reported and the check stays green (D30).
@@ -236,6 +244,7 @@ runs:
         FAIL_ON: ${{ inputs.fail-on }}
         IMAGES: ${{ inputs.images }}
         HEAD_NETWORK: ${{ inputs.head-network }}
+        BASE_FAILURES: ${{ inputs.base-failures }}
         PUBLISH_BRANCH: ${{ inputs.publish-branch }}
         PAGES_URL: ${{ inputs.pages-url }}
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -252,6 +261,7 @@ runs:
         case "$FAIL_ON" in none|high|any) ;; *) echo "::error::fail-on must be none, high or any, got '$FAIL_ON'"; exit 2 ;; esac
         case "$IMAGES" in changed|all|none) ;; *) echo "::error::images must be changed, all or none, got '$IMAGES'"; exit 2 ;; esac
         case "$HEAD_NETWORK" in record|replay) ;; *) echo "::error::head-network must be record or replay, got '$HEAD_NETWORK'"; exit 2 ;; esac
+        case "$BASE_FAILURES" in fail|warn) ;; *) echo "::error::base-failures must be fail or warn, got '$BASE_FAILURES'"; exit 2 ;; esac
 
         if [ ! -d .visual-diff ]; then
           echo "::error::no .visual-diff directory in $(pwd) — run \`vdiff init\` and commit it"
@@ -420,6 +430,7 @@ runs:
         FLOWS: ${{ steps.resolve.outputs.flows }}
         BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
         BASELINE: ${{ inputs.baseline }}
+        BASE_FAILURES: ${{ inputs.base-failures }}
         CLI: ${{ inputs.cli }}
         # A first run records the flow's HAR and reads it back whole to scrub it; a large app's
         # recording is hundreds of megabytes of JSON, more than Node's default heap. The runner has
@@ -436,7 +447,10 @@ runs:
         # when a diff needs a run that does not exist.
         echo "::notice::no cached baseline for $BASE_SHA; replaying the base revision (slower)"
         for flow in $FLOWS; do
-          $cli run "$flow" --at "$BASE_SHA"
+          if ! $cli run "$flow" --at "$BASE_SHA"; then
+            if [ "$BASE_FAILURES" != "warn" ]; then exit 1; fi
+            echo "::warning::the base side of '$flow' could not be captured; it is reported with what the base did capture"
+          fi
         done
 
     # ---------------------------------------------------------------- the head side
