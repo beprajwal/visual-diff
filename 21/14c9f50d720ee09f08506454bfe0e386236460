@@ -1,0 +1,44 @@
+tests/integration/attach.test.ts
+  s_0c6a287b32f3c1::t_d6c123bae0f708 1-184
+  s_0c6a287b32f3c1::t_4b870e403c0703 185-187
+README.md
+  s_0c6a287b32f3c1::t_a5f1150e9892c6 257-267,337-339
+skills/visual-diff-flows/SKILL.md
+  s_0c6a287b32f3c1::t_da463ed7e036d1 64-66
+src/cli/args.test.ts
+  s_0c6a287b32f3c1::t_f7242bb893811d 911-918
+src/cli/args.ts
+  s_0c6a287b32f3c1::t_777aee5435a7dd 81-82,347,362,1095
+src/cli/commands/run-overrides.test.ts
+  s_0c6a287b32f3c1::t_190c74d6e072b3 78-91
+src/cli/commands/run.ts
+  s_0c6a287b32f3c1::t_08f5921919a991 118
+src/runner/browser.ts
+  s_0c6a287b32f3c1::t_27542a03ac5bf1 110-111,257,262,297,300
+src/runner/replay.ts
+  s_0c6a287b32f3c1::t_827008d8e98715 104-105,534
+src/runner/run.ts
+  s_0c6a287b32f3c1::t_c87cf7fbf89fcf 61,377-390,453-456,471-489,752,778,842,847,874
+src/runner/scenario.test.ts
+  s_0c6a287b32f3c1::t_399818f83d853b 657-686,866-875
+src/runner/scenario.ts
+  s_0c6a287b32f3c1::t_b4f830f4e695f1 187-201,214-215,237,252,316,421,439
+src/types.ts
+  s_0c6a287b32f3c1::t_56e8714c408c34 1434-1440
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2114c9f50d720ee09f08506454bfe0e386236460",
+  "prompts": {},
+  "sessions": {
+    "s_0c6a287b32f3c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84ead77c-7325-446a-845d-34424e6494dc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
