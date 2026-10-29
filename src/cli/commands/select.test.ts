@@ -14,7 +14,7 @@ import { EXIT } from '../../types.js';
 import type { CommandContext, SpawnFn } from '../command.js';
 import { CliFailure } from '../error.js';
 import { createTestPorts } from '../testing.js';
-import { select } from './select.js';
+import { changedLines, select } from './select.js';
 
 const dirs: string[] = [];
 
@@ -142,5 +142,30 @@ describe('vdiff select', () => {
       (error: unknown) => error,
     );
     expect(thrown).toMatchObject({ code: 'changed-unreadable', exitCode: EXIT.CONFIG_ERROR });
+  });
+
+  it('reads a -U0 diff into head line numbers, a removed line taking the line it preceded', () => {
+    const diff = [
+      'diff --git a/x.css b/x.css',
+      '--- a/x.css',
+      '+++ b/x.css',
+      '@@ -3 +3 @@ .badge {',
+      '-  color: red;',
+      '+  color: blue;',
+      '@@ -9,2 +8,0 @@',
+      '-.gone {',
+      '-}',
+      '@@ -20,0 +20,2 @@',
+      '+.new {',
+      '+}',
+    ].join('\n');
+    expect(changedLines(diff)).toEqual([
+      { text: '  color: red;', line: 3, side: '-' },
+      { text: '  color: blue;', line: 3, side: '+' },
+      { text: '.gone {', line: 9, side: '-' },
+      { text: '}', line: 9, side: '-' },
+      { text: '.new {', line: 20, side: '+' },
+      { text: '}', line: 21, side: '+' },
+    ]);
   });
 });

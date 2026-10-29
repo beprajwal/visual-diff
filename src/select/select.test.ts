@@ -5,13 +5,14 @@
  * useless — barrels and type imports — have a test each.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { DEFAULTS, type SelectConfig } from '../types.js';
+import type { ChangedLine } from './registry.js';
 import { selectFlows, summarizeSelection, type FlowSelection } from './select.js';
 
 const roots: string[] = [];
@@ -36,6 +37,10 @@ const config: SelectConfig = {
       mentioned: `['"]$1['"]`,
       except: '^packages/web/src/constants/lang/',
     },
+  ],
+  registries: [
+    { files: 'packages/web/src/flags.ts', keys: "([A-Z][A-Z0-9_]+):\\s*'([a-z0-9-]+)'" },
+    { files: 'packages/web/src/styles/**/*.css', css: true },
   ],
 };
 
@@ -127,12 +132,40 @@ async function repository(): Promise<string> {
   );
   await write('.visual-diff/fixtures/products.csv', 'a,b\n');
   await write('.visual-diff/config.yaml', 'app:\n  dev: x\n  readyOn: http://x\n');
+  // A flag map and a stylesheet every page could load; the orders page alone uses `ORDERS_V2`
+  // and the `badge` class, the products page reads another flag from the same map.
+  await write(
+    'packages/web/src/flags.ts',
+    "export const FLAG = {\n  ORDERS_V2: 'orders-v2',\n  PRODUCTS_GRID: 'products-grid',\n}\nexport const read = (key: string) => key\n",
+  );
+  await write(
+    'packages/web/src/components/orders/Badge.tsx',
+    "import { FLAG } from '@web/flags'\nexport const Badge = () => <span className=\"badge\">{FLAG.ORDERS_V2}</span>\n",
+  );
+  await write(
+    'packages/web/src/components/products/Grid.tsx',
+    "import { FLAG } from '@web/flags'\nexport const Grid = () => FLAG.PRODUCTS_GRID\n",
+  );
+  const append = async (file: string, line: string): Promise<void> =>
+    write(file, `${await readFile(join(root, file), 'utf8')}${line}\n`);
+  await append('packages/web/src/pages/shops/[id]/orders/index.tsx', "import { Badge } from '@web/components/orders/Badge'");
+  await append('packages/web/src/pages/shops/[id]/products/index.tsx', "import { Grid } from '@web/components/products/Grid'");
+  await write(
+    'packages/web/src/styles/components/badge.css',
+    '/* badges */\n.badge {\n  color: red;\n}\n\nbody {\n  margin: 0;\n}\n',
+  );
   return root;
 }
 
-const select = (root: string, changed: string[], all?: string): Promise<FlowSelection> => {
+const select = (
+  root: string,
+  changed: string[],
+  all?: string,
+  lines?: Record<string, ChangedLine[]>,
+): Promise<FlowSelection> => {
   const request: Parameters<typeof selectFlows>[0] = { root, config, changed };
   if (all !== undefined) request.all = all;
+  if (lines !== undefined) request.lines = lines;
   return selectFlows(request);
 };
 
@@ -273,6 +306,72 @@ describe('selectFlows', () => {
     const unused = await select(root, ['packages/web/src/constants/lang/en/unused.ts']);
     expect(unused.mode).toBe('none');
     expect(unused.unattributed).toEqual(['packages/web/src/constants/lang/en/unused.ts']);
+  });
+
+  // D65: a registry read by its changed lines reaches the files using the names it touched.
+  it('an edit to a registry reaches only the files using the names it changed', async () => {
+    const root = await repository();
+    const flags = 'packages/web/src/flags.ts';
+    const renamed = await select(root, [flags], undefined, {
+      [flags]: [
+        { text: "  ORDERS_V2: 'orders-next',", line: 2, side: '-' },
+        { text: "  ORDERS_V2: 'orders-v2',", line: 2, side: '+' },
+      ],
+    });
+    expect(renamed.flows).toEqual(['orders']);
+
+    // A flag nothing reads yet reaches no page, and is not reported as uncovered.
+    const added = await select(root, [flags], undefined, {
+      [flags]: [{ text: "  CHECKOUT_V3: 'checkout-v3',", line: 4, side: '+' }],
+    });
+    expect(added.mode).toBe('none');
+    expect(added.unattributed).toEqual([]);
+
+    // A change to how the file works, not to its list, reaches every importer as before.
+    const code = await select(root, [flags], undefined, {
+      [flags]: [{ text: 'export const read = (key: string) => key', line: 5, side: '+' }],
+    });
+    expect(code.flows).toEqual(['orders', 'products']);
+
+    // Without lines to read — no --base — the registry is an ordinary file.
+    expect((await select(root, [flags])).flows).toEqual(['orders', 'products']);
+  });
+
+  // D66: a stylesheet edit reaches the pages using the classes it restyled.
+  it('a class rule edit reaches its users, even under a glob in select.all', async () => {
+    const root = await repository();
+    const css = 'packages/web/src/styles/components/badge.css';
+    const restyled = await select(root, [css], undefined, {
+      [css]: [
+        { text: '  color: blue;', line: 3, side: '-' },
+        { text: '  color: red;', line: 3, side: '+' },
+      ],
+    });
+    expect(restyled.mode).toBe('some');
+    expect(restyled.flows).toEqual(['orders']);
+
+    // `body` styles every page: the glob in select.all answers, as it did before.
+    const global = await select(root, [css], undefined, {
+      [css]: [{ text: '  margin: 4px;', line: 7, side: '+' }],
+    });
+    expect(global.mode).toBe('all');
+    expect(global.everything).toBe(`${css} matches packages/web/src/styles/** in select.all`);
+
+    // A `-*` utility is a family: `h-shell-4` in markup uses the `h-shell-*` the sheet defines.
+    await writeFile(join(root, css), '@utility h-shell-* {\n  height: 1px;\n}\n', 'utf8');
+    await writeFile(
+      join(root, 'packages/web/src/components/orders/Badge.tsx'),
+      "import { FLAG } from '@web/flags'\nexport const Badge = () => <span className=\"h-shell-4\">{FLAG.ORDERS_V2}</span>\n",
+      'utf8',
+    );
+    const family = await select(root, [css], undefined, { [css]: [{ text: '  height: 1px;', line: 2, side: '+' }] });
+    expect(family.flows).toEqual(['orders']);
+
+    // A class no source names — a library builds it from a prefix — is handled whole too, rather
+    // than reaching nothing.
+    await writeFile(join(root, css), '.lib__thing {\n  color: red;\n}\n', 'utf8');
+    const built = await select(root, [css], undefined, { [css]: [{ text: '  color: red;', line: 2, side: '+' }] });
+    expect(built.mode).toBe('all');
   });
 
   it('summarises the selection as the step summary', async () => {

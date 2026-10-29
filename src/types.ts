@@ -531,6 +531,30 @@ export interface SelectConfig {
   /** Globs whose change replays every flow: global styles, the app shell, the build config. */
   all: string[];
   named: SelectNamedRule[];
+  registries: SelectRegistryRule[];
+}
+
+/**
+ * A file that lists names other files use — a feature-flag map, a route table, an icon set
+ * (selection spec D65). Read whole, it is imported by nearly every page, so any edit to it would
+ * replay nearly every flow. Read by its changed lines, an edit adds, renames or removes a few
+ * names, and only the files mentioning those names are affected.
+ */
+export interface SelectRegistryRule {
+  /** Glob over the repo-relative path. */
+  files: string;
+  /**
+   * Regular expression over one changed line. Every non-empty capture group of every match is a
+   * name. A changed line that is neither blank, a comment, nor matched means the edit is to the
+   * file's code rather than its list, and the file is walked as usual. Absent for `css: true`.
+   */
+  keys?: string;
+  /**
+   * A stylesheet: the names are the classes of the rules the changed lines sit in, and of any
+   * selector a changed line writes. A change under a rule with no class — `body`, `:root`, `h1` —
+   * styles every page, and the file is handled as usual (D66).
+   */
+  css?: boolean;
 }
 
 export interface Config {

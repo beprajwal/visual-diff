@@ -236,6 +236,20 @@ const selectSchema = z
     ignore: z.array(z.string().min(1)).optional(),
     all: z.array(z.string().min(1)).optional(),
     named: z.array(selectNamedSchema).optional(),
+    registries: z
+      .array(
+        z
+          .object({
+            files: z.string().min(1),
+            keys: z.string().min(1).optional(),
+            css: z.boolean().optional(),
+          })
+          .strict()
+          .refine((rule) => (rule.keys !== undefined) !== (rule.css === true), {
+            message: 'a registry names its keys pattern or sets css: true, and not both',
+          }),
+      )
+      .optional(),
   })
   .strict();
 
@@ -397,6 +411,7 @@ export function buildConfig(
       ignore: [...(file.select.ignore ?? DEFAULTS.select.ignore)],
       all: [...(file.select.all ?? [])],
       named: (file.select.named ?? []).map((rule) => ({ ...rule })),
+      registries: (file.select.registries ?? []).map((rule) => ({ ...rule })),
     };
   }
 

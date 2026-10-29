@@ -15,6 +15,14 @@ export {
 } from './select.js';
 
 export {
+  cssNames,
+  enclosingSelectors,
+  registryNames,
+  resolveRegistry,
+  type ChangedLine,
+} from './registry.js';
+
+export {
   flowRoutes,
   nextPagesRouter,
   normalizeRoute,

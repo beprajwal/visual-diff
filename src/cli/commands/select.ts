@@ -14,7 +14,8 @@
 import { readFileSync } from 'node:fs';
 import { appendFile, readFile } from 'node:fs/promises';
 
-import { summarizeSelection } from '../../select/index.js';
+import { globMatches } from '../../scenario/index.js';
+import { summarizeSelection, type ChangedLine } from '../../select/index.js';
 import type { Invocation } from '../args.js';
 import type { CommandContext, CommandResult } from '../command.js';
 import { configError, runFailure } from '../error.js';
@@ -35,6 +36,32 @@ const lines = (text: string): string[] =>
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '');
+
+/**
+ * The added and removed lines of a `-U0` unified diff, each with its line in the head file. A
+ * removed line has none of its own, so it takes the line it was removed in front of.
+ */
+export function changedLines(diff: string): ChangedLine[] {
+  const out: ChangedLine[] = [];
+  let next = 0;
+  for (const line of diff.split('\n')) {
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk !== null) {
+      const start = Number(hunk[1]);
+      // `+c,0` names the line *before* an insertion point; the removed text sat after it.
+      next = hunk[2] === '0' ? start + 1 : start;
+      continue;
+    }
+    if (/^(\+\+\+|---) /.test(line)) continue;
+    if (line.startsWith('+')) {
+      out.push({ text: line.slice(1), line: next, side: '+' });
+      next += 1;
+    } else if (line.startsWith('-')) {
+      out.push({ text: line.slice(1), line: Math.max(next, 1), side: '-' });
+    }
+  }
+  return out;
+}
 
 async function changedSince(
   ctx: CommandContext,
@@ -78,6 +105,16 @@ export async function select(
 
   const request: Parameters<typeof ctx.ports.selectFlows>[1] = { changed };
   if (invocation.all !== undefined) request.all = invocation.all;
+  // A registry is read by its changed lines (D65), which only a base to diff against can give.
+  const registries = config.select?.registries ?? [];
+  if (base !== undefined && registries.length > 0) {
+    const read: Record<string, ChangedLine[]> = {};
+    for (const file of new Set(changed)) {
+      if (!registries.some((rule) => globMatches(rule.files, file))) continue;
+      read[file] = changedLines(await git(ctx, config.root, ['diff', '-U0', '--no-renames', base, '--', file]));
+    }
+    if (Object.keys(read).length > 0) request.lines = read;
+  }
   const selection = await ctx.ports.selectFlows(config, request);
 
   const human = summarizeSelection(selection);
