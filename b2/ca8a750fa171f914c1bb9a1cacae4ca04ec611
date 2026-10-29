@@ -1,0 +1,102 @@
+src/cli/args.test.ts
+  s_82b796ecc772ec::t_0ade28f25dc889 205-206,305-313
+src/cli/deps.ts
+  s_82b796ecc772ec::t_fb2ba6497b9754 67,103,291-300
+src/select/graph.test.ts
+  s_82b796ecc772ec::t_067a8c699bf358 1-34
+src/select/index.ts
+  s_82b796ecc772ec::t_a722df04538134 1-39
+src/index.ts
+  s_82b796ecc772ec::t_ad9297bb93d2a3 87-94
+src/cli/main.test.ts
+  s_82b796ecc772ec::t_a624b4fcff8dcc 913,918
+  s_99cc7d68cd946b::t_8d34ab0a08bf81 1187-1217
+src/runner/env-template.test.ts
+  s_82b796ecc772ec::t_20a4af42015802 105,110,113,118,122,126,130
+  s_82b796ecc772ec::t_6e998285d63a1b 131
+src/cli/deps.test.ts
+  s_82b796ecc772ec::t_b7ef2be1db8db7 52,171
+docs/superpowers/specs/2026-10-29-flow-selection-design.md
+  s_82b796ecc772ec::t_644a95c721c2de 1-8,11-54,56-110
+  s_82b796ecc772ec::t_e694caf71e4d4b 9-10,55
+src/store/config.test.ts
+  s_82b796ecc772ec::t_b8bd016edc8291 56-96
+action.yml
+  s_82b796ecc772ec::t_10f79ea3a9c950 29-31,65-79,222-229,390-450,512,521,525,560,564,619,679,683,752,788,796,800,875,885,889,966,969,1051
+src/select/routes.test.ts
+  s_82b796ecc772ec::t_9005ac739b97f1 1-64
+src/cli/templates.ts
+  s_82b796ecc772ec::t_1ffc84c8504c63 72-80
+src/flow/parse.test.ts
+  s_82b796ecc772ec::t_b4fff9d17ec9e5 45-69
+src/select/graph.ts
+  s_82b796ecc772ec::t_211e2654d517f8 1-244
+src/types.ts
+  s_82b796ecc772ec::t_b11a210d6c1859 159-165,494-535,549,1647-1656
+src/cli/commands/select.test.ts
+  s_99cc7d68cd946b::t_6d61140855df41 1-146
+src/cli/commands/select.ts
+  s_82b796ecc772ec::t_feaf3a85fcc983 1-91
+src/select/routes.ts
+  s_82b796ecc772ec::t_0b230e843f0004 1-140
+src/cli/args.ts
+  s_82b796ecc772ec::t_a92652fc8e0b81 257-268,479-490,1412-1432
+src/runner/devserver.test.ts
+  s_82b796ecc772ec::t_dffe38ca67bbcc 158,170-171
+src/select/select.ts
+  s_82b796ecc772ec::t_e7c35f990f1883 1-325
+src/cli/main.ts
+  s_82b796ecc772ec::t_0c11de2a4b2b30 51,102-103
+src/cli/testing.ts
+  s_82b796ecc772ec::t_d7587ae68bc94b 56,64-105,810
+src/cli/ports.ts
+  s_82b796ecc772ec::t_af943c491b3349 58,352-354
+README.md
+  s_82b796ecc772ec::t_c5d00a1003ff65 136,146-174,363,369
+  s_82b796ecc772ec::t_02a7d081727017 550-551
+src/store/config.ts
+  s_82b796ecc772ec::t_e2da691a754668 79,217-241,252,307-311,387-402
+skills/visual-diff-flows/SKILL.md
+  s_82b796ecc772ec::t_54cbbcb04dc724 71
+  s_82b796ecc772ec::t_19b43b43e8a850 52,59,79-85
+src/cli/shapes.ts
+  s_82b796ecc772ec::t_25899286339a69 25,380-387
+tests/packaging/action-comments.test.ts
+  s_82b796ecc772ec::t_5211046336a30d 40,65-66,89,99
+tests/packaging/action.test.ts
+  s_82b796ecc772ec::t_00a2307ad39d34 125-126,153,158
+src/flow/parse.ts
+  s_82b796ecc772ec::t_6e1763e4fd87d8 136
+src/adapters/github-actions/templates.ts
+  s_82b796ecc772ec::t_3446865936c38e 74-76
+src/select/select.test.ts
+  s_99cc7d68cd946b::t_30a3b598c6fe9e 1-294
+src/flow/validate.ts
+  s_82b796ecc772ec::t_c72634bc2b18b1 11,82-93
+src/flow/schema.ts
+  s_82b796ecc772ec::t_7ff36a5a55d37a 95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2ca8a750fa171f914c1bb9a1cacae4ca04ec611",
+  "prompts": {},
+  "sessions": {
+    "s_82b796ecc772ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb689618-25e5-4149-9842-6b5507ac3348",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    },
+    "s_99cc7d68cd946b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "525bcdfd-830e-4b6e-a1bd-21461c6ef91a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
