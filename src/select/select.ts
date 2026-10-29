@@ -19,6 +19,7 @@ import { globMatches } from '../scenario/index.js';
 import { paths } from '../store/index.js';
 import type { SelectConfig } from '../types.js';
 import { buildImportGraph, filesReaching, readSources, toPosix, type ImportGraph, type SourceMap } from './graph.js';
+import { resolveRegistry, type ChangedLine } from './registry.js';
 import { flowRoutes, pageForRoute, routerFor, type Route, type Router } from './routes.js';
 
 export type SelectionMode = 'all' | 'some' | 'none';
@@ -60,6 +61,27 @@ export interface SelectRequest {
   changed: readonly string[];
   /** A reason to replay everything that the caller already knows: a label on the pull request. */
   all?: string;
+  /**
+   * The added and removed lines of each changed file a `registries` rule names, without the
+   * `+`/`-` prefix. A registry absent here is walked whole: there is nothing to read names from.
+   */
+  lines?: Readonly<Record<string, readonly ChangedLine[]>>;
+}
+
+/**
+ * Source files other than the registry itself that mention one of the names, as a whole word. A
+ * name ending in `-` names a family (`h-shell-` for `h-shell-4`) and matches as a prefix.
+ */
+function mentioning(names: readonly string[], registry: string, sources: SourceMap): string[] {
+  if (names.length === 0) return [];
+  const escape = (name: string): string => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const alternatives = names
+    .map((name) => (name.endsWith('-') ? `${escape(name)}[\\w-]+` : escape(name)))
+    .join('|');
+  const pattern = new RegExp(`(^|[^\\w$-])(${alternatives})($|[^\\w$-])`);
+  return [...sources]
+    .filter(([file, text]) => file !== registry && pattern.test(text))
+    .map(([file]) => file);
 }
 
 /** Files that define what a replay means. A change to one is a change to every flow. */
@@ -169,14 +191,6 @@ export async function selectFlows(request: SelectRequest): Promise<FlowSelection
     return finish('config.yaml has no select: section, so nothing narrows the set');
   }
 
-  for (const file of changed) {
-    if ((HARNESS as readonly string[]).includes(file)) {
-      return finish(`${file} is part of the visual-diff harness`);
-    }
-    const glob = matchesAny(file, config.all);
-    if (glob !== undefined) return finish(`${file} matches ${glob} in select.all`);
-  }
-
   const router = routerFor(config.pages.router, config.pages.dir);
   let graph: ImportGraph | null = null;
   let sources: SourceMap | null = null;
@@ -187,6 +201,33 @@ export async function selectFlows(request: SelectRequest): Promise<FlowSelection
     pages ??= [...sources.keys()].filter((file) => router.isPage(file)).sort();
     return { graph, sources, pages };
   };
+
+  // A registry read by its lines names what it touches, so a glob in select.all no longer has to
+  // stand for it (D65): the stylesheet under `styles/**` that only restyles `.badge` reaches the
+  // pages using `badge`, not every page. Each hit maps to the files that mention those names.
+  const registryHits = new Map<string, string[]>();
+  for (const file of changed) {
+    const rule = config.registries.find((candidate) => globMatches(candidate.files, file));
+    const lines = request.lines?.[file];
+    if (rule === undefined || lines === undefined) continue;
+    const names = resolveRegistry(root, file, rule, lines);
+    if (names === null) continue;
+    const users = mentioning(names, file, prepare().sources);
+    // A class no source names is one a library builds at runtime, and a rule restyling it can
+    // reach any page: such a stylesheet is handled whole. A list key nothing reads is just new.
+    if (rule.css === true && names.length > 0 && users.length === 0) continue;
+    registryHits.set(file, users);
+  }
+
+  for (const file of changed) {
+    if ((HARNESS as readonly string[]).includes(file)) {
+      return finish(`${file} is part of the visual-diff harness`);
+    }
+    if (registryHits.has(file)) continue;
+    const glob = matchesAny(file, config.all);
+    if (glob !== undefined) return finish(`${file} matches ${glob} in select.all`);
+  }
+
   const flowsVisiting = (page: string, pageList: string[], router_: Router): FlowFacts[] =>
     flows.filter((flow) =>
       flow.routes.some((route) => pageForRoute(route, pageList, router_) === page),
@@ -230,12 +271,16 @@ export async function selectFlows(request: SelectRequest): Promise<FlowSelection
       reached = true;
     }
 
-    if (!config.sources.some((directory) => file.startsWith(`${directory}/`))) continue;
+    const users = registryHits.get(file);
+    const inSources = config.sources.some((directory) => file.startsWith(`${directory}/`));
+    if (!inSources && users === undefined) continue;
     if (matchesAny(file, config.ignore) !== undefined) continue;
     if (router.isServerOnly(file)) continue;
 
     const prepared = prepare();
-    const seeds = seedsFor(file, config, prepared.sources);
+    // A comment-only edit, or a name nothing uses yet, reaches no page and is not a gap.
+    if (users !== undefined && users.length === 0) continue;
+    const seeds = users ?? seedsFor(file, config, prepared.sources);
     const reachedPages = [...filesReaching(prepared.graph, seeds)]
       .filter((candidate) => router.isPage(candidate))
       .sort();

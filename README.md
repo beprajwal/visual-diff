@@ -168,6 +168,21 @@ is declared on the flow with `covers:`, globs of the source it stands for. A fil
 it rather than import it, such as a translation namespace loaded through an index that imports
 every namespace, gets a `named:` rule so the walk starts from the files mentioning the name.
 
+A file every page imports but whose edits are about a few names — a feature-flag map, a
+stylesheet of component classes — gets a `registries:` rule. The selector reads the lines the
+change touched, takes the names on them, and replays the flows whose pages mention those names:
+
+```yaml
+  registries:
+    - files: src/flags.ts
+      keys: "([A-Z][A-Z0-9_]+):\\s*'([a-z0-9-]+)'"   # each capture on a changed line is a name
+    - files: src/styles/**.css
+      css: true                                     # classes of the rules the lines sit in
+```
+
+A changed line the rule cannot name — new code in the flag file, a rule for `body` — handles the
+file whole, as before.
+
 When nothing is reached the job replays nothing, and the step summary lists the changed source no
 flow covers. The `visual-diff: all` label on a pull request replays every flow; so does a project
 with no `select:` section, a change to config.yaml or the workflow, and a selector that fails.

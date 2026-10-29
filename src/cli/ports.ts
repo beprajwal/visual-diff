@@ -55,7 +55,7 @@ import type {
   PreviewReport,
   PreviewRequest,
 } from '../ci/index.js';
-import type { FlowSelection } from '../select/index.js';
+import type { ChangedLine, FlowSelection } from '../select/index.js';
 import type { E2eOrigin, E2eSourceFormat } from './e2e.js';
 import type { VariantName, VariantSpec } from './variant.js';
 
@@ -350,7 +350,7 @@ export interface Ports {
 
   /** `store/index.ts#openStore`. */
   /** The flows a change reaches (selection spec §3). `all` is a reason to replay every flow. */
-  selectFlows(config: Config, request: { changed: string[]; all?: string }): Promise<FlowSelection>;
+  selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]> }): Promise<FlowSelection>;
 
   openStore(config: Config): Promise<StorePort>;
   /** `runner/index.ts#runFlow`. */

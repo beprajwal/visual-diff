@@ -108,3 +108,35 @@ evidence in D59 plus the two fan-out guards in D60 and the rule in D61. `routes.
 normalisation in D62 and the router's specificity order. The command is tested with git faked
 through `spawn` and the selector faked through the ports; the envelope shape is pinned in
 `main.test.ts`; `action.test.ts` pins the new inputs and outputs.
+
+## 7. Addendum: registries, read by their changed lines
+
+**D65 — A registry is read by the lines a change touches, and reaches the files that mention the
+names on them.**
+
+Some files are lists other files read: a feature-flag map, a route table, an icon set. Nearly every
+page imports one, so walked as a file, adding one flag replayed nearly every flow — and flags are
+added weekly. A `registries` rule names such a file and a `keys` pattern over a changed line; every
+capture of every match is a name, and the walk starts from the source files mentioning those names
+instead of from the file. A match written identically on both sides of the diff is cancelled, so a
+list kept on one line and rewritten whole to add a key touches that key and not its neighbours; a
+match whose value changed keeps every capture, since whatever read the old value now reads another.
+A changed line that is neither blank, a comment, nor matched is a change to how the file works, and
+the file is walked whole as before. A name nothing mentions yet reaches no flow and is not reported
+as uncovered. The lines come from `git diff -U0` against the merge-base, so a registry is read this
+way only under `--base`; given `--changed` alone it is an ordinary file. A registry that resolves
+takes precedence over a `select.all` glob matching the same file.
+
+On the first project measured, edits that added or changed one flag went from 26 of 29 flows to
+between 0 and 12.
+
+**D66 — A stylesheet is a registry of classes.**
+
+`css: true` reads a stylesheet: the names are the classes of the rules each changed line sits in,
+the classes a changed selector line writes, and what `@keyframes`, Tailwind's `@custom-variant` and
+`@utility` define (a `-*` utility is matched as a prefix). Each class also names its BEM element and
+block, because a library that builds `menu__item--active` from a prefix is mentioned only as `menu`.
+Comment prose is no change. A changed line under a rule with no class — `body`, `:root`, an element —
+styles every page that loads the sheet, so the file is handled whole, which for a global stylesheet
+means `select.all` answers. So does a class no source mentions, since a rule for a class nothing
+names is either built at runtime or used only by other rules.

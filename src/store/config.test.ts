@@ -80,6 +80,7 @@ describe('parseConfigSource', () => {
       ignore: ['**/__tests__/**', '**/*.test.*', '**/*.spec.*', '**/*.stories.*', '**/*.fixtures.*'],
       all: ['packages/core/src/styles/**'],
       named: [{ files: 'lang/[^/]+/([^/]+)\\.ts$', mentioned: `["']$1["']`, except: '^lang/' }],
+      registries: [],
     });
 
     const without = parse('app:\n  dev: pnpm dev\n  readyOn: http://localhost:3000/\n');

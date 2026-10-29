@@ -64,7 +64,7 @@ import type {
   ServeHandle,
   StorePort,
 } from './ports.js';
-import type { FlowSelection, SelectRequest } from '../select/index.js';
+import type { ChangedLine, FlowSelection, SelectRequest } from '../select/index.js';
 import type { VariantSpec } from './variant.js';
 
 /** Module edges, relative to this file. Mirrors the `index.ts` of each module (plan §1). */
@@ -288,13 +288,14 @@ export function createPorts(): Ports {
       return await fn(file);
     },
 
-    async selectFlows(config: Config, request: { changed: string[]; all?: string }) {
+    async selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]> }) {
       const fn = await loadExport<(request: SelectRequest) => Promise<FlowSelection>>(
         MODULE_SPECIFIERS.select,
         'selectFlows',
       );
       const full: SelectRequest = { root: config.root, config: config.select, changed: request.changed };
       if (request.all !== undefined) full.all = request.all;
+      if (request.lines !== undefined) full.lines = request.lines;
       return await fn(full);
     },
 
