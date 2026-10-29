@@ -1,0 +1,27 @@
+docs/superpowers/specs/2026-10-29-flow-selection-design.md
+  s_82b796ecc772ec::t_e694caf71e4d4b 9-10,55
+skills/visual-diff-flows/SKILL.md
+  s_82b796ecc772ec::t_54cbbcb04dc724 71
+src/cli/main.test.ts
+  s_82b796ecc772ec::t_a624b4fcff8dcc 913,918
+src/runner/env-template.test.ts
+  s_82b796ecc772ec::t_20a4af42015802 105,110,113,118,122,126,130
+tests/packaging/action-comments.test.ts
+  s_82b796ecc772ec::t_5211046336a30d 40,65-66,89,99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "593a5197ca53d8d1359bbdd205829635f4d07930",
+  "prompts": {},
+  "sessions": {
+    "s_82b796ecc772ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb689618-25e5-4149-9842-6b5507ac3348",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
