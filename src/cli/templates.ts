@@ -69,6 +69,15 @@ retention:
   # Older runs keep meta.json and flow.snapshot.yaml forever, so the timeline stays intact and a
   # pruned point can be backfilled by replaying it.
   keepRuns: 20
+
+# select:
+#   # Lets a pull request replay only the flows its changes reach (\`vdiff select\`): the import
+#   # graph is walked from each changed file up to the pages that render it, and a flow is chosen
+#   # when one of its goto/readyOn routes hits such a page. Without this section every flow replays.
+#   sources: [src]                                   # directories that make up the import graph
+#   pages: { router: next-pages, dir: src/pages }    # how a page file names its route
+#   aliases: { "@/": src/ }                          # import prefixes, as tsconfig paths spell them
+#   all: [src/styles/**, src/pages/_app.tsx]         # a change here replays every flow
 `;
 
 /** A minimal, valid flow spec. Kept to one step so it replays against any app unchanged. */

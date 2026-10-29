@@ -102,33 +102,33 @@ describe('empty variables (D44)', () => {
 
 /*
  * The origin and the readiness probe reference the environment exactly as a `goto` does. This was
- * a real failure: a flow whose `baseUrl` carried `${CORE_BASE_PATH}` passed `flow check`, then
+ * a real failure: a flow whose `baseUrl` carried `${BASE_PATH}` passed `flow check`, then
  * navigated to the literal string — "Cannot navigate to invalid URL" — because only `goto` and
  * `fill` were ever interpolated, and the pre-flight missing-variable check could not see the rest.
  */
 describe('references in the origin and the readiness probe', () => {
-  const baseUrl = 'http://127.0.0.1:3000${CORE_BASE_PATH}/';
+  const baseUrl = 'http://127.0.0.1:3000${BASE_PATH}/';
   const addressed = {
     baseUrl,
-    readyOn: 'http://127.0.0.1:3000${CORE_BASE_PATH}/403',
+    readyOn: 'http://127.0.0.1:3000${BASE_PATH}/403',
     steps: [{ id: 'home', goto: 'projects/${PROJECT}/home' }],
   } as never;
 
   it('reports what the origin and the probe reference, not only the steps', () => {
-    expect(flowEnvReferences(addressed)).toEqual(['CORE_BASE_PATH', 'PROJECT']);
+    expect(flowEnvReferences(addressed)).toEqual(['BASE_PATH', 'PROJECT']);
   });
 
   it('counts an unset origin variable as missing before the replay starts', () => {
-    expect(resolveFlowEnv(addressed, { PROJECT: 'p1' }).missing).toEqual(['CORE_BASE_PATH']);
+    expect(resolveFlowEnv(addressed, { PROJECT: 'p1' }).missing).toEqual(['BASE_PATH']);
   });
 
   it('resolves an explicitly empty base path to the root, not to a default', () => {
-    expect(interpolateEnv(baseUrl, { CORE_BASE_PATH: '' })).toBe('http://127.0.0.1:3000/');
+    expect(interpolateEnv(baseUrl, { BASE_PATH: '' })).toBe('http://127.0.0.1:3000/');
   });
 
   it('resolves a set base path into the origin', () => {
-    expect(interpolateEnv(baseUrl, { CORE_BASE_PATH: '/core' })).toBe(
-      'http://127.0.0.1:3000/core/',
+    expect(interpolateEnv(baseUrl, { BASE_PATH: '/portal' })).toBe(
+      'http://127.0.0.1:3000/portal/',
     );
   });
 

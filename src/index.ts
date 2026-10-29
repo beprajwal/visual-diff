@@ -84,4 +84,12 @@ export {
 
 export { ADAPTERS, getAdapter, installAdapter, listAdapters } from './adapters/index.js';
 
+export {
+  selectFlows,
+  summarizeSelection,
+  type FlowSelection,
+  type SelectReason,
+  type SelectRequest,
+} from './select/index.js';
+
 export { runCli, main as runCliMain } from './cli/main.js';

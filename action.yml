@@ -26,7 +26,9 @@ inputs:
   flows:
     description: >-
       Whitespace-separated flow names. Empty means every flow in .visual-diff/flows, except
-      those whose spec declares `ci: false`. Naming a flow here runs it either way.
+      those whose spec declares `ci: false` — narrowed to the flows the pull request's changes
+      reach when `select` is `auto` and the project's config.yaml has a `select:` section.
+      Naming a flow here runs it either way, and skips selection.
     required: false
     default: ''
   mode:
@@ -60,6 +62,21 @@ inputs:
       (`VDIFF_ATTACH`, a deployment) or started by an `app.dev` that takes the `$PORT` it is given.
     required: false
     default: '1'
+  select:
+    description: >-
+      auto | off — whether a pull request replays only the flows its changes reach (selection spec
+      D59). `auto` runs `vdiff select` when `flows` is empty and .visual-diff/config.yaml has a
+      `select:` section: the selector walks from the changed files to the pages that render them
+      and names the flows visiting those pages. A project without the section, or a selector that
+      fails, replays every flow. `off` never asks.
+    required: false
+    default: auto
+  select-all-label:
+    description: >-
+      A pull request carrying this label replays every flow, whatever selection would have said.
+      Empty disables the label.
+    required: false
+    default: 'visual-diff: all'
   base-failures:
     description: >-
       fail | warn — what a base replay that cannot capture does to the job. `fail` (the default) stops
@@ -202,6 +219,14 @@ inputs:
     default: ''
 
 outputs:
+  flows:
+    description: 'The flows that replayed, whitespace-separated. Empty when nothing was selected, and in baseline mode.'
+    value: ${{ steps.select.outputs.flows }}
+  selection:
+    description: >-
+      How the flow list came about (selection spec D63): named — the `flows` input; all — every
+      flow; some — the flows selection reached; none — nothing reached, so nothing replayed.
+    value: ${{ steps.select.outputs.selection }}
   findings:
     description: 'Total findings across every flow.'
     value: ${{ steps.render.outputs.findings }}
@@ -362,6 +387,67 @@ runs:
         set -euo pipefail
         ${CLI:-vdiff} --version
 
+    # ---------------------------------------------------------------- select
+    #
+    # Which flows this pull request replays (selection spec D59, D63). Given a list, that list.
+    # Given none, `vdiff select` walks from what changed to the flows that render it, when the
+    # project's config.yaml says how; a project that says nothing, a selector that fails, or the
+    # all-label on the pull request means every flow. `none` is a real answer: the step summary
+    # says what changed and that no flow reaches it, and every step after this one is skipped.
+    #
+    # After the install on purpose: the resolve step runs before the CLI exists, and this needs it.
+    - name: Select the flows to replay
+      id: select
+      if: inputs.mode == 'pr'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CLI: ${{ inputs.cli }}
+        SELECT: ${{ inputs.select }}
+        FLOWS_INPUT: ${{ inputs.flows }}
+        ALL_FLOWS: ${{ steps.resolve.outputs.flows }}
+        BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
+        ALL_LABEL: ${{ inputs.select-all-label }}
+        LABELLED: ${{ inputs.select-all-label != '' && contains(github.event.pull_request.labels.*.name, inputs.select-all-label) }}
+      run: |
+        set -euo pipefail
+        cli=${CLI:-vdiff}
+        case "$SELECT" in auto|off) ;; *) echo "::error::select must be auto or off, got '$SELECT'"; exit 2 ;; esac
+        emit() {
+          printf 'selection=%s\nflows=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"
+          echo "selection: $1; flows: ${2:-(none)}"
+        }
+        if [ -n "${FLOWS_INPUT// }" ]; then emit named "$ALL_FLOWS"; exit 0; fi
+        if [ "$SELECT" = "off" ]; then emit all "$ALL_FLOWS"; exit 0; fi
+        arguments=(select --base "$BASE_SHA" --json --summary "$GITHUB_STEP_SUMMARY")
+        if [ "$LABELLED" = "true" ]; then
+          arguments+=(--all "the pull request carries the '$ALL_LABEL' label")
+        fi
+        # A selector that cannot answer costs time, never coverage: every flow replays.
+        if ! envelope=$($cli "${arguments[@]}"); then
+          echo "::warning::flow selection failed; replaying every flow"
+          emit all "$ALL_FLOWS"
+          exit 0
+        fi
+        read_field() {
+          printf '%s' "$envelope" | node -e '
+            let text = "";
+            process.stdin.on("data", (chunk) => { text += chunk; }).on("end", () => {
+              const envelope = JSON.parse(text);
+              if (!envelope.ok) process.exit(1);
+              const value = envelope.data[process.argv[1]];
+              process.stdout.write(Array.isArray(value) ? value.join(" ") : String(value));
+            });
+          ' "$1"
+        }
+        mode=$(read_field mode)
+        case "$mode" in
+          all) emit all "$ALL_FLOWS" ;;
+          some) emit some "$(read_field flows)" ;;
+          none) emit none "" ;;
+          *) echo "::warning::flow selection answered '$mode'; replaying every flow"; emit all "$ALL_FLOWS" ;;
+        esac
+
     # Chromium lives outside node_modules, so it needs its own cache entry. Keyed by the vdiff
     # version: a bumped playwright-core must fetch a matching browser build, and a stale browser is
     # how a diff fails for reasons that have nothing to do with the change under test.
@@ -423,7 +509,7 @@ runs:
     # by design, so this cache is the only place CI can get one from.
     - name: Restore baseline runs
       id: baseline
-      if: inputs.mode == 'pr' && inputs.baseline != 'replay'
+      if: inputs.mode == 'pr' && inputs.baseline != 'replay' && steps.select.outputs.selection != 'none'
       uses: actions/cache/restore@v4
       with:
         path: |
@@ -432,11 +518,11 @@ runs:
         key: vdiff-runs-${{ runner.os }}-${{ steps.resolve.outputs.spec_hash }}-${{ steps.resolve.outputs.base_sha }}
 
     - name: Replay the base revision
-      if: inputs.mode == 'pr' && steps.baseline.outputs.cache-hit != 'true'
+      if: inputs.mode == 'pr' && steps.baseline.outputs.cache-hit != 'true' && steps.select.outputs.selection != 'none'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         BASE_SHA: ${{ steps.resolve.outputs.base_sha }}
         BASELINE: ${{ inputs.baseline }}
         BASE_FAILURES: ${{ inputs.base-failures }}
@@ -471,10 +557,11 @@ runs:
 
     # ---------------------------------------------------------------- the head side
     - name: Replay the working tree
+      if: steps.select.outputs.selection != 'none'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         CLI: ${{ inputs.cli }}
         HEAD_NETWORK: ${{ inputs.head-network }}
         CONCURRENCY: ${{ inputs.concurrency }}
@@ -529,7 +616,7 @@ runs:
     # `id-token: write` on the workflow, which the installed template documents.
     - name: Mint an Anthropic token from the runner identity
       id: oidc
-      if: inputs.mode == 'pr' && inputs.anthropic-federation-rule-id != '' && inputs.anthropic-api-key == ''
+      if: inputs.mode == 'pr' && inputs.anthropic-federation-rule-id != '' && inputs.anthropic-api-key == '' && steps.select.outputs.selection != 'none'
       uses: actions/github-script@v7
       env:
         FEDERATION_RULE_ID: ${{ inputs.anthropic-federation-rule-id }}
@@ -589,11 +676,11 @@ runs:
     # failed job: the evidence is what CI mode promises, the paragraph is what a key buys.
     - name: Diff, review and export
       id: export
-      if: inputs.mode == 'pr'
+      if: inputs.mode == 'pr' && steps.select.outputs.selection != 'none'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         IMAGES: ${{ inputs.images }}
         HTML: ${{ inputs.html }}
@@ -662,7 +749,7 @@ runs:
     # `pages: read` — leaves the comment without a report link, and says why in the log.
     - name: Find the Pages site
       id: pages
-      if: inputs.mode == 'pr' && inputs.publish-branch != '' && inputs.pages-url == ''
+      if: inputs.mode == 'pr' && inputs.publish-branch != '' && inputs.pages-url == '' && steps.select.outputs.selection != 'none'
       uses: actions/github-script@v7
       env:
         BRANCH: ${{ inputs.publish-branch }}
@@ -698,7 +785,7 @@ runs:
     # here, scoped to this repository, and used by the comment step alone.
     - name: Sign in as the Visual Diff app
       id: app
-      if: inputs.mode == 'pr' && inputs.app-id != ''
+      if: inputs.mode == 'pr' && inputs.app-id != '' && steps.select.outputs.selection != 'none'
       uses: actions/create-github-app-token@v2
       with:
         app-id: ${{ inputs.app-id }}
@@ -706,11 +793,11 @@ runs:
 
     - name: Publish diff images
       id: publish
-      if: inputs.mode == 'pr' && inputs.publish-branch != ''
+      if: inputs.mode == 'pr' && inputs.publish-branch != '' && steps.select.outputs.selection != 'none'
       shell: bash
       env:
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         BRANCH: ${{ inputs.publish-branch }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         # The workflow's own token, not the app's: pushing the branch is the workflow's `contents:
@@ -785,7 +872,7 @@ runs:
     # truncation notice in the body points at findings.json inside this upload (D33).
     - name: Upload the evidence bundle
       id: upload
-      if: inputs.mode == 'pr' && inputs.artifact == 'true'
+      if: inputs.mode == 'pr' && inputs.artifact == 'true' && steps.select.outputs.selection != 'none'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
@@ -795,11 +882,11 @@ runs:
 
     - name: Render the comment
       id: render
-      if: inputs.mode == 'pr'
+      if: inputs.mode == 'pr' && steps.select.outputs.selection != 'none'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         IMAGE_BASE: ${{ steps.publish.outputs.image_base }}
         REPORT_BASE: ${{ steps.publish.outputs.report_base }}
@@ -876,10 +963,10 @@ runs:
 
     # Unchanged flows share a small summary. Changed or incomplete flows keep their own reports.
     - name: Post the comment
-      if: inputs.mode == 'pr' && inputs.comment == 'true' && github.event.pull_request.number
+      if: inputs.mode == 'pr' && inputs.comment == 'true' && github.event.pull_request.number && steps.select.outputs.selection != 'none'
       uses: actions/github-script@v7
       env:
-        FLOWS: ${{ steps.resolve.outputs.flows }}
+        FLOWS: ${{ steps.select.outputs.flows || steps.resolve.outputs.flows }}
         BUNDLE_ROOT: ${{ steps.resolve.outputs.bundle_root }}
         # The app's login, `<slug>[bot]`, when the comment is signed by one (D49). Empty otherwise.
         APP_SLUG: ${{ steps.app.outputs.app-slug }}
@@ -961,7 +1048,7 @@ runs:
     # Last, and only when asked for (D30, D35): the evidence exists, the comment is posted, and now
     # the check can go red.
     - name: Enforce the gate
-      if: inputs.mode == 'pr' && steps.render.outputs.gate == 'failed'
+      if: inputs.mode == 'pr' && steps.render.outputs.gate == 'failed' && steps.select.outputs.selection != 'none'
       shell: bash
       env:
         FAIL_ON: ${{ inputs.fail-on }}

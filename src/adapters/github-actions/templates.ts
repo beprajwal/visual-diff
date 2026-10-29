@@ -71,7 +71,9 @@ jobs:
 
       - uses: ${ACTION_REF}@v${options.version}
         with:
-          # Space-separated flow names. Omit to run every flow in .visual-diff/flows.
+          # Space-separated flow names. Omit to run every flow in .visual-diff/flows — or, with a
+          # \`select:\` section in .visual-diff/config.yaml, only the flows this pull request's
+          # changes reach. A \`visual-diff: all\` label on the pull request replays every flow.
           # flows: checkout search
 
           # none | high | any. Default \`none\`: findings are reported, the check stays green.

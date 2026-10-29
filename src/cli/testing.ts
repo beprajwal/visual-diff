@@ -53,6 +53,7 @@ import type {
   StorePort,
   TimelineFilter,
 } from './ports.js';
+import type { FlowSelection } from '../select/index.js';
 import { sourceOf, type RunSource } from './e2e.js';
 import { isKept, VARIANT_NONE, variantOf, type VariantName, type VariantSpec } from './variant.js';
 
@@ -60,6 +61,48 @@ import { isKept, VARIANT_NONE, variantOf, type VariantName, type VariantSpec } f
  * The registry as the CLI sees it. Deliberately mirrors one row of the real one; the real table is
  * pinned by `src/adapters/index.test.ts`, and the note is present because install output prints it.
  */
+/**
+ * A selection shaped by its request: `all` replays everything, a changed file under `src/`
+ * reaches `checkout`, anything else reaches nothing. Enough for the command to be tested on
+ * every branch of its output without a repository to walk.
+ */
+export function fakeSelection(request: { changed: string[]; all?: string }): FlowSelection {
+  if (request.all !== undefined) {
+    return {
+      mode: 'all',
+      flows: ['checkout', 'search'],
+      everything: request.all,
+      reasons: {},
+      skipped: {},
+      unattributed: [],
+      warnings: [],
+    };
+  }
+  const sources = request.changed.filter((file) => file.startsWith('src/'));
+  if (sources.length === 0) {
+    return {
+      mode: 'none',
+      flows: [],
+      everything: null,
+      reasons: {},
+      skipped: {},
+      unattributed: request.changed.filter((file) => file.endsWith('.ts')),
+      warnings: [],
+    };
+  }
+  return {
+    mode: 'some',
+    flows: ['checkout'],
+    everything: null,
+    reasons: {
+      checkout: { changed: false, scenarios: [], fixtures: [], covers: [], routes: { '/cart': sources } },
+    },
+    skipped: {},
+    unattributed: [],
+    warnings: [],
+  };
+}
+
 export function fakeHarnesses(): HarnessInfo[] {
   return [
     {
@@ -764,6 +807,7 @@ export function createTestPorts(overrides: Partial<Ports> = {}): Ports {
     variantsDir: async (config: Config) => `${config.dir}/variants`,
     variantFile: async (config: Config, name: VariantName) => `${config.dir}/variants/${name}.yaml`,
     listVariants: async () => [...TEST_VARIANTS].sort(),
+    selectFlows: async (_config: Config, request) => fakeSelection(request),
     openStore: async () => store,
     runFlow: async () => fakeRunResult(),
     computeDiff: async () => fakeDiffResult(),

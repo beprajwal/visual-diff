@@ -92,6 +92,7 @@ export const flowSpecSchema = z
     scenario: z.string().min(1).optional(),
     readyOn: z.string().min(1).optional(),
     ci: z.boolean().optional(),
+    covers: z.array(z.string().min(1)).min(1).optional(),
     steps: z.array(zStep).min(1),
   })
   .strict();

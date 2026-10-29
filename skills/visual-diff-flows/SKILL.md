@@ -49,13 +49,14 @@ steps:
 `version: 1`, `flow` and `steps` are required; `baseUrl`, `viewports` and `network` fall back to
 `config.yaml`. `flow` should match the filename — a mismatch is a warning, not an error.
 
-Three more keys are optional and describe how the flow is run:
+Four more keys are optional and describe how the flow is run:
 
 | key | meaning |
 | --- | --- |
 | `scenario` | the scenario this flow is served by when none is named; `--scenario` overrides it |
 | `readyOn` | what to wait for before the first step, overriding `app.readyOn` |
 | `ci` | `false` keeps the flow out of the CI action's automatic discovery |
+| `covers` | globs of source the flow covers that its routes do not show, for `vdiff select` |
 
 Give a `mode: mock` flow its `scenario` here. Its only backend is that scenario's rules, so a flow
 declaring the mode without naming the scenario is one forgotten argument away from aborting every
@@ -67,13 +68,20 @@ answers everything else.
 
 `baseUrl` and `readyOn` interpolate `${VAR}` the way a `goto` does, so one flow can address a
 deployment that serves the app under a base path and one that serves it at the root:
-`http://127.0.0.1:3000${CORE_BASE_PATH}/`. An unset variable is named as missing before the replay
+`http://127.0.0.1:3000${BASE_PATH}/`. An unset variable is named as missing before the replay
 starts rather than becoming a literal in the URL; `${VAR:-/default}` supplies a fallback, and an
 explicitly empty variable resolves to empty.
 
 `ci: false` is for a flow that cannot run unattended — a seeded row, a fixture server, credentials
 no runner holds. It excuses the flow from the default set rather than disabling it: named in the
 action's `flows:` input, it still runs.
+
+`covers` matters when the project's config.yaml has a `select:` section, which lets a pull request
+replay only the flows its changes reach. The selector finds a flow through the pages its `goto`
+and `readyOn` routes visit, so a surface the flow reaches by clicking, or a component a feature flag
+swaps in, is invisible to it; list that source here, as globs relative to the project root, and a
+change matching one replays this flow. Keep the list to what the routes cannot show — a glob over
+the whole app makes the flow replay on every pull request.
 
 ## The five rules that matter
 
