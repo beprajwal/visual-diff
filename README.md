@@ -119,8 +119,9 @@ npx @beprajwal/visual-diff install github-actions   # writes .github/workflows/v
 
 That is the whole setup. The pull-request workflow replays each flow at the merge-base and at the
 head, diffs them, and uploads the evidence. Flows with no changes above the configured thresholds
-share one compact text comment with report links and no screenshots. Changed or incomplete flows
-keep their own reports; comments update in place on every push. The check stays **green**:
+share one compact text comment with report links and no screenshots — a flow whose only edits are
+to its own spec included, since a removed step or a dropped viewport changes no pixel. Changed or
+incomplete flows keep their own reports; comments update in place on every push. The check stays **green**:
 findings are reported, not enforced, until you set
 `fail-on: high` or `fail-on: any` in the workflow.
 

@@ -136,15 +136,52 @@ describe('renderComment', () => {
     { summary: makeSummary({ stepsCompared: 1, stepsFailed: 1 }) },
     { summary: makeSummary({ stepsCompared: 1, stepsBlocked: 1 }) },
     { summary: makeSummary({ stepsCompared: 1, stepsAdded: 1 }) },
-    { summary: makeSummary({ stepsCompared: 1, stepsRemoved: 1 }) },
-    { summary: makeSummary({ stepsCompared: 1, stepsSpecChanged: 1 }) },
-    { warnings: ['The capture was unstable.'] },
-    { steps: [makeStepDiff('cart', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'head' }) } })] },
-  ])('does not call an incomplete or warned comparison unchanged: %j', (patch) => {
+    { steps: [makeStepDiff('cart', 'added', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'base' }) } })] },
+    { steps: [makeStepDiff('cart', 'failed', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'head' }) } })] },
+    { steps: [makeStepDiff('cart', 'matched', { viewports: { '390x844': makeViewportDiff('390x844', { missing: 'base' }) } })] },
+    { steps: [makeStepDiff('cart', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800', { dimensionsChanged: true }) } })] },
+  ])('does not call an incomplete comparison, or new evidence, unchanged: %j', (patch) => {
     const result = makeDiff({ summary: makeSummary({ stepsCompared: 1 }), ...patch });
     const doc = renderComment({ result, version: 'test' });
     expect(doc.unchanged).toBe(false);
     expect(doc.markdown).not.toContain('No visual changes');
+  });
+
+  // D64: the flow's own edits are not changes to the page. Every cell that exists on both sides is
+  // pixel-identical, so the compact line stands — and says what the edits were.
+  it('calls a comparison with flow edits but identical pixels unchanged, naming the edits', () => {
+    const result = makeDiff({
+      summary: makeSummary({ stepsCompared: 2, stepsRemoved: 1, stepsSpecChanged: 1 }),
+      steps: [
+        makeStepDiff('cart', 'spec-changed', {
+          viewports: {
+            '1280x800': makeViewportDiff('1280x800'),
+            '390x844': makeViewportDiff('390x844', { missing: 'head' }),
+          },
+        }),
+        makeStepDiff('pay-form', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800') } }),
+        makeStepDiff('receipt', 'removed', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'head' }) } }),
+      ],
+      warnings: ['viewports ["1280x800","390x844"] -> ["1280x800"]'],
+      emit: { findings: false, warnings: false },
+    });
+    const doc = renderComment({ result, version: 'test', reportUrl: 'https://example.test/report' });
+    expect(doc.unchanged).toBe(true);
+    expect(doc.markdown).toBe(
+      '<!-- vdiff:checkout:pr -->\n**Visual Diff:** No visual changes in `checkout`.' +
+        ' Flow edits only: 1 step removed, 1 step spec-changed, 2 viewport captures dropped.' +
+        ' [Report](https://example.test/report)\n',
+    );
+  });
+
+  it('keeps a warned comparison unchanged when its pixels are: the warning is on the report', () => {
+    const result = makeDiff({ summary: makeSummary({ stepsCompared: 1 }),
+      steps: [makeStepDiff('cart', 'matched', { viewports: { '1280x800': makeViewportDiff('1280x800') } })],
+      warnings: ['The capture was unstable.'], emit: { findings: false, warnings: false },
+    });
+    const doc = renderComment({ result, version: 'test' });
+    expect(doc.unchanged).toBe(true);
+    expect(doc.markdown).toBe('<!-- vdiff:checkout:pr -->\n**Visual Diff:** No visual changes in `checkout`.\n');
   });
 
   it('retains comparison notices instead of collapsing them', () => {

@@ -534,3 +534,15 @@ with `publish-branch` set and `pages-url` empty the action asks for the site and
 the site deploys from the publish branch. Anything else (no site, a site on another branch or built
 by a workflow, a token without `pages: read`) leaves the comment linking the artifact and says why in
 the log; nothing fails. `pages-url` stays as the override for a custom domain or an unreadable site.
+
+**D64 — "Unchanged" is measured on the cells both sides captured; the flow's own edits do not
+count.** A pull request that drops a viewport from a flow, removes a step or changes a selector
+left every comparable screenshot pixel-identical, yet the comment carried a full report because
+the summary counted a removed step, a spec-changed step and a capture missing on the head. Those
+are edits to the flow, not to the page. The compact line now stands whenever every cell that
+exists on both sides is pixel-identical with no findings and nothing failed or was blocked, and it
+names the edits: "Flow edits only: 1 step removed, 2 viewport captures dropped". New evidence with
+nothing to compare against still gets the report — an added step, a viewport only the head has —
+because there is a picture nobody has seen. A warning on the diff and a model's capture-readiness
+note no longer hold the report open on their own: the first is on the report page, the second is a
+judgement about cells the numbers already call identical.

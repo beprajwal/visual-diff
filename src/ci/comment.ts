@@ -433,25 +433,31 @@ export function renderComment(input: CommentInput): CommentDocument {
   const marker = input.marker ?? markerFor(input.result.flow);
   const summary = measured.summary;
   // Use measured evidence, not AI triage: capture noise classified by a model is still a review.
+  // And measured on what was compared (D64): a step the head removed, a viewport the head dropped,
+  // a selector that changed — those are edits to the flow, not to the page, and every cell that
+  // exists on both sides being pixel-identical is the whole of what "unchanged" claims. New
+  // evidence with nothing to compare against — an added step, a viewport only the head has — is
+  // not unchanged: there is a picture a reviewer has not seen.
   const unchanged =
     summary.stepsCompared > 0 &&
     summary.totalFindings === 0 && summary.stepsChanged === 0 && summary.maxPixelChangedRatio === 0 &&
-    summary.stepsAdded === 0 && summary.stepsRemoved === 0 && summary.stepsSpecChanged === 0 &&
-    summary.stepsFailed === 0 && summary.stepsBlocked === 0 &&
+    summary.stepsAdded === 0 && summary.stepsFailed === 0 && summary.stepsBlocked === 0 &&
     measured.steps.every(step =>
-      step.status === 'matched' && step.findings.length === 0 &&
+      (step.status === 'matched' || step.status === 'spec-changed' || step.status === 'removed') &&
+      step.findings.length === 0 &&
       Object.values(step.viewports).every(vp =>
-        vp.missing === undefined && !vp.dimensionsChanged &&
-        vp.pixelChangedRatio === 0 && vp.findings.length === 0,
+        vp.findings.length === 0 && vp.missing !== 'base' &&
+        (vp.missing !== undefined || (!vp.dimensionsChanged && vp.pixelChangedRatio === 0)),
       ),
     ) &&
-    raw.warnings.length === 0 && (input.notices?.length ?? 0) === 0 &&
-    projection.captureConcerns.length === 0;
+    (input.notices?.length ?? 0) === 0;
   if (unchanged) {
     const verdict = minor ? 'No visual changes above configured thresholds' : 'No visual changes';
     const url = input.reportUrl ?? input.artifactUrl;
     const link = url === undefined ? '' : ` [Report](${url})`;
-    const markdown = `${marker}\n**${PRODUCT_NAME}:** ${verdict} in ${code(raw.flow)}.${link}\n`;
+    const edits = specEdits(measured);
+    const note = edits.length === 0 ? '' : ` Flow edits only: ${edits.join(', ')}.`;
+    const markdown = `${marker}\n**${PRODUCT_NAME}:** ${verdict} in ${code(raw.flow)}.${note}${link}\n`;
     return {
       markdown, marker, unchanged,
       bytes: Buffer.byteLength(markdown, 'utf8'),
@@ -527,6 +533,21 @@ export function renderComment(input: CommentInput): CommentDocument {
       steps: !withSteps,
     },
   };
+}
+
+/** What the flow's own edits did to the comparison, for the compact line to own up to. */
+function specEdits(result: DiffResult): string[] {
+  const { summary } = result;
+  const dropped = result.steps.reduce(
+    (count, step) => count + Object.values(step.viewports).filter(vp => vp.missing !== undefined).length,
+    0,
+  );
+  const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const edits: string[] = [];
+  if (summary.stepsRemoved > 0) edits.push(`${plural(summary.stepsRemoved, 'step')} removed`);
+  if (summary.stepsSpecChanged > 0) edits.push(`${plural(summary.stepsSpecChanged, 'step')} spec-changed`);
+  if (dropped > 0) edits.push(`${plural(dropped, 'viewport capture')} dropped`);
+  return edits;
 }
 
 /** Convenience for a caller that has a level rather than a verdict. */
