@@ -37,7 +37,7 @@ async function post(flows: Record<string, boolean | undefined>, existing: Posted
       },
     },
     github: { paginate: async () => existing, rest: { issues } },
-    context: { payload: { pull_request: { number: 4584 } }, repo: { owner: 'krane-tech', repo: 'apps' } },
+    context: { payload: { pull_request: { number: 4584 } }, repo: { owner: 'acme', repo: 'storefront' } },
     process: { env: { FLOWS: Object.keys(flows).join(' '), BUNDLE_ROOT: '/bundle', APP_SLUG: 'visual-diff', REPORT_BASE: 'https://example.test/reports' } },
     core: { info: vi.fn(), warning: vi.fn() },
   });
@@ -62,8 +62,8 @@ describe('CI comment publishing', () => {
     ]);
     expect(issues.createComment).toHaveBeenCalledTimes(1);
     expect(issues.deleteComment.mock.calls).toEqual([
-      [{ owner: 'krane-tech', repo: 'apps', comment_id: 1 }],
-      [{ owner: 'krane-tech', repo: 'apps', comment_id: 2 }],
+      [{ owner: 'acme', repo: 'storefront', comment_id: 1 }],
+      [{ owner: 'acme', repo: 'storefront', comment_id: 2 }],
     ]);
   });
 
@@ -86,7 +86,7 @@ describe('CI comment publishing', () => {
   it('removes the obsolete clean summary when every flow has changes', async () => {
     const issues = await post({ agent: false, 'data-table': false }, [previous(5, `${summaryMarker}\nPreviously clean`)]);
     expect(issues.createComment).toHaveBeenCalledTimes(2);
-    expect(issues.deleteComment).toHaveBeenCalledWith({ owner: 'krane-tech', repo: 'apps', comment_id: 5 });
+    expect(issues.deleteComment).toHaveBeenCalledWith({ owner: 'acme', repo: 'storefront', comment_id: 5 });
   });
 
   it('keeps the normal report when an older CLI provides no unchanged verdict', async () => {
@@ -96,7 +96,7 @@ describe('CI comment publishing', () => {
 
   it('preserves the configured bot identity when replacing an existing summary', async () => {
     const issues = await post({ agent: true, 'data-table': true }, [previous(5, `${summaryMarker}\nOld identity`, 'github-actions[bot]')]);
-    expect(issues.deleteComment).toHaveBeenCalledWith({ owner: 'krane-tech', repo: 'apps', comment_id: 5 });
+    expect(issues.deleteComment).toHaveBeenCalledWith({ owner: 'acme', repo: 'storefront', comment_id: 5 });
     expect(issues.createComment).toHaveBeenCalledTimes(1);
     expect(issues.updateComment).not.toHaveBeenCalled();
   });

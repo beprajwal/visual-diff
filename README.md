@@ -133,7 +133,7 @@ the CLI release associated with its tag.
 ```yaml
 - uses: beprajwal/visual-diff@v0
   with:
-    flows: checkout search       # default: every flow in .visual-diff/flows
+    flows: checkout search       # default: every flow in .visual-diff/flows, or those the change reaches
     fail-on: none                # none | high | any
     baseline: auto               # auto | cache | replay
     publish-branch: ''           # set it to embed screenshots in the comment
@@ -142,6 +142,35 @@ the CLI release associated with its tag.
     app-id: ''                   # with app-private-key: the comment is posted as your "Visual Diff" GitHub App
     cli: ''                      # e.g. `npx vdiff` to use the version pinned in package.json
 ```
+
+### Only the flows a change reaches
+
+A pull request that touches one page does not need every flow replayed on both sides. Tell
+`vdiff select` how the app is laid out and the action replays only the flows the change reaches:
+
+```yaml
+# .visual-diff/config.yaml
+select:
+  sources: [src]                                 # the directories that make up the import graph
+  pages: { router: next-pages, dir: src/pages }  # how a page file names its route
+  aliases: { "@/": src/ }                        # import prefixes, as tsconfig paths spell them
+  all: [src/styles/**, src/pages/_app.tsx]       # a change here replays every flow
+```
+
+The selector walks the import graph from each changed file up to the pages that import it, and
+picks the flows whose `goto` and `readyOn` routes hit those pages. A changed or new flow always
+replays; a changed scenario, or a fixture a flow uploads, replays the flows that use it. A barrel
+re-export binds a name to the module exporting it rather than to everything the barrel touches, and
+an `import type` binds nothing, so the graph stays narrow where it matters. A surface the graph
+cannot see from a route — a page reached by clicking, a component swapped in behind a feature flag —
+is declared on the flow with `covers:`, globs of the source it stands for. A file whose users name
+it rather than import it, such as a translation namespace loaded through an index that imports
+every namespace, gets a `named:` rule so the walk starts from the files mentioning the name.
+
+When nothing is reached the job replays nothing, and the step summary lists the changed source no
+flow covers. The `visual-diff: all` label on a pull request replays every flow; so does a project
+with no `select:` section, a change to config.yaml or the workflow, and a selector that fails.
+`vdiff select --base main` answers the same question locally.
 
 ### The comment, signed
 
@@ -331,12 +360,13 @@ steps:
     waitFor: "text=Payment"
 ```
 
-Three optional keys decide how a flow is run rather than what it does:
+Four optional keys decide how a flow is run rather than what it does:
 
 ```yaml
 scenario: checkout-empty   # the scenario serving this flow when none is named; --scenario wins
 readyOn: http://localhost:5173/cart   # what to wait for, overriding app.readyOn
 ci: false                  # keep this flow out of the CI action's automatic discovery
+covers: [src/flags/**]     # source this flow covers that its routes do not show (see below)
 ```
 
 `scenario` matters most to a `mode: mock` flow, whose only backend is the scenario's rules: declare
@@ -517,8 +547,8 @@ The storage-state file is what Playwright's `context.storageState({ path })` wri
 an existing Playwright auth setup project produces one already, and
 `npx playwright open --save-storage=.visual-diff/auth/state.json <url>` produces one by hand.
 `meta.json` records `authenticated: true` on runs that used it. Cookies are bound to a host, so a
-session captured against `app.lvh.me` needs the flow's `baseUrl` written as
-`http://app.lvh.me:$PORT` — spawn mode then reaches the dev server through that host rather than
+session captured against `app.example.test` needs the flow's `baseUrl` written as
+`http://app.example.test:$PORT` — spawn mode then reaches the dev server through that host rather than
 `127.0.0.1`.
 
 ## Development

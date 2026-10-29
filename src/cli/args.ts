@@ -254,6 +254,18 @@ export type Invocation =
       noFindings?: boolean;
       noWarnings?: boolean;
     }
+  | {
+      kind: 'select';
+      /** Revision whose merge-base with HEAD bounds the change. */
+      base?: string;
+      /** A file of changed paths, one per line; `-` for stdin. */
+      changed?: string;
+      /** A reason to replay every flow that the caller already holds. */
+      all?: string;
+      /** A file the markdown summary is appended to: `$GITHUB_STEP_SUMMARY`. */
+      summary?: string;
+      json: boolean;
+    }
   | { kind: 'serve'; port?: number; open: boolean; json: boolean }
   | { kind: 'feedback'; ack: boolean; json: boolean }
   | { kind: 'pin'; flow?: string; runId: RunId; json: boolean }
@@ -463,6 +475,18 @@ export const COMMANDS: Record<string, CommandSpec> = {
     }),
     minPositionals: 1,
     maxPositionals: 3,
+  },
+  select: {
+    usage: 'vdiff select [--base <rev>] [--changed <file>] [--all <reason>] [--summary <file>]',
+    summary: 'name the flows a change reaches, for CI to replay those alone',
+    flags: flags({
+      base: { type: 'string' },
+      changed: { type: 'string' },
+      all: { type: 'string' },
+      summary: { type: 'string' },
+    }),
+    minPositionals: 0,
+    maxPositionals: 0,
   },
   serve: {
     usage: 'vdiff serve [--open] [--port <n>]',
@@ -1382,6 +1406,27 @@ export function parseArgs(argv: readonly string[]): ParseOutcome {
       };
       const port = values['port'];
       if (typeof port === 'number') invocation.port = port;
+      return { ok: true, value: invocation };
+    }
+
+    case 'select': {
+      const invocation: Extract<Invocation, { kind: 'select' }> = { kind: 'select', json };
+      for (const field of ['base', 'changed', 'all', 'summary'] as const) {
+        const value = values[field];
+        if (typeof value === 'string') invocation[field] = value;
+      }
+      if (
+        invocation.base === undefined &&
+        invocation.changed === undefined &&
+        invocation.all === undefined
+      ) {
+        return fail(
+          'select',
+          'missing-argument',
+          "'select' needs the change to look at: --base <rev>, --changed <file>, or --all <reason>",
+          spec.usage,
+        );
+      }
       return { ok: true, value: invocation };
     }
 

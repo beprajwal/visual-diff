@@ -122,6 +122,8 @@ describe('action.yml', () => {
         'pages-url',
         'publish-branch',
         'review-model',
+        'select',
+        'select-all-label',
         'version',
         'working-directory',
       ].sort(),
@@ -148,10 +150,12 @@ describe('action.yml', () => {
         'changed-steps',
         'comment-file',
         'findings',
+        'flows',
         'gate',
         'high',
         'report-url',
         'reviewed',
+        'selection',
       ].sort(),
     );
   });

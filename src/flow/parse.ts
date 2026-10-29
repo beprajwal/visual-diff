@@ -133,6 +133,7 @@ function withDefaults(input: FlowSpecInput): FlowSpec {
   if (input.scenario !== undefined) spec.scenario = input.scenario as ScenarioName;
   if (input.readyOn !== undefined) spec.readyOn = input.readyOn;
   if (input.ci !== undefined) spec.ci = input.ci;
+  if (input.covers !== undefined) spec.covers = [...input.covers];
   return spec;
 }
 

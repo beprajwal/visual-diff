@@ -49,6 +49,7 @@ describe('module edges', () => {
       '../diff/index.js',
       '../report/index.js',
       '../adapters/index.js',
+      '../select/index.js',
     ]);
   });
 
@@ -167,6 +168,7 @@ describe('module edges', () => {
       'runFlow',
       'scenarioFile',
       'scenariosDir',
+      'selectFlows',
       'serveReport',
       'variantFile',
       'variantsDir',

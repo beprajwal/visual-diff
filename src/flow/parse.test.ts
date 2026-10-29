@@ -42,6 +42,31 @@ function issueWith(result: ValidationResult<unknown>, code: string): ValidationI
   return found;
 }
 
+describe('parseFlowSource — covers (selection spec D59)', () => {
+  const base = 'version: 1\nflow: checkout\nnetwork: { mode: off }\nsteps:\n  - id: cart\n    goto: /cart\n';
+
+  it('carries the globs through, and leaves the key absent when unset', () => {
+    const with_ = parseFlowSource(`${base}covers:\n  - src/flags/**\n  - src/components/cart/*.tsx\n`);
+    expect(with_.ok && with_.value.covers).toEqual(['src/flags/**', 'src/components/cart/*.tsx']);
+    const without = parseFlowSource(base);
+    expect(without.ok && without.value.covers).toBeUndefined();
+  });
+
+  it('refuses a glob that does not compile, naming the entry', () => {
+    const result = parseFlowSource(`${base}covers:\n  - src/**\n  - 'src/[a'\n`, { file: 'checkout.yaml' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.code)).toEqual(['invalid-covers']);
+    expect(result.issues[0]?.message).toMatch(/^covers\[1\] 'src\/\[a' is not a glob: /);
+    expect(result.issues[0]?.at.line).toBe(9);
+  });
+
+  it('refuses an empty covers list: nothing covered is the key absent', () => {
+    const result = parseFlowSource(`${base}covers: []\n`);
+    expect(result.ok).toBe(false);
+  });
+});
+
 describe('parseFlowSource — accepted specs', () => {
   it('parses the spec §6 example exactly', () => {
     const result = parseFlowSource(SPEC_EXAMPLE, { file: 'checkout.yaml' });

@@ -64,6 +64,7 @@ import type {
   ServeHandle,
   StorePort,
 } from './ports.js';
+import type { FlowSelection, SelectRequest } from '../select/index.js';
 import type { VariantSpec } from './variant.js';
 
 /** Module edges, relative to this file. Mirrors the `index.ts` of each module (plan §1). */
@@ -99,6 +100,7 @@ export const MODULE_SPECIFIERS = {
   diff: '../diff/index.js',
   report: '../report/index.js',
   adapters: '../adapters/index.js',
+  select: '../select/index.js',
 } as const;
 
 type AnyFn = (...args: never[]) => unknown;
@@ -284,6 +286,16 @@ export function createPorts(): Ports {
         (file: string) => Promise<ValidationResult<FlowSpec>> | ValidationResult<FlowSpec>
       >(MODULE_SPECIFIERS.flow, 'parseFlowFile');
       return await fn(file);
+    },
+
+    async selectFlows(config: Config, request: { changed: string[]; all?: string }) {
+      const fn = await loadExport<(request: SelectRequest) => Promise<FlowSelection>>(
+        MODULE_SPECIFIERS.select,
+        'selectFlows',
+      );
+      const full: SelectRequest = { root: config.root, config: config.select, changed: request.changed };
+      if (request.all !== undefined) full.all = request.all;
+      return await fn(full);
     },
 
     async parseScenarioFile(file: string): Promise<ValidationResult<ScenarioSpec>> {

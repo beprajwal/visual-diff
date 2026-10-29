@@ -8,6 +8,7 @@
  */
 
 import type { FlowSpec, SourceLocation, ValidationIssue } from '../types.js';
+import { parseGlob } from '../scenario/index.js';
 import { SAFE_NAME_RE, VIEWPORT_RE } from './schema.js';
 
 /** Resolves a key path (e.g. `['steps', 2, 'id']`) to a file/line/column/key location. */
@@ -76,6 +77,18 @@ export function validateFlowSpec(
       return;
     }
     seenViewports.set(viewport, index);
+  });
+
+  /* ---------------------------------------------------------------- covers */
+
+  (spec.covers ?? []).forEach((glob, index) => {
+    const parsed = parseGlob(glob);
+    if (parsed.ok) return;
+    issues.push({
+      code: 'invalid-covers',
+      message: `covers[${index}] '${glob}' is not a glob: ${parsed.reason}`,
+      at: locate(['covers', index]),
+    });
   });
 
   /* ---------------------------------------------------------------- network */

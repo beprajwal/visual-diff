@@ -156,6 +156,13 @@ export interface FlowSpec {
    * locally and in CI, so this excuses a flow from the default set rather than disabling it.
    */
   ci?: boolean;
+  /**
+   * Globs, relative to the project root, of source the flow covers beyond what its routes say
+   * (selection spec D59). The selector reaches a flow through the pages its `goto` and `readyOn`
+   * name; a surface reached by clicking, or swapped in behind a feature flag, is invisible that way
+   * and is declared here instead. A pull request touching a matching file replays this flow.
+   */
+  covers?: string[];
   steps: Step[];
 }
 
@@ -484,6 +491,48 @@ export interface BrowserConfig {
   mask?: boolean;
 }
 
+/**
+ * A file whose users name it rather than import it (selection spec D61): a translation namespace
+ * read through `t('key', { ns: 'checkout' })` while an index imports every namespace at once, a
+ * component registry resolved by string. The import graph would carry such a change to every page;
+ * the rule seeds the walk from the files that mention the name instead.
+ */
+export interface SelectNamedRule {
+  /** Regular expression over the repo-relative path. Its first capture group is the name. */
+  files: string;
+  /** Regular expression over source text, with `$1` standing for the captured name. */
+  mentioned: string;
+  /** Regular expression over paths that never seed the walk: the index that imports them all. */
+  except?: string;
+}
+
+/**
+ * `select:` — what `vdiff select` needs to know about the app to walk from a changed file to the
+ * flows that render it (selection spec §3). Absent, every flow replays on every pull request.
+ */
+export interface SelectConfig {
+  /** Directories, relative to the project root, whose files make up the import graph. */
+  sources: string[];
+  pages: {
+    /** The convention that turns a page file into a route. */
+    router: 'next-pages';
+    /** The pages directory, relative to the project root. */
+    dir: string;
+    /** A prefix the app is served under that the flows' routes carry and the pages do not. */
+    basePath?: string;
+  };
+  /**
+   * Import prefixes to repo-relative paths, as `tsconfig` `paths` would spell them: a key ending
+   * in `/` rewrites the prefix, any other key names one module.
+   */
+  aliases: Record<string, string>;
+  /** Globs of files no page renders: tests, stories. A change to one selects nothing. */
+  ignore: string[];
+  /** Globs whose change replays every flow: global styles, the app shell, the build config. */
+  all: string[];
+  named: SelectNamedRule[];
+}
+
 export interface Config {
   /** Absolute path to the project root (the directory containing .visual-diff). */
   root: string;
@@ -497,6 +546,7 @@ export interface Config {
   diff: DiffConfig;
   network: NetworkConfigFile;
   retention: RetentionConfig;
+  select?: SelectConfig;
 }
 
 /* ------------------------------------------------------------------ runs (§6, §7) */
@@ -1594,6 +1644,16 @@ export const DEFAULTS = {
   alwaysRedactHeaders: ['authorization', 'cookie', 'set-cookie'] as string[],
   /** Concurrent viewport replays (spec §7). */
   viewportConcurrency: 2,
+  select: {
+    /** Files no page renders. A change here selects nothing and is not reported as uncovered. */
+    ignore: [
+      '**/__tests__/**',
+      '**/*.test.*',
+      '**/*.spec.*',
+      '**/*.stories.*',
+      '**/*.fixtures.*',
+    ] as string[],
+  },
   /** Server log lines retained on a readiness failure (spec §10). */
   serverLogTailLines: 50,
 } as const;

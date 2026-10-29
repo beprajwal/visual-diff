@@ -910,12 +910,12 @@ describe('vdiff install <harness>', () => {
     const h = harness({ cwd: '/project', home: '/home/u', ports });
 
     expect(
-      await runCli(['install', 'claude-code', '--dir', 'apps/web', '--force', '--dry-run'], h),
+      await runCli(['install', 'claude-code', '--dir', 'packages/web', '--force', '--dry-run'], h),
     ).toBe(EXIT.OK);
     expect(adapters.state.installs).toEqual([
       {
         id: 'claude-code',
-        root: join('/project', 'apps/web'),
+        root: join('/project', 'packages/web'),
         options: { scope: 'project', version: '0.1.0', force: true, dryRun: true },
       },
     ]);
@@ -1180,6 +1180,37 @@ describe('vdiff scenario — the --json envelopes', () => {
             },
           },
         ],
+      },
+    });
+  });
+
+  it('select: emits the selection with what it was computed from', async () => {
+    const dir = await tempProject();
+    await writeFile(join(dir, 'changed'), 'src/Cart.tsx\n', 'utf8');
+    const h = harness();
+
+    expect(await runCli(['select', '--changed', join(dir, 'changed'), '--json'], h)).toBe(EXIT.OK);
+    expect(envelope(h)).toEqual({
+      ok: true,
+      command: 'select',
+      version: '0.1.0',
+      data: {
+        mode: 'some',
+        flows: ['checkout'],
+        everything: null,
+        reasons: {
+          checkout: {
+            changed: false,
+            scenarios: [],
+            fixtures: [],
+            covers: [],
+            routes: { '/cart': ['src/Cart.tsx'] },
+          },
+        },
+        skipped: {},
+        unattributed: [],
+        warnings: [],
+        changed: ['src/Cart.tsx'],
       },
     });
   });

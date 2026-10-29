@@ -155,7 +155,7 @@ describe('startDevServer', () => {
 describe('spawnedBaseUrl', () => {
   it('reaches the spawned server through the host a $PORT baseUrl names', () => {
     expect(spawnedBaseUrl('http://app.lvh.me:$PORT', 4321)).toBe('http://app.lvh.me:4321');
-    expect(spawnedBaseUrl('http://app.lvh.me:${PORT}/core', 4321)).toBe('http://app.lvh.me:4321/core');
+    expect(spawnedBaseUrl('http://app.lvh.me:${PORT}/portal', 4321)).toBe('http://app.lvh.me:4321/portal');
   });
 
   it('falls back to loopback when no host was asked for', () => {
@@ -167,8 +167,8 @@ describe('spawnedBaseUrl', () => {
 
   it('drives a fixed baseUrl when readyOn names a fixed origin too', () => {
     expect(
-      spawnedBaseUrl('http://app.lvh.me:8848/core', 4321, 'http://app.lvh.me:8848/core/403'),
-    ).toBe('http://app.lvh.me:8848/core');
+      spawnedBaseUrl('http://app.lvh.me:8080/portal', 4321, 'http://app.lvh.me:8080/portal/403'),
+    ).toBe('http://app.lvh.me:8080/portal');
   });
 });
 

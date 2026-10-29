@@ -53,6 +53,47 @@ describe('parseConfigSource', () => {
     expect(parse(`${MINIMAL}\ndiff:\n  ${setting}`).ok).toBe(false);
   });
 
+  it('reads select: with its defaults, and leaves it absent when unset', () => {
+    const parsed = parse(
+      [
+        'app:',
+        '  dev: pnpm dev',
+        '  readyOn: http://localhost:3000/',
+        'select:',
+        '  sources: [./packages/core/src/, packages/tokens/src]',
+        '  pages: { router: next-pages, dir: packages/core/src/pages/, basePath: /core }',
+        "  aliases: { '@app/': packages/core/src/ }",
+        '  all: [packages/core/src/styles/**]',
+        '  named:',
+        "    - files: 'lang/[^/]+/([^/]+)\\.ts$'",
+        `      mentioned: "[\\"']$1[\\"']"`,
+        '      except: ^lang/',
+        '',
+      ].join('\n'),
+    );
+    expect(parsed.ok ? [] : parsed.issues).toEqual([]);
+    if (!parsed.ok) return;
+    expect(parsed.value.select).toEqual({
+      sources: ['packages/core/src', 'packages/tokens/src'],
+      pages: { router: 'next-pages', dir: 'packages/core/src/pages', basePath: '/core' },
+      aliases: { '@app/': 'packages/core/src/' },
+      ignore: ['**/__tests__/**', '**/*.test.*', '**/*.spec.*', '**/*.stories.*', '**/*.fixtures.*'],
+      all: ['packages/core/src/styles/**'],
+      named: [{ files: 'lang/[^/]+/([^/]+)\\.ts$', mentioned: `["']$1["']`, except: '^lang/' }],
+    });
+
+    const without = parse('app:\n  dev: pnpm dev\n  readyOn: http://localhost:3000/\n');
+    expect(without.ok && without.value.select).toBeUndefined();
+  });
+
+  it('refuses a select: block with an unknown router or key', () => {
+    const base = 'app:\n  dev: pnpm dev\n  readyOn: http://localhost:3000/\n';
+    const router = parse(`${base}select:\n  sources: [src]\n  pages: { router: remix, dir: app/routes }\n`);
+    expect(router.ok).toBe(false);
+    const key = parse(`${base}select:\n  sources: [src]\n  pages: { router: next-pages, dir: src/pages }\n  covers: []\n`);
+    expect(key.ok).toBe(false);
+  });
+
   it('resolves browser.storageState against the project root', () => {
     const result = parse(`${MINIMAL}\nbrowser:\n  storageState: .visual-diff/auth/state.json`);
     if (!result.ok) throw new Error(JSON.stringify(result.issues));

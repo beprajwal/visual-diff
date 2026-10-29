@@ -76,6 +76,7 @@ import {
   DEFAULTS,
   FINDING_KINDS,
   type BrowserConfig,
+  type SelectConfig,
   type ValidationIssue,
   type ValidationResult,
 } from '../types.js';
@@ -213,6 +214,31 @@ const captureSchema = z
   })
   .strict();
 
+const selectNamedSchema = z
+  .object({
+    files: z.string().min(1),
+    mentioned: z.string().min(1),
+    except: z.string().min(1).optional(),
+  })
+  .strict();
+
+const selectSchema = z
+  .object({
+    sources: z.array(z.string().min(1)).min(1),
+    pages: z
+      .object({
+        router: z.enum(['next-pages']),
+        dir: z.string().min(1),
+        basePath: z.string().optional(),
+      })
+      .strict(),
+    aliases: z.record(z.string().min(1), z.string().min(1)).optional(),
+    ignore: z.array(z.string().min(1)).optional(),
+    all: z.array(z.string().min(1)).optional(),
+    named: z.array(selectNamedSchema).optional(),
+  })
+  .strict();
+
 const configSchema = z
   .object({
     baseUrl: z.string().min(1).optional(),
@@ -223,6 +249,7 @@ const configSchema = z
     network: networkSchema.optional(),
     retention: retentionSchema.optional(),
     e2e: e2eSchema.optional(),
+    select: selectSchema.optional(),
   })
   .strict();
 
@@ -276,6 +303,11 @@ function renamedE2eKeyIssues(
 }
 
 /* ------------------------------------------------------------------ defaults */
+
+/** `src/` and `./src/` name the same directory; the selector compares repo-relative paths. */
+function trimSlashes(dir: string): string {
+  return dir.replace(/^\.\//, '').replace(/\/+$/, '');
+}
 
 /** A fully-defaulted Config. `app` has no defaults: the spec's example always spells it out. */
 export function buildConfig(
@@ -352,6 +384,22 @@ export function buildConfig(
   // Only what was written. An absent key stays absent all the way to `e2eNoiseSettings`, which is
   // the single place `E2E_DIFF_DEFAULTS` is read — so "what is the e2e minimum region area?" has
   // exactly one answer, and changing it means changing one line.
+  if (file.select !== undefined) {
+    const pages: SelectConfig['pages'] = {
+      router: file.select.pages.router,
+      dir: trimSlashes(file.select.pages.dir),
+    };
+    if (file.select.pages.basePath !== undefined) pages.basePath = file.select.pages.basePath;
+    config.select = {
+      sources: file.select.sources.map(trimSlashes),
+      pages,
+      aliases: { ...(file.select.aliases ?? {}) },
+      ignore: [...(file.select.ignore ?? DEFAULTS.select.ignore)],
+      all: [...(file.select.all ?? [])],
+      named: (file.select.named ?? []).map((rule) => ({ ...rule })),
+    };
+  }
+
   if (file.e2e !== undefined) {
     const e2e: E2eNoiseOverrides = {};
     if (file.e2e.minRegionArea !== undefined) e2e.minRegionArea = file.e2e.minRegionArea;

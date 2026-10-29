@@ -22,6 +22,7 @@ import type {
   ValidationIssue,
   ViewportId,
 } from '../types.js';
+import type { FlowSelection } from '../select/index.js';
 import type {
   FileOutcome,
   HarnessTargets,
@@ -374,6 +375,14 @@ export interface InstallBrowserData {
   installed: boolean;
   /** The command that was executed, for reproducibility in a log. */
   command: string;
+}
+
+/** `vdiff select` — the selection, plus what it was computed from. */
+export interface SelectData extends FlowSelection {
+  /** The merge-base the changes were taken against, when `--base` named one. */
+  base?: string;
+  /** The changed files the selection saw, after `--changed` and `--base` were combined. */
+  changed: string[];
 }
 
 /** `vdiff --help` / `vdiff help` */

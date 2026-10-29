@@ -48,6 +48,7 @@ import { review } from './commands/review.js';
 import { run } from './commands/run.js';
 import { runs } from './commands/runs.js';
 import { scenarioCheck, scenarioList, scenarioNew } from './commands/scenario.js';
+import { select } from './commands/select.js';
 import { serve } from './commands/serve.js';
 import { variantCheck, variantList, variantNew } from './commands/variant.js';
 
@@ -98,6 +99,8 @@ async function dispatch(
       return comment(ctx, invocation);
     case 'export':
       return exportCommand(ctx, invocation);
+    case 'select':
+      return select(ctx, invocation);
     case 'serve':
       return serve(ctx, invocation);
     case 'feedback':

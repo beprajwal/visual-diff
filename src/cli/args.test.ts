@@ -202,6 +202,8 @@ describe('parseArgs — the documented surface (spec §9)', () => {
               ? ['install', 'claude-code', '--json']
               : command === 'e2e'
                 ? ['e2e', '--from', 'trace', 'trace.zip', '--json']
+                : command === 'select'
+                  ? ['select', '--all', 'label', '--json']
                 : ['run', 'runs', 'diff', 'review', 'comment', 'export'].includes(command)
                   ? [command, 'checkout', '--json']
                   : [command, '--json'];
@@ -298,6 +300,15 @@ describe('parseArgs — the documented surface (spec §9)', () => {
       port: 4321,
       json: false,
     });
+  });
+
+  it('parses select, which needs something to look at', () => {
+    expect(ok(['select', '--base', 'main'])).toEqual({ kind: 'select', base: 'main', json: false });
+    expect(
+      ok(['select', '--changed', '-', '--all', 'label', '--summary', 'out.md', '--json']),
+    ).toEqual({ kind: 'select', changed: '-', all: 'label', summary: 'out.md', json: true });
+    expect(err(['select'])).toMatchObject({ code: 'missing-argument', exitCode: EXIT.CONFIG_ERROR });
+    expect(err(['select', 'extra'])).toMatchObject({ exitCode: EXIT.CONFIG_ERROR });
   });
 
   it('parses feedback --ack', () => {
