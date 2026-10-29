@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/beprajwal/visual-diff/compare/v0.26.0...v0.27.0) (2026-10-29)
+
+
+### Features
+
+* **select:** replay everything for a config edit only when it touches what a replay reads ([c8bc7ad](https://github.com/beprajwal/visual-diff/commit/c8bc7adb7fa075723e61afd6edb3925f13f85269))
+
 ## [0.26.0](https://github.com/beprajwal/visual-diff/compare/v0.25.1...v0.26.0) (2026-10-29)
 
 
