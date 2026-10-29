@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/beprajwal/visual-diff/compare/v0.25.0...v0.25.1) (2026-10-29)
+
+
+### Fixes
+
+* **comment:** call a flow unchanged when every compared cell is identical, whatever its spec edits ([132d9d3](https://github.com/beprajwal/visual-diff/commit/132d9d37f363cb2649a2a73483f8fd5435ce5879))
+
 ## [0.25.0](https://github.com/beprajwal/visual-diff/compare/v0.24.0...v0.25.0) (2026-10-29)
 
 
