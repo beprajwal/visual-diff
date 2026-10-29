@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/beprajwal/visual-diff/compare/v0.25.1...v0.26.0) (2026-10-29)
+
+
+### Features
+
+* **select:** read a registry by its changed lines, flag maps and stylesheets alike ([e8db331](https://github.com/beprajwal/visual-diff/commit/e8db33143d278ece652b0672994c4e1b0363f6cc))
+
 ## [0.25.1](https://github.com/beprajwal/visual-diff/compare/v0.25.0...v0.25.1) (2026-10-29)
 
 
