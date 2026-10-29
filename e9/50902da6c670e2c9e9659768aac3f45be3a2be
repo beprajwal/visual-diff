@@ -1,0 +1,41 @@
+src/cli/commands/select.test.ts
+  s_82b796ecc772ec::t_f4e64aefef476b 17,146-170
+src/cli/commands/select.ts
+  s_82b796ecc772ec::t_d450e41c9b6bc4 17-18,40-65,108-117
+src/cli/deps.ts
+  s_82b796ecc772ec::t_ca5c53937b54da 67,291,298
+src/cli/ports.ts
+  s_82b796ecc772ec::t_b80db3806c7675 58,353
+src/select/index.ts
+  s_82b796ecc772ec::t_87dbcf6efe804a 17-24
+src/select/registry.test.ts
+  s_82b796ecc772ec::t_793e7d94213eb0 1-88
+src/select/registry.ts
+  s_82b796ecc772ec::t_aa2eec0103673c 1-172
+src/select/select.test.ts
+  s_82b796ecc772ec::t_0853fc9a253265 8,15,41-44,135-156,160-165,168,311-376
+src/select/select.ts
+  s_82b796ecc772ec::t_0eb83e552c8f0b 22,64-84,204-230,274-276,281-283
+src/store/config.test.ts
+  s_82b796ecc772ec::t_44afbcef68f048 83
+src/store/config.ts
+  s_82b796ecc772ec::t_9e6334c3a15049 239-252,414
+src/types.ts
+  s_82b796ecc772ec::t_5474dc152d631b 534-557
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e950902da6c670e2c9e9659768aac3f45be3a2be",
+  "prompts": {},
+  "sessions": {
+    "s_82b796ecc772ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb689618-25e5-4149-9842-6b5507ac3348",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
