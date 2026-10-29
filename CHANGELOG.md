@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/beprajwal/visual-diff/compare/v0.24.0...v0.25.0) (2026-10-29)
+
+
+### Features
+
+* **select:** replay only the flows a pull request's changes reach ([1d8dc4e](https://github.com/beprajwal/visual-diff/commit/1d8dc4ef628cc5981878d4c08caa7adf0daf2cb1))
+
 ## [0.24.0](https://github.com/beprajwal/visual-diff/compare/v0.23.0...v0.24.0) (2026-10-07)
 
 
