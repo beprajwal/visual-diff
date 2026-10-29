@@ -1,0 +1,21 @@
+src/runner/devserver.test.ts
+  s_82b796ecc772ec::t_dffe38ca67bbcc 158,170-171
+src/runner/env-template.test.ts
+  s_82b796ecc772ec::t_6e998285d63a1b 131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32fcc76a036aaf931cbabfea4ccb97047ae8b8e7",
+  "prompts": {},
+  "sessions": {
+    "s_82b796ecc772ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb689618-25e5-4149-9842-6b5507ac3348",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Prajwal Raj Basnet <44965674+Prajwalrajbasnet@users.noreply.github.com>"
+    }
+  }
+}
