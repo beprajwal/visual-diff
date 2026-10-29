@@ -185,7 +185,8 @@ file whole, as before.
 
 When nothing is reached the job replays nothing, and the step summary lists the changed source no
 flow covers. The `visual-diff: all` label on a pull request replays every flow; so does a project
-with no `select:` section, a change to config.yaml or the workflow, and a selector that fails.
+with no `select:` section, a change to the workflow, a change to a config.yaml section a replay
+reads (anything but `select` and `app`), and a selector that fails.
 `vdiff select --base main` answers the same question locally.
 
 ### The comment, signed

@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EXIT } from '../../types.js';
 import type { CommandContext, SpawnFn } from '../command.js';
 import { CliFailure } from '../error.js';
-import { createTestPorts } from '../testing.js';
+import { createTestPorts, fakeSelection } from '../testing.js';
 import { changedLines, select } from './select.js';
 
 const dirs: string[] = [];
@@ -39,6 +39,7 @@ function fakeGit(calls: string[][] = []): SpawnFn {
     }
     if (args[0] === 'diff') return { code: 0, stdout: 'src/Cart.tsx\ndocs/x.md\n', stderr: '' };
     if (args[0] === 'ls-files') return { code: 0, stdout: 'src/New.tsx\n', stderr: '' };
+    if (args[0] === 'show') return { code: 0, stdout: 'app:\n  dev: x\n', stderr: '' };
     return { code: 1, stdout: '', stderr: `unexpected ${args.join(' ')}` };
   };
 }
@@ -167,5 +168,26 @@ describe('vdiff select', () => {
       { text: '.new {', line: 20, side: '+' },
       { text: '}', line: 21, side: '+' },
     ]);
+  });
+
+  it('hands the base config to the selector when config.yaml changed', async () => {
+    const calls: string[][] = [];
+    const seen: Array<{ configBefore?: string }> = [];
+    const spawn: SpawnFn = async (command, args, options) => {
+      if (args[0] === 'diff' && args[1] === '--name-only') {
+        calls.push([command, ...args]);
+        return { code: 0, stdout: '.visual-diff/config.yaml\n', stderr: '' };
+      }
+      return fakeGit(calls)(command, args, options);
+    };
+    const ports = createTestPorts({
+      selectFlows: async (_config, request) => {
+        seen.push({ ...(request.configBefore === undefined ? {} : { configBefore: request.configBefore }) });
+        return fakeSelection(request);
+      },
+    });
+    await select(context({ spawn, ports }), { kind: 'select', base: 'main', json: false });
+    expect(calls).toContainEqual(['git', 'show', 'abc123:./.visual-diff/config.yaml']);
+    expect(seen).toEqual([{ configBefore: 'app:\n  dev: x\n' }]);
   });
 });

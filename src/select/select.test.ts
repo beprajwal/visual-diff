@@ -374,6 +374,34 @@ describe('selectFlows', () => {
     expect(built.mode).toBe('all');
   });
 
+  // D67: a config edit replays everything only when it touches a section a replay reads.
+  it('a config edit to select or app alone replays nothing by itself', async () => {
+    const root = await repository();
+    const config_ = '.visual-diff/config.yaml';
+    const before = 'app:\n  dev: x\n  readyOn: http://x\n';
+    const run = (configBefore: string, changed: string[]): Promise<FlowSelection> =>
+      selectFlows({ root, config, changed, configBefore });
+
+    await writeFile(join(root, config_), `${before}# a comment\nselect:\n  sources: [src]\n`, 'utf8');
+    const neutral = await run(before, [config_]);
+    expect(neutral.mode).toBe('none');
+    expect(neutral.unattributed).toEqual([]);
+    // Alongside a page change, the page decides.
+    expect((await run(before, [config_, 'packages/web/src/pages/shops/[id]/orders/index.tsx'])).flows).toEqual(['orders']);
+
+    await writeFile(join(root, config_), 'app:\n  dev: y\n  readyOn: http://y\n', 'utf8');
+    expect((await run(before, [config_])).mode).toBe('none');
+
+    await writeFile(join(root, config_), `${before}diff:\n  minRegionArea: 10\n`, 'utf8');
+    const compared = await run(before, [config_]);
+    expect(compared.mode).toBe('all');
+    expect(compared.everything).toBe('.visual-diff/config.yaml is part of the visual-diff harness');
+
+    // Without the base config, or with one that does not parse, any edit is every flow.
+    expect((await select(root, [config_])).mode).toBe('all');
+    expect((await run(': not yaml: [', [config_])).mode).toBe('all');
+  });
+
   it('summarises the selection as the step summary', async () => {
     const root = await repository();
     const some = await select(root, ['packages/web/src/components/common/Button.tsx']);

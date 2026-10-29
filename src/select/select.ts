@@ -13,10 +13,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
+import * as YAML from 'yaml';
+
 import { parseFlowFile } from '../flow/index.js';
 import { scenariosDir } from '../mocking/index.js';
 import { globMatches } from '../scenario/index.js';
-import { paths } from '../store/index.js';
+import { paths, stableStringify } from '../store/index.js';
 import type { SelectConfig } from '../types.js';
 import { buildImportGraph, filesReaching, readSources, toPosix, type ImportGraph, type SourceMap } from './graph.js';
 import { resolveRegistry, type ChangedLine } from './registry.js';
@@ -66,6 +68,33 @@ export interface SelectRequest {
    * `+`/`-` prefix. A registry absent here is walked whole: there is nothing to read names from.
    */
   lines?: Readonly<Record<string, readonly ChangedLine[]>>;
+  /**
+   * `.visual-diff/config.yaml` as it was at the base. With it, a config change that touches only
+   * what selection or a local run reads replays nothing by itself (D67); without it, any config
+   * change replays every flow.
+   */
+  configBefore?: string;
+}
+
+/**
+ * The sections of config.yaml that decide what a replay captures or how two captures compare.
+ * `select` only picks the flows, and `app` starts a dev server CI attaches past; neither changes a
+ * screenshot.
+ */
+const REPLAY_NEUTRAL_SECTIONS = ['select', 'app'] as const;
+
+/** The replay-relevant part of a config.yaml, canonical, or null when it does not parse. */
+export function replaySections(source: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(source);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const relevant = { ...(parsed as Record<string, unknown>) };
+  for (const section of REPLAY_NEUTRAL_SECTIONS) delete relevant[section];
+  return stableStringify(relevant);
 }
 
 /**
@@ -85,6 +114,8 @@ function mentioning(names: readonly string[], registry: string, sources: SourceM
 }
 
 /** Files that define what a replay means. A change to one is a change to every flow. */
+const CONFIG = '.visual-diff/config.yaml';
+
 const HARNESS = [
   '.visual-diff/config.yaml',
   '.github/workflows/visual-diff.yml',
@@ -220,6 +251,11 @@ export async function selectFlows(request: SelectRequest): Promise<FlowSelection
   }
 
   for (const file of changed) {
+    if (file === CONFIG && request.configBefore !== undefined) {
+      const before = replaySections(request.configBefore);
+      const after = replaySections(readFileSync(path.join(root, file), 'utf8'));
+      if (before !== null && before === after) continue;
+    }
     if ((HARNESS as readonly string[]).includes(file)) {
       return finish(`${file} is part of the visual-diff harness`);
     }
@@ -237,6 +273,8 @@ export async function selectFlows(request: SelectRequest): Promise<FlowSelection
   const scenariosDirectory = `${toPosix(path.relative(root, scenariosDir(root)))}/`;
 
   for (const file of changed) {
+    // Reached here only as a replay-neutral edit; it names no fixture.
+    if (file === CONFIG) continue;
     if (file.startsWith(flowsDirectory) && file.endsWith('.yaml')) {
       const name = path.posix.basename(file, '.yaml');
       // A deleted flow has nothing to run; a renamed one shows up as its new name.

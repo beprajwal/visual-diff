@@ -350,7 +350,7 @@ export interface Ports {
 
   /** `store/index.ts#openStore`. */
   /** The flows a change reaches (selection spec §3). `all` is a reason to replay every flow. */
-  selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]> }): Promise<FlowSelection>;
+  selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]>; configBefore?: string }): Promise<FlowSelection>;
 
   openStore(config: Config): Promise<StorePort>;
   /** `runner/index.ts#runFlow`. */

@@ -6,6 +6,7 @@
  */
 
 export {
+  replaySections,
   selectFlows,
   summarizeSelection,
   type FlowSelection,
