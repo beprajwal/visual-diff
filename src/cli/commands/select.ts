@@ -105,6 +105,11 @@ export async function select(
 
   const request: Parameters<typeof ctx.ports.selectFlows>[1] = { changed };
   if (invocation.all !== undefined) request.all = invocation.all;
+  // A config edit replays everything only when it touches a section a replay reads (D67).
+  if (base !== undefined && changed.includes('.visual-diff/config.yaml')) {
+    const shown = await ctx.spawn('git', ['show', `${base}:./.visual-diff/config.yaml`], { cwd: config.root });
+    if (shown.code === 0) request.configBefore = shown.stdout;
+  }
   // A registry is read by its changed lines (D65), which only a base to diff against can give.
   const registries = config.select?.registries ?? [];
   if (base !== undefined && registries.length > 0) {

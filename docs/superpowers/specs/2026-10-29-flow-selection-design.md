@@ -140,3 +140,15 @@ Comment prose is no change. A changed line under a rule with no class — `body`
 styles every page that loads the sheet, so the file is handled whole, which for a global stylesheet
 means `select.all` answers. So does a class no source mentions, since a rule for a class nothing
 names is either built at runtime or used only by other rules.
+
+**D67 — A config edit replays every flow only when it touches a section a replay reads.**
+
+`config.yaml` was part of the harness whole, so a pull request adding a `select.registries` rule
+replayed every flow to prove nothing. Under `--base`, the command reads the config at the
+merge-base, and the selector compares the two with `select` and `app` removed and the rest
+canonicalised, so comments and key order do not count either. `select` only picks the flows;
+`app` starts the dev server a deployed replay attaches past. `diff`, `browser`, `capture`,
+`network` and anything new change what is captured or how it is compared, and still replay every
+flow. A base config that cannot be read or parsed counts as a change. A neutral edit then reaches
+nothing by itself, and the rest of the pull request decides — under the selection rules the head's
+config now states.

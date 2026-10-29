@@ -288,7 +288,7 @@ export function createPorts(): Ports {
       return await fn(file);
     },
 
-    async selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]> }) {
+    async selectFlows(config: Config, request: { changed: string[]; all?: string; lines?: Record<string, ChangedLine[]>; configBefore?: string }) {
       const fn = await loadExport<(request: SelectRequest) => Promise<FlowSelection>>(
         MODULE_SPECIFIERS.select,
         'selectFlows',
@@ -296,6 +296,7 @@ export function createPorts(): Ports {
       const full: SelectRequest = { root: config.root, config: config.select, changed: request.changed };
       if (request.all !== undefined) full.all = request.all;
       if (request.lines !== undefined) full.lines = request.lines;
+      if (request.configBefore !== undefined) full.configBefore = request.configBefore;
       return await fn(full);
     },
 
