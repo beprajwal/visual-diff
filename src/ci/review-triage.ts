@@ -7,10 +7,15 @@ import { significantDiff, significantReview, significanceFingerprint, withProjec
 const cellKey = (step: string, viewport: string): string => JSON.stringify([step, viewport]);
 
 /** A corrupted/legacy review must never gain authority to remove evidence. */
+/** Whether a review was written for exactly this diff: same pair, engine and evidence. */
+export function isCurrentReview(result: DiffResult, review?: Review): review is Review {
+  return review !== undefined && review.flow === result.flow && review.pair?.base === result.pair.base &&
+    review.pair?.head === result.pair.head && review.engineVersion === result.engineVersion &&
+    review.diffFingerprint === significanceFingerprint(result);
+}
+
 export function currentTriage(result: DiffResult, review?: Review): ReviewTriage | undefined {
-  if (!review || review.flow !== result.flow || review.pair?.base !== result.pair.base ||
-    review.pair?.head !== result.pair.head || review.engineVersion !== result.engineVersion ||
-    review.diffFingerprint !== significanceFingerprint(result)) return undefined;
+  if (!isCurrentReview(result, review)) return undefined;
   const triage = review.triage;
   if (!triage || triage.version !== 1 || !Array.isArray(triage.findings) ||
     !Array.isArray(triage.viewports) || !Array.isArray(triage.comparedCells)) return undefined;

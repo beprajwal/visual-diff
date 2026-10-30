@@ -256,6 +256,11 @@ ANTHROPIC_API_KEY=… vdiff review checkout --context pr.md   # or OPENAI_API_KE
 vdiff comment checkout                                       # picks the stored review up automatically
 ```
 
+The review also says whether anyone needs to open the flow. When every change is one the pull
+request describes, and nothing failed, is new or looks wrong, the flow drops out of the full
+reports into the summary comment with the review's one-line reason. Anything the evidence cannot
+back keeps its full report.
+
 ### The report as a site
 
 `publish-branch` already pushes each pull request's `report.html` and images to a branch. Point
