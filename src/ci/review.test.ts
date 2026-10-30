@@ -270,7 +270,9 @@ describe('what is accepted back', () => {
   });
 
   it('keeps the schema strict-mode friendly: every property required, nothing extra allowed', () => {
-    expect(REVIEW_SCHEMA.required).toEqual(['triage', 'headline', 'summary', 'changes', 'concerns']);
+    expect(REVIEW_SCHEMA.required).toEqual(['triage', 'headline', 'summary', 'changes', 'concerns', 'attention']);
+    expect(REVIEW_SCHEMA.properties.attention.required).toEqual(['needed', 'reason']);
+    expect(REVIEW_SCHEMA.properties.attention.additionalProperties).toBe(false);
     expect(REVIEW_SCHEMA.additionalProperties).toBe(false);
     expect(REVIEW_SCHEMA.properties.changes.items.required).toEqual([
       'step',

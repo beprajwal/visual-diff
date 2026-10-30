@@ -27,7 +27,7 @@ import {
   type ShotCell,
 } from './layout.js';
 import { reviewLines } from './review-render.js';
-import { commentFingerprint, reviewProjection } from './review-triage.js';
+import { commentFingerprint, isCurrentReview, reviewProjection } from './review-triage.js';
 import { hasMinorChanges, significantDiff } from '../diff/significance.js';
 
 /** GitHub's hard limit is 65536 characters; the margin absorbs whatever a transport prepends. */
@@ -99,6 +99,12 @@ export interface CommentDocument {
   markdown: string;
   /** A complete, quiet comparison with no changes above tolerance; safe for CI to summarize. */
   unchanged: boolean;
+  /**
+   * The review judged that nobody needs to open this flow, and the evidence agrees (D68). Safe for
+   * CI to summarize like `unchanged`, with `quietReason` beside the flow's name.
+   */
+  quiet?: boolean;
+  quietReason?: string;
   /** The HTML comment an upserting transport searches for. Always the first line of `markdown`. */
   marker: string;
   bytes: number;
@@ -465,6 +471,36 @@ export function renderComment(input: CommentInput): CommentDocument {
       truncated: { images: 0, steps: false },
     };
   }
+  // D68: the review may ask for the one-line summary instead of the report, and gets it only when
+  // the measured evidence leaves nothing a person must see — no failure, no new picture, no
+  // concern, no change it could not call expected, no gate.
+  const verdict = input.review;
+  const quiet =
+    verdict !== undefined && isCurrentReview(raw, verdict) && verdict.attention?.needed === false &&
+    verdict.concerns.length === 0 && verdict.changes.every(change => change.assessment === 'expected') &&
+    projection.captureConcerns.length === 0 && (input.notices?.length ?? 0) === 0 &&
+    input.gate?.tripped !== true &&
+    summary.stepsCompared > 0 && summary.stepsFailed === 0 && summary.stepsBlocked === 0 &&
+    summary.stepsAdded === 0 &&
+    measured.steps.every(step =>
+      step.status !== 'failed' && step.status !== 'blocked' && step.status !== 'added' &&
+      Object.values(step.viewports).every(vp => vp.missing !== 'base' && vp.missing !== 'both'),
+    );
+  if (quiet && verdict.attention !== undefined) {
+    const reason = verdict.attention.reason.trim().replace(/\.$/, '');
+    const url = input.reportUrl ?? input.artifactUrl;
+    const link = url === undefined ? '' : ` [Report](${url})`;
+    const markdown =
+      `${marker}\n**${PRODUCT_NAME}:** Nothing needs attention in ${code(raw.flow)}` +
+      `${reason === '' ? '' : `: ${reason}`}.${link}\n`;
+    return {
+      markdown, marker, unchanged: false, quiet: true, quietReason: reason,
+      bytes: Buffer.byteLength(markdown, 'utf8'),
+      images: 0,
+      truncated: { images: 0, steps: false },
+    };
+  }
+
   const maxBytes = input.maxBytes ?? MAX_COMMENT_BYTES;
   const hint = artifactHintFor(input);
 

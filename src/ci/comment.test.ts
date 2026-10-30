@@ -17,6 +17,7 @@ import {
 } from './comment.js';
 import { fakeReview } from '../cli/testing.js';
 import { minorDiff } from '../diff/tolerance-testkit.js';
+import { significanceFingerprint } from '../diff/significance.js';
 import { commentFingerprint } from './review-triage.js';
 
 function diffWithFindings(count: number, patch: Partial<DiffResult> = {}): DiffResult {
@@ -490,5 +491,58 @@ describe('the picture of the report (D51)', () => {
     });
     expect(doc.markdown).not.toContain('preview.png');
     expect(doc.markdown).not.toContain('<picture>');
+  });
+});
+
+// D68: the review may ask for the summary line; the evidence decides whether it gets it.
+describe('renderComment — a review that says nothing needs attention', () => {
+  const settled = (result: DiffResult, overrides: Parameters<typeof fakeReview>[0] = {}) =>
+    fakeReview({
+      engineVersion: result.engineVersion,
+      diffFingerprint: significanceFingerprint(result),
+      attention: { needed: false, reason: 'the button relabel the description asks for.' },
+      ...overrides,
+    });
+
+  it('folds an expected-only change into one line naming the reason', () => {
+    const result = diffWithFindings(0, { emit: { findings: false, warnings: false } });
+    const doc = renderComment({ result, version: 'test', review: settled(result), reportUrl: 'https://example.test/r' });
+    expect(doc.quiet).toBe(true);
+    expect(doc.unchanged).toBe(false);
+    expect(doc.quietReason).toBe('the button relabel the description asks for');
+    expect(doc.markdown).toBe(
+      '<!-- vdiff:checkout:pr -->\n**Visual Diff:** Nothing needs attention in `checkout`: ' +
+        'the button relabel the description asks for. [Report](https://example.test/r)\n',
+    );
+  });
+
+  it.each([
+    ['the model asks for attention', { attention: { needed: true, reason: 'x' } }],
+    ['an older review has no verdict', { attention: undefined }],
+    ['a change is unrelated', { changes: [{ step: 'pay-form', viewport: '1280x800', description: 'moved', assessment: 'unrelated' as const }] }],
+    ['a concern is raised', { concerns: ['The total is clipped.'] }],
+    ['the review is for another diff', { diffFingerprint: 'stale' }],
+  ])('keeps the full report when %s', (_label, overrides) => {
+    const result = diffWithFindings(0, { emit: { findings: false, warnings: false } });
+    const doc = renderComment({ result, version: 'test', review: settled(result, overrides) });
+    expect(doc.quiet).not.toBe(true);
+    expect(doc.markdown).not.toContain('Nothing needs attention');
+  });
+
+  it('keeps the full report when a step failed, whatever the review says', () => {
+    const base = diffWithFindings(0, { emit: { findings: false, warnings: false } });
+    const result = { ...base, summary: { ...base.summary, stepsFailed: 1 } };
+    const doc = renderComment({ result, version: 'test', review: settled(result) });
+    expect(doc.quiet).not.toBe(true);
+  });
+
+  it('keeps the full report for a picture only the head has', () => {
+    const result = diffWithFindings(0, {
+      emit: { findings: false, warnings: false },
+      steps: [makeStepDiff('cart', 'added', { viewports: { '1280x800': makeViewportDiff('1280x800', { missing: 'base' }) } })],
+      summary: makeSummary({ stepsCompared: 1, stepsAdded: 1 }),
+    });
+    const doc = renderComment({ result, version: 'test', review: settled(result) });
+    expect(doc.quiet).not.toBe(true);
   });
 });

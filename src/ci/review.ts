@@ -260,6 +260,10 @@ const SYSTEM_PROMPT = [
   '  including changes the findings did not explain; if any are uncertain, its assessment is uncertain.',
   '- Noise assessments must not reappear as meaningful changes or warnings in the review prose.',
   '  Preserve readiness concerns and genuine regressions. The report retains every assessment.',
+  '- Last, decide `attention`: whether a person needs to open this flow\'s report on the pull request.',
+  '  `needed: false` only when every change is `expected` from the description or is capture noise,',
+  '  `concerns` is empty, and no viewport is uncertain or incomplete. Anything else, or any doubt,',
+  '  is `needed: true`. `reason` is one short clause a reviewer reads in a list of flows.',
 ].join('\n');
 
 interface PromptFinding {
@@ -414,8 +418,18 @@ export const REVIEW_SCHEMA = {
       items: { type: 'string' },
       description: 'Warnings for a human, one sentence each. Empty when there is nothing to raise.',
     },
+    attention: {
+      type: 'object',
+      description: 'Whether a person needs to open this flow on the pull request.',
+      properties: {
+        needed: { type: 'boolean' },
+        reason: { type: 'string', description: 'One short clause.' },
+      },
+      required: ['needed', 'reason'],
+      additionalProperties: false,
+    },
   },
-  required: ['triage', 'headline', 'summary', 'changes', 'concerns'],
+  required: ['triage', 'headline', 'summary', 'changes', 'concerns', 'attention'],
   additionalProperties: false,
 } as const;
 
@@ -431,6 +445,8 @@ const ReviewBody = z.object({
     }),
   ),
   concerns: z.array(z.string()),
+  // Absent from an older answer means "needed": silence never quiets a comment.
+  attention: z.object({ needed: z.boolean(), reason: z.string() }).optional(),
   // Old responses/reviews remain advisory; absence cannot suppress any evidence.
   triage: TriageBody.optional(),
 });
@@ -787,6 +803,9 @@ export async function requestReview(request: ReviewRequest): Promise<ReviewRespo
     summary: body.summary.trim(),
     changes: body.changes,
     concerns: body.concerns.map((concern) => concern.trim()).filter((concern) => concern.length > 0),
+    ...(body.attention === undefined
+      ? {}
+      : { attention: { needed: body.attention.needed, reason: body.attention.reason.trim() } }),
     evidence: {
       cells: evidence.cells.length,
       images: evidence.images.length,

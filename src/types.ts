@@ -1249,6 +1249,13 @@ export interface Review {
    * saw nothing to raise — and the comment then says so, because silence is not the same as "fine".
    */
   concerns: string[];
+  /**
+   * Whether a person needs to look at this flow on the pull request (D68). `needed: false` asks
+   * for the one-line summary instead of the full report; the comment honours it only when the
+   * measured evidence agrees — nothing failed, missing or flagged — so the model can quiet a
+   * comment but never hide a failure. Absent on reviews written before the field existed.
+   */
+  attention?: { needed: boolean; reason: string };
   /** How much the model was shown: how many (step, viewport) cells and how many images. */
   evidence: { cells: number; images: number; contextProvided: boolean };
 }

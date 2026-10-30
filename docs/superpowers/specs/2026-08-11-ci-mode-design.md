@@ -546,3 +546,16 @@ nothing to compare against still gets the report — an added step, a viewport o
 because there is a picture nobody has seen. A warning on the diff and a model's capture-readiness
 note no longer hold the report open on their own: the first is on the report page, the second is a
 judgement about cells the numbers already call identical.
+
+**D68 — The review can settle a flow; the evidence decides whether it is settled.** A flow whose
+only changes are the ones the pull request describes still got the full report — picture, review,
+steps — and on a pull request replaying twenty flows that buries the one comment that matters. The
+review now ends with `attention: { needed, reason }`: `needed: false` when every change is expected
+from the description or is capture noise and nothing is a concern. The comment honours it only when
+the measured evidence agrees: the review is current for this diff, every change it lists is
+`expected`, it raises no concern, there is no capture-readiness note or notice, nothing failed, was
+blocked or was added, no cell exists on the head alone, and the gate did not trip. Then the comment
+is one line naming the reason, and the action lists it under the unchanged flows in the summary
+comment ("Reviewed, nothing needs attention"). A model can quiet a comment; it can never hide a
+failure, a picture nobody has seen, or a change it could not account for. A review without the
+field — older, or from a provider that dropped it — quiets nothing.

@@ -148,6 +148,10 @@ export interface CommentData {
   flow: string;
   /** Complete comparison with no changes above tolerance, suitable for a grouped CI summary. */
   unchanged: boolean;
+  /** The review said nobody needs to look, and the evidence agreed (D68). Grouped like `unchanged`. */
+  quiet: boolean;
+  /** The review's one-clause reason, when `quiet`. */
+  quietReason?: string;
   pair: PairRef;
   markdown: string;
   /** The HTML comment an upserting transport searches for (D33). Always the first line of `markdown`. */

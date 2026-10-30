@@ -15,11 +15,13 @@ const marker = (flow: string) => `<!-- vdiff:${flow}:pr -->`;
 const summaryMarker = '<!-- vdiff:unchanged-flows:agent,data-table -->';
 const previous = (id: number, body: string, login = 'visual-diff[bot]'): PostedComment => ({ id, body, user: { login } });
 
-async function post(flows: Record<string, boolean | undefined>, existing: PostedComment[] = []) {
+async function post(flows: Record<string, boolean | { quiet: string } | undefined>, existing: PostedComment[] = []) {
   const files = new Map<string, string>();
-  for (const [flow, unchanged] of Object.entries(flows)) {
+  for (const [flow, state] of Object.entries(flows)) {
     files.set(`/bundle/${flow}/comment.md`, `${marker(flow)}\n${flow} report`);
-    if (unchanged !== undefined) files.set(`/bundle/${flow}/comment.json`, JSON.stringify({ data: { unchanged } }));
+    if (state === undefined) continue;
+    const data = typeof state === 'boolean' ? { unchanged: state } : { unchanged: false, quiet: true, quietReason: state.quiet };
+    files.set(`/bundle/${flow}/comment.json`, JSON.stringify({ data }));
   }
   const issues = {
     listComments: vi.fn(),
@@ -45,6 +47,17 @@ async function post(flows: Record<string, boolean | undefined>, existing: Posted
 }
 
 describe('CI comment publishing', () => {
+  it('lists flows the review settled under the unchanged ones, each with its reason (D68)', async () => {
+    const issues = await post({ agent: true, 'data-table': { quiet: 'the column the description adds' } });
+    expect(issues.createComment).toHaveBeenCalledTimes(1);
+    expect(issues.createComment).toHaveBeenCalledWith(expect.objectContaining({
+      body:
+        `${summaryMarker}\n**Visual Diff:** No visual changes above configured thresholds in 1 flow: [agent](https://example.test/reports/agent/report.html).\n\n` +
+        '**Visual Diff:** Reviewed, nothing needs attention in 1 flow:\n' +
+        '- [data-table](https://example.test/reports/data-table/report.html): the column the description adds\n',
+    }));
+  });
+
   it('posts one small text comment for all unchanged flows', async () => {
     const issues = await post({ agent: true, 'data-table': true });
     expect(issues.createComment).toHaveBeenCalledTimes(1);
