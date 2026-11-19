@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/beprajwal/visual-diff/compare/v0.27.0...v0.28.0) (2026-11-19)
+
+
+### Features
+
+* **comment:** let the review settle a flow into the summary when the evidence agrees ([4c26e0a](https://github.com/beprajwal/visual-diff/commit/4c26e0a9251f99a4d3f654816bc0ed91b55c0d96))
+
 ## [0.27.0](https://github.com/beprajwal/visual-diff/compare/v0.26.0...v0.27.0) (2026-10-29)
 
 
